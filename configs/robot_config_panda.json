@@ -1,0 +1,8 @@
+{
+  "robot": {
+    "type": "panda",
+    "vendor_config": "configs/panda_vendor.json",
+    "ip": "192.168.0.5",
+    "tool": "parallel_gripper"
+  }
+}

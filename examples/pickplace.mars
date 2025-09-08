@@ -1,0 +1,7 @@
+# tiny MARS example
+config "configs/robot_config_panda.json"
+new Arm = arm
+arm.home
+arm.moveToPose 0.40 0.00 0.20
+arm.setGripper true
+arm.moveToPose 0.60 0.00 0.20
