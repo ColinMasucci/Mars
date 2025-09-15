@@ -1,24 +1,31 @@
-# Makefile
+# Compiler and flags
+CXX := g++
+CXXFLAGS := -std=c++17 -Wall -Wextra -I./include
 
-# Compiler
-CXX = g++
+# Source files (only .cpp files go here)
+SRCS := src/main.cpp
 
-# Compiler flags
-CXXFLAGS = -Ithird-party -Iinclude -std=c++17 -Wall -Wextra
+# Object files
+OBJS := $(SRCS:.cpp=.o)
 
-# Source files
-SRCS = $(wildcard src/*.cpp)
+# Output binary
+TARGET := robot_app
 
-# Output executable
-TARGET = mars_demo
-
-# Default target
+# Default rule
 all: $(TARGET)
 
-# Build the executable
-$(TARGET): $(SRCS)
-	$(CXX) $(SRCS) $(CXXFLAGS) -o $(TARGET)
+# Link final binary
+$(TARGET): $(OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
-# Clean up build artifacts
+# Compile .cpp -> .o
+src/%.o: src/%.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# Clean build artifacts
 clean:
-	rm -f $(TARGET)
+	rm -f $(OBJS) $(TARGET)
+
+# Run the program
+run: $(TARGET)
+	./$(TARGET)

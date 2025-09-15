@@ -34,7 +34,6 @@ Capability RobotArm::capability() const{
 }
 
 void RobotArm::moveToPose(const Pose& p) {
-
     driver_->moveToPose(p);
 }
 
