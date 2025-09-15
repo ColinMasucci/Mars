@@ -1,0 +1,15 @@
+component = Motor
+
+subcomponents {
+    Motor left_motor
+    Motor right_motor
+}
+
+params {
+    float wheel_base
+    float wheel_diameter
+}
+
+functions {
+    drive(float left_speed, float right_speed)
+}

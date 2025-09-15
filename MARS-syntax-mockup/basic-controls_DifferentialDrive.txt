@@ -1,0 +1,55 @@
+requirements {
+    DifferentialDrive
+    !TankDrive
+    wheel_base > 5 and wheel_base < 10
+}
+
+import DifferentialDrive as chassis
+
+
+"""
+**Basic Controls for Differential Drive**
+
+basic movement library for differential drive chassis without encoders
+
+insert JavaDoc equivalent
+
+"""
+
+basic-controls {
+    void drive_straight(float speed) {
+        chassis.drive(speed, speed)
+    }
+
+    void stop() {
+        chassis.drive(0, 0)
+    }
+
+    void drive_circle(float radius, bool clockwise, float speed) {
+        float wheelbase = chassis.wheel_base();
+
+        float inner_radius = radius - (wheelbase / 2.0f);
+        float outer_radius = radius + (wheelbase / 2.0f);
+
+        if (inner_radius < 0) inner_radius = 0.01f;
+
+        float speed_ratio = inner_radius / outer_radius;
+
+        float outer_speed = speed;
+        float inner_speed = speed * speed_ratio;
+
+        float left, right;
+
+        if (clockwise) {
+            left  = outer_speed;   // outer = left
+            right = inner_speed;   // inner = right
+        } else {
+            left  = inner_speed;   // inner = left
+            right = outer_speed;   // outer = right
+        }
+
+        chassis.drive(left, right);
+    }
+
+
+}

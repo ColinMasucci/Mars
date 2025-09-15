@@ -1,0 +1,23 @@
+import DifferentialDrive
+
+component = Romi of type DifferentialDrive
+
+on instance {
+    pose = [[0,0,0],[0,0,0]] // robot space
+}
+
+subcomponents {
+    Motor left_motor = new MyMotor()
+    Motor right_motor = new MyMotor()
+}
+
+params {
+    float wheel_base = 1    // inch
+    float wheel_diameter = 1    // inch
+}
+
+functions {
+    drive(float left_speed, float right_speed) {
+        
+    }
+}
