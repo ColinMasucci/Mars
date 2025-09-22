@@ -3,8 +3,6 @@ import Motor
 
 component DifferentialDrive extends Chassis {
 
-}
-
 subcomponents {
     Motor left_motor;
     Motor right_motor;
@@ -15,11 +13,14 @@ params {
     float wheel_diameter;
 }
 
+}
+
 functions {
     drive(float left_speed, float right_speed) {
         left_motor.spin(left_speed);
     }
 }
+
 
 
 // float 64 bit
