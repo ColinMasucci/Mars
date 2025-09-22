@@ -1,15 +1,13 @@
 component = Motor
 
-subcomponents {
-    Motor left_motor
-    Motor right_motor
-}
-
 params {
-    float wheel_base
-    float wheel_diameter
+    float max_speed;
+    float current_speed;
+
 }
 
 functions {
-    drive(float left_speed, float right_speed)
+    spin(current_speed) {
+        
+    }
 }

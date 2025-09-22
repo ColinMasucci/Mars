@@ -17,7 +17,8 @@ params {
 }
 
 functions {
-    drive(float left_speed, float right_speed) {
-        
-    }
+    // drive(float left_speed, float right_speed) {}
 }
+
+// all public, interface has implementation here
+// overridable so always virtual

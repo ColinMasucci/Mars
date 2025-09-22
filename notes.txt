@@ -1,0 +1,32 @@
+in c++
+type def mars_float, mars_double
+type checking in the mars transpiler
+look into "move semantics"
+
+csv plotting graph for testing/debugging --> this is another plug-in file like basic-controls_DifferentialDrive
+
+for next week: try to make an AST
+
+problem formulation:
+how you would talk to an engineer
+find some way formal language / math / whatever to define what we want
+get extremely detailed
+something that makes it measurable to define success, what does success look like?
+interesting properties we want to verify with our types/languages, mistakes we don't want users to make
+    write one that is correct and one that is incorrect and make sure it works
+
+two levels of metrics for languages:
+how "general" our language is, no number but define it... we target robots that have x requirements
+robots that respond to this kind of mathematically modeling
+how "expressive" is my langauge (can i do all the things i want to do)
+
+usability of the language - reach goal
+someone uses it, do they understand how it works
+measure this with a user study!
+write the same thing in c++ then in our language then ask about the experience (randomize order)
+quantitative - how long it took, how many errors, etc.
+
+
+
+problem statement:
+briefly explain the problem at a high level, no math

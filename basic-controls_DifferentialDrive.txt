@@ -1,10 +1,10 @@
+import DifferentialDrive as chassis
+
 requirements {
     DifferentialDrive
     !TankDrive
     wheel_base > 5 and wheel_base < 10
 }
-
-import DifferentialDrive as chassis
 
 
 """
@@ -16,7 +16,7 @@ insert JavaDoc equivalent
 
 """
 
-basic-controls {
+class basic-controls {
     void drive_straight(float speed) {
         chassis.drive(speed, speed)
     }
