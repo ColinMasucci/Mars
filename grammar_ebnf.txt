@@ -1,0 +1,96 @@
+Program            → { Import } [ Component ] ;
+
+Import             → "import" IDENTIFIER ";" ;
+
+Component          → "component" IDENTIFIER [ "extends" IDENTIFIER ]
+                      "{"
+                        Subcomponents
+                        Params
+                        Functions
+                      "}" ;
+
+Subcomponents      → "subcomponents" "{" SubcomponentList "}" ;
+SubcomponentList   → { Subcomponent } ;
+Subcomponent       → IDENTIFIER IDENTIFIER ";" ;
+
+Params             → "params" "{" ParamList "}" ;
+ParamList          → { Param } ;
+Param              → Type IDENTIFIER ";" ;
+
+Functions          → "functions" "{" FunctionList "}" ;
+FunctionList       → { Function } ;
+Function           → Type IDENTIFIER "(" [ ParameterList ] ")" Block ;
+
+ParameterList      → Parameter { "," Parameter } ;
+Parameter          → Type IDENTIFIER ;
+
+Type               → PrimitiveType { "[" "]" } ;
+PrimitiveType      → "float" | "int" | "string" | "bool" | "void" ; //fix: void cannot be an array
+
+Block              → "{" { Statement } "}" ;
+
+Statement          → Block
+                   | IfStmt
+                   | WhileStmt
+                   | ForStmt
+                   | ReturnStmt
+                   | ExprStmt
+                   | DeclStmt
+                   ;
+
+ExprStmt           → Expression ";" ;
+DeclStmt           → Type IDENTIFIER [ "=" Expression ] ";" ;
+
+IfStmt             → "if" "(" Expression ")" Statement [ "else" Statement ] ;
+WhileStmt          → "while" "(" Expression ")" Statement ;
+
+//fix: come back to how this works
+ForStmt            → "for" "(" [ ExprOrDeclOrEmpty ] ";" [ Expression ] ";" [ Expression ] ")" Statement ;
+ExprOrDeclOrEmpty  → ExprStmt | DeclStmt | /* empty */ ;
+
+ReturnStmt         → "return" [ Expression ] ";" ;
+
+
+// Expression grammar (lowest to highest precedence)
+
+Expression         → Assignment ;
+
+Assignment         → LValue AssignOp Assignment
+                   | LogicOr
+                   ;
+
+AssignOp           → "=" | "+=" | "-=" | "*=" | "/=" ;
+
+LValue             → Primary LValueTail ;
+LValueTail         → { ( "." IDENTIFIER ) | ( "[" Expression "]" ) } ;
+  // NOTE: LValue does NOT include function-call suffixes: function calls are not valid targets.
+
+LogicOr            → LogicAnd { "||" LogicAnd } ;
+LogicAnd           → Equality { "&&" Equality } ;
+
+Equality           → Comparison { ( "==" | "!=" ) Comparison } ;
+Comparison         → Term { ( ">" | ">=" | "<" | "<=" ) Term } ;
+
+Term               → Factor { ( "+" | "-" ) Factor } ;
+Factor             → Unary { ( "*" | "/" ) Unary } ;
+
+Unary              → ( "!" | "-" ) Unary
+                   | PostfixExpr
+                   ;
+
+PostfixExpr        → CallSuffix { PostfixOp } ;
+PostfixOp          → "++" | "--" ; 
+
+// CallSuffix handles function calls, member access, and array indexing and can be chained.
+// Important: CallSuffix MAY be used by LValue (member/index) but function-call suffix "()"
+// makes an expression NOT be an LValue target.
+CallSuffix         → Primary { ( "(" [ ArgumentList ] ")" ) | ( "[" Expression "]" ) | ( "." IDENTIFIER ) } ;
+
+ArgumentList       → Expression { "," Expression } ;
+
+Primary            → IDENTIFIER
+                   | NUMBER
+                   | STRING
+                   | "true" | "false"
+                   | "(" Expression ")"
+                   ;
