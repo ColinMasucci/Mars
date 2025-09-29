@@ -1,5 +1,3 @@
-import DifferentialDrive as chassis
-
 requirements {
     DifferentialDrive
     !TankDrive
@@ -17,6 +15,11 @@ insert JavaDoc equivalent
 """
 
 class basic-controls {
+    constructor {
+        DifferentialDrive chassis;
+    }
+
+// the rest is C++
     void drive_straight(float speed) {
         chassis.drive(speed, speed)
     }

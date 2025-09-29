@@ -1,0 +1,49 @@
+IMPORT: import <id>
+
+COMPONENT: component <id> [extends <id>] { <SUBCOMPONENTS <PARAMS> <FUNCTIONS> }
+
+SUBCOMPONENTS: subcomponents { <SUBCOMPONENTLIST> }
+SUBCOMPONENTLIST: <empty> | <SUBCOMPONENT> | <SUBCOMPONENTLIST> <SUBCOMPONENT>
+SUBCOMPONENT: <id> <id>;
+
+PARAMS: params { <PARAMLIST> }
+PARAMLIST: <empty> | <PARAM> | <PARAMLIST> <PARAM>
+PARAM: <TYPE> <id>;
+
+FUNCTIONS: functions { <FUNCTIONLIST> }
+FUNCTIONLIST: <empty> | <FUNCTION> | <FUNCTIONLIST> <FUNCTION>
+FUNCTION: <TYPE> <id>(<PARAMETERLIST>) { <EXPRESSIONLIST> }
+
+TYPE: float | int | string | bool | void    // add arrays [], 2D arrays
+
+PARAMETERLIST: <empty> | <PARAMETER> | <PARAMETERLIST>, <PARAMETER>
+PARAMETER: <TYPE> <id>
+
+EXPRESSIONLIST: <empty> | <EXPRESSION> | <EXPRESSIONLIST>, <EXPRESSION>
+
+. (for function calls)
+
+() 
+
++/-*  
+
+! == != > < >= <= 
+
+&& ||
+
+if, if else, else
+
+for, while 
+
+++ -- += -= /= *=
+
+
+
+
+**Notes**
+
+Error production: boolean -> "MARS uses bool"
+
+
+
+
