@@ -9,7 +9,7 @@ Component          → "component" IDENTIFIER [ "extends" IDENTIFIER ]
                         Functions
                       "}" ;
 
-Subcomponents      → "subcomponents" "{" SubcomponentList "}" ;
+Subcomponents      → "subcomponents" "{" SubcomponentList "}" ;  // can make this more compact (1 line)
 SubcomponentList   → { Subcomponent } ;
 Subcomponent       → IDENTIFIER IDENTIFIER ";" ;
 
@@ -19,15 +19,17 @@ Param              → Type IDENTIFIER ";" ;
 
 Functions          → "functions" "{" FunctionList "}" ;
 FunctionList       → { Function } ;
-Function           → Type IDENTIFIER "(" [ ParameterList ] ")" Block ;
+Function           → Type IDENTIFIER "(" [ ArgumentList ] ")" Block ;
 
-ParameterList      → Parameter { "," Parameter } ;
-Parameter          → Type IDENTIFIER ;
+ArgumentList      → Argument { "," Argument } ;
+Argument          → Type IDENTIFIER ;
 
 Type               → PrimitiveType { "[" "]" } ;
-PrimitiveType      → "float" | "int" | "string" | "bool" | "void" ; //fix: void cannot be an array
+PrimitiveType      → "float" | "int" | "string" | "bool" | "void" ; //fix: void cannot be an array -> handle in parser not grammar
 
-Block              → "{" { Statement } "}" ;
+Block              → "{" [ StatementList ] "}" ;
+
+StatementList      → [StatementList] Statement ;    // need statement list somewhere    
 
 Statement          → Block
                    | IfStmt
@@ -36,6 +38,8 @@ Statement          → Block
                    | ReturnStmt
                    | ExprStmt
                    | DeclStmt
+                   | AssignStmt
+                   | CallStmt
                    ;
 
 ExprStmt           → Expression ";" ;
@@ -50,47 +54,24 @@ ExprOrDeclOrEmpty  → ExprStmt | DeclStmt | /* empty */ ;
 
 ReturnStmt         → "return" [ Expression ] ";" ;
 
-
-// Expression grammar (lowest to highest precedence)
-
-Expression         → Assignment ;
-
-Assignment         → LValue AssignOp Assignment
-                   | LogicOr
-                   ;
-
+AssignStmt         → IDENTIFIER AssignOp Expression ";" ;
 AssignOp           → "=" | "+=" | "-=" | "*=" | "/=" ;
 
-LValue             → Primary LValueTail ;
-LValueTail         → { ( "." IDENTIFIER ) | ( "[" Expression "]" ) } ;
-  // NOTE: LValue does NOT include function-call suffixes: function calls are not valid targets.
 
-LogicOr            → LogicAnd { "||" LogicAnd } ;
-LogicAnd           → Equality { "&&" Equality } ;
+Expression         → Expression BinOp Expression | UnOpPre Expression | "abs(" Expression ")" | UnOpPost Expression | "(" Expression ")" | Literal ; 
 
-Equality           → Comparison { ( "==" | "!=" ) Comparison } ;
-Comparison         → Term { ( ">" | ">=" | "<" | "<=" ) Term } ;
+BinOp              → MathOp | CompOp | LogicOp ; 
+MathOp             → "+" | "-" | "/" | "*" | "^" ; 
+CompOp             → "==" | "<=" | ">=" | ">" | "<" | "!=" ; 
+Logic              → "&&" | "||" ; 
 
-Term               → Factor { ( "+" | "-" ) Factor } ;
-Factor             → Unary { ( "*" | "/" ) Unary } ;
+UnOpPre            → "!" | "-" ;
+UnOpPost           → "++" | "--" ;
 
-Unary              → ( "!" | "-" ) Unary
-                   | PostfixExpr
-                   ;
+Literal            → INT | FLOAT | STRING | IDENTIFIER { "[" INT "]" } | "true" | "false" ;
 
-PostfixExpr        → CallSuffix { PostfixOp } ;
-PostfixOp          → "++" | "--" ; 
 
-// CallSuffix handles function calls, member access, and array indexing and can be chained.
-// Important: CallSuffix MAY be used by LValue (member/index) but function-call suffix "()"
-// makes an expression NOT be an LValue target.
-CallSuffix         → Primary { ( "(" [ ArgumentList ] ")" ) | ( "[" Expression "]" ) | ( "." IDENTIFIER ) } ;
 
-ArgumentList       → Expression { "," Expression } ;
+// fix: how does this connect?
+CallStmt           →  IDENTIFIER { "." IDENTIFIER [ "(" [ ArgumentList ] ")" ] } ";" ;
 
-Primary            → IDENTIFIER
-                   | NUMBER
-                   | STRING
-                   | "true" | "false"
-                   | "(" Expression ")"
-                   ;
