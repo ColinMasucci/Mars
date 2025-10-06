@@ -36,13 +36,12 @@ Statement          → Block
                    | WhileStmt
                    | ForStmt
                    | ReturnStmt
-                   | ExprStmt
                    | DeclStmt
                    | AssignStmt
                    | CallStmt
                    ;
 
-ExprStmt           → Expression ";" ;
+
 DeclStmt           → Type IDENTIFIER [ "=" Expression ] ";" ;
 
 IfStmt             → "if" "(" Expression ")" Statement [ "else" Statement ] ;
