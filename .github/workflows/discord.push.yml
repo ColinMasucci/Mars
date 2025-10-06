@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send notification to Discord
-        uses: Ilshidur/action-discord@main
+        uses: appleboy/discord-action@v0.0.3
         with:
           webhook: https://discord.com/api/webhooks/1424778375213617173/rbOcsL3uLL9pVJzZg-sVu9ZctfN3oBFML3a8l3mISR7eM9D1Y5KdJoSBEfvEj780kJyf
           message: |
