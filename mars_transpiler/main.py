@@ -8,7 +8,11 @@ import platform
 import subprocess
 
 
-code = '42 + 3.5 + "hello"'
+
+# Access and read the test file
+with open("test_file.mars", "r", encoding="utf-8") as f:
+    code = f.read()
+
 tokens = tokenize(code)
 parser = Parser(tokens)
 ast = parser.parse()
