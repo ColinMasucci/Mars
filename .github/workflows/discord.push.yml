@@ -8,7 +8,7 @@ on:
 
 jobs:
   notify-discord:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Send notification to Discord
         uses: appleboy/discord-action@v0.0.3
