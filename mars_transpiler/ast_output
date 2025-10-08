@@ -1,0 +1,16 @@
+// Abstract Syntax Tree
+digraph {
+	1963747057872 [label="BinaryOp\nop='PLUS'" fillcolor="#ffcccc" shape=box style=filled]
+	1963747057552 [label="BinaryOp\nop='PLUS'" fillcolor="#ffcccc" shape=box style=filled]
+	1963747169952 [label="BinaryOp\nop='MINUS'" fillcolor="#ffcccc" shape=box style=filled]
+	1963747169616 [label="NumberLiteral\nvalue=5" fillcolor="#d1f7c4" shape=box style=filled]
+	1963747169952 -> 1963747169616
+	1963747056912 [label="NumberLiteral\nvalue=10" fillcolor="#d1f7c4" shape=box style=filled]
+	1963747169952 -> 1963747056912
+	1963747057552 -> 1963747169952
+	1963747057232 [label="NumberLiteral\nvalue=25" fillcolor="#d1f7c4" shape=box style=filled]
+	1963747057552 -> 1963747057232
+	1963747057872 -> 1963747057552
+	1963747170288 [label="StringLiteral\nvalue='% done!'" fillcolor="#d1f7c4" shape=box style=filled]
+	1963747057872 -> 1963747170288
+}
