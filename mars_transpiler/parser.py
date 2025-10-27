@@ -1,4 +1,4 @@
-from ast_nodes import NumberLiteral, StringLiteral, BinaryOp, Print
+from ast_nodes import NumberLiteral, StringLiteral, BinaryOp, Print, Program
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -18,14 +18,20 @@ class Parser:
             return tok
         raise SyntaxError(f"Expected {type_} at position {tok.position}, got {tok.type}")
 
-    # parse an entire given expression and if there are more tokens then accounted for, throw an error
+    # parse an entire given program as a Program, using ; as the delimeter
     def parse(self, printAST=False):
-        node = self.statement()
-        if self.current().type != "EOF":
-            raise SyntaxError("Unexpected extra input")
+        statements = []
+        while self.current().type != "EOF":
+            stmt = self.statement()
+            statements.append(stmt)
+            if self.current().type == "SEMI":
+                self.eat("SEMI")  
+            elif self.current().type != "EOF":
+                raise SyntaxError(f"Expected ';' got {self.current().type}")
         if printAST:
-            self.print_ast(node)
-        return node
+            for stmt in statements:
+                self.print_ast(stmt)
+        return Program(statements)
     
     def statement(self):
         tok = self.current()

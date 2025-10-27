@@ -13,12 +13,15 @@ TOKEN_SPEC = [
     ("INT",     r"\d+"),               # next we can check for ints
     ("STRING",  r'"[^"]*"'),           # string should be in double quotes
     ("PRINT",   r"\bprint\b"),         # match the 'print' keyword ('b' is used to indicate word boundary)
+    ("INC",     r"\+\+"),              # check for increment operator
+    ("DEC",     r"--"),                # check for decrement operator
     ("PLUS",    r"\+"),                # check for plus signs
     ("MINUS",   r"-"),                 # check for minus signs
     ("MUL",    r"\*"),                 # check for muliplication signs
     ("DIV",   r"/"),                   # check for division signs
     ("LPAREN",  r"\("),                # identifying parentheses for priority later on.
     ("RPAREN",  r"\)"),
+    ("SEMI", r";"),                    # semicolon as statement separator
     ("SKIP",    r"[ \t\n]+"),          # whitespaces should be skipped
 ]
 
