@@ -1,0 +1,24 @@
+# .github/workflows/discord-push.yml
+name: Discord Push Notifications
+
+on:
+  push:
+    branches:
+      - '**'  # all branches
+
+jobs:
+  notify-discord:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send notification to Discord
+        uses: appleboy/discord-action@v1.2.0
+        with:
+          webhook_url: https://discord.com/api/webhooks/1424778375213617173/rbOcsL3uLL9pVJzZg-sVu9ZctfN3oBFML3a8l3mISR7eM9D1Y5KdJoSBEfvEj780kJyf
+          message: |
+            **New Push** to `${{ github.repository }}`
+            Author: `${{ github.actor }}`
+            Branch: `${{ github.ref_name }}`
+            
+            Message: `${{ github.event.head_commit.message }}`
+
+# If desired, add back to message: Commit: `${{ github.sha }}`
