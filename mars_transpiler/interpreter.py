@@ -1,3 +1,5 @@
+#This was used for the original interpreter approach before moving to bytecode and a VM.
+
 from ast_nodes import NumberLiteral, StringLiteral, BinaryOp
 
 def evaluate(node):

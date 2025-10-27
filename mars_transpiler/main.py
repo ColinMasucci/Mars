@@ -2,7 +2,7 @@ from lexer import tokenize
 from parser import Parser
 from interpreter import evaluate #This backend is great for testeing our AST to make sure that it is working asintended before attempting to convert into a C++ file.
 from ast_visualizer import visualize
-from codegen import emit_cpp #This backend is what we use for our actual final implementation, converting our.mars file into a C++ file.
+from codegen import emit_cpp #This backend is what we used previously for converting our.mars file into a C++ file. (Now instead we have bytecode to a stack machine)
 
 import os
 import platform

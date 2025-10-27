@@ -1,3 +1,5 @@
+#This was used to generate C++ code from expressions for our previous transpiler before we switched to a VM model.
+
 from typing import Tuple
 import ast_nodes as ast #import in our literals
 

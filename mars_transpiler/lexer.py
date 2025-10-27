@@ -12,8 +12,11 @@ TOKEN_SPEC = [
     ("FLOAT",   r"\d+\.\d+"),          # check for float first (so 3.14 is not parsed as int + .14)
     ("INT",     r"\d+"),               # next we can check for ints
     ("STRING",  r'"[^"]*"'),           # string should be in double quotes
+    ("PRINT",   r"\bprint\b"),         # match the 'print' keyword ('b' is used to indicate word boundary)
     ("PLUS",    r"\+"),                # check for plus signs
     ("MINUS",   r"-"),                 # check for minus signs
+    ("MUL",    r"\*"),                 # check for muliplication signs
+    ("DIV",   r"/"),                   # check for division signs
     ("LPAREN",  r"\("),                # identifying parentheses for priority later on.
     ("RPAREN",  r"\)"),
     ("SKIP",    r"[ \t\n]+"),          # whitespaces should be skipped
@@ -22,7 +25,7 @@ TOKEN_SPEC = [
 #combines all of the regexs into one big regular expression seperated by (|) "or"
 MASTER_REGEX = re.compile("|".join(f"(?P<{name}>{pattern})" for name, pattern in TOKEN_SPEC))
 
-def tokenize(text):
+def tokenize(text, printTokens=False) -> list[Token]:
     tokens = []
     pos = 0
     while pos < len(text):
@@ -35,4 +38,12 @@ def tokenize(text):
             tokens.append(Token(kind, val, pos)) #add the newly identified token to our token list
         pos = m.end() #(update pos) .end(): method returns the ending index (exclusive) of the substring matched by the regular expression.
     tokens.append(Token("EOF", "", pos)) #To mark end of our script we are tokenizing
+    if printTokens:
+        print_tokens(tokens)
     return tokens
+
+def print_tokens(tokens: list[Token]):
+    print("Generated Tokens:")
+    for token in tokens:
+        print(f"{token.position:04}: {token.type}({token.value})")
+    print("\n")

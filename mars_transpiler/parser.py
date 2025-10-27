@@ -1,4 +1,4 @@
-from ast_nodes import NumberLiteral, StringLiteral, BinaryOp
+from ast_nodes import NumberLiteral, StringLiteral, BinaryOp, Print
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -19,15 +19,26 @@ class Parser:
         raise SyntaxError(f"Expected {type_} at position {tok.position}, got {tok.type}")
 
     # parse an entire given expression and if there are more tokens then accounted for, throw an error
-    def parse(self):
-        node = self.expr()
+    def parse(self, printAST=False):
+        node = self.statement()
         if self.current().type != "EOF":
             raise SyntaxError("Unexpected extra input")
+        if printAST:
+            self.print_ast(node)
         return node
+    
+    def statement(self):
+        tok = self.current()
+        if tok.type == "PRINT":
+            self.eat("PRINT")
+            expr = self.expr()
+            return Print(expr)
+        else:
+            return self.expr()
 
     def expr(self):
         node = self.term()
-        while self.current().type in ("PLUS", "MINUS"):
+        while self.current().type in ("PLUS", "MINUS", "MUL", "DIV"):
             op = self.current().type
             self.eat(op)
             right = self.term()
@@ -52,3 +63,24 @@ class Parser:
             return node
         else:
             raise SyntaxError(f"Unexpected token {tok.type} at {tok.position}")
+
+    def print_ast(self, node, indent=0):
+        if indent == 0:
+            print("AST Structure:")
+        prefix = "  " * indent
+        match node:
+            case NumberLiteral(value):
+                print(f"{prefix}NumberLiteral({value})")
+            case StringLiteral(value):
+                print(f"{prefix}StringLiteral({value})")
+            case BinaryOp(op, left, right):
+                print(f"{prefix}BinaryOp({op})")
+                self.print_ast(left, indent + 1)
+                self.print_ast(right, indent + 1)
+            case Print(value):
+                print(f"{prefix}PrintStatement")
+                self.print_ast(value, indent + 1)
+            case _:
+                print(f"{prefix}Unknown node type: {node}")
+        if indent == 0:
+            print("\n")
