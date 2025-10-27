@@ -1,4 +1,4 @@
-from ast_nodes import NumberLiteral, StringLiteral, BinaryOp, Print, Program
+from ast_nodes import NumberLiteral, StringLiteral, BinaryOp, Call, Program, Var
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -35,10 +35,8 @@ class Parser:
     
     def statement(self):
         tok = self.current()
-        if tok.type == "PRINT":
-            self.eat("PRINT")
-            expr = self.expr()
-            return Print(expr)
+        if tok.type == "PRINT": #print moved to call (handled in term)
+            pass # Placeholder for future statement handling
         else:
             return self.expr()
 
@@ -62,6 +60,25 @@ class Parser:
         elif tok.type == "STRING":
             self.eat("STRING")
             return StringLiteral(tok.value.strip('"'))
+        
+        elif tok.type == "ID":
+            # Possible function call
+            id_tok = self.eat("ID")
+            if self.current().type == "LPAREN":
+                self.eat("LPAREN")
+                args = []
+                if self.current().type != "RPAREN":
+                    args.append(self.expr())
+                    while self.current().type == "COMMA":
+                        self.eat("COMMA")
+                        args.append(self.expr())
+                self.eat("RPAREN")
+                return Call(func=Var(id_tok.value), args=args)
+            else:
+                # variable reference
+                return Var(id_tok.value)
+
+
         elif tok.type == "LPAREN":
             self.eat("LPAREN")
             node = self.expr()
@@ -83,9 +100,11 @@ class Parser:
                 print(f"{prefix}BinaryOp({op})")
                 self.print_ast(left, indent + 1)
                 self.print_ast(right, indent + 1)
-            case Print(value):
-                print(f"{prefix}PrintStatement")
-                self.print_ast(value, indent + 1)
+            case Call(func, args):
+                func_name = func.name if isinstance(func, Var) else str(func)
+                print(f"{prefix}Call({func_name})")
+                for arg in args:
+                    self.print_ast(arg, indent + 1)
             case _:
                 print(f"{prefix}Unknown node type: {node}")
         if indent == 0:

@@ -12,7 +12,7 @@ def visualize(node):
 
         # Determine label dynamically
         label = type(n).__name__
-        
+
         if is_dataclass(n):
             # Include field names and values (basic literals only)
             parts = []

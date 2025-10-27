@@ -48,9 +48,15 @@ def compile_node(node, code: List[Instr]):
         case ast.Var(name):
             code.append(("LOAD", name))
 
-        case ast.Print(expr):
-            compile_node(expr, code)
-            code.append(("PRINT",))
+        case ast.Call(func, args):
+            # compile each argument in order (so last argument ends up on top of stack)
+            for arg in args:
+                compile_node(arg, code)
+            # currently only support 'print' as builtin
+            if isinstance(func, ast.Var) and func.name == "print":
+                code.append(("PRINT", len(args)))  # PUSH all args, then PRINT n args
+            else:
+                raise NotImplementedError(f"Function call not implemented: {func}")
 
         case _:
             raise TypeError(f"Unknown AST node {node}")

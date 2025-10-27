@@ -12,7 +12,7 @@ TOKEN_SPEC = [
     ("FLOAT",   r"\d+\.\d+"),          # check for float first (so 3.14 is not parsed as int + .14)
     ("INT",     r"\d+"),               # next we can check for ints
     ("STRING",  r'"[^"]*"'),           # string should be in double quotes
-    ("PRINT",   r"\bprint\b"),         # match the 'print' keyword ('b' is used to indicate word boundary)
+    ("ID",      r"[A-Za-z_][A-Za-z0-9_]*"), # identifiers (including 'print')
     ("INC",     r"\+\+"),              # check for increment operator
     ("DEC",     r"--"),                # check for decrement operator
     ("PLUS",    r"\+"),                # check for plus signs

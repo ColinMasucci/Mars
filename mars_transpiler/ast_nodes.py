@@ -28,8 +28,9 @@ class Assign:
 
 #Uses for printing values to the console/stdout
 @dataclass
-class Print:
-    expr: Any
+class Call:
+    func: Any      
+    args: List[Any] 
 
 #The root node of a program, containing a list of statements. 
 # (We havent added in all of our AST stuff yet however I think this is the "expression" part the we previously defined????)
