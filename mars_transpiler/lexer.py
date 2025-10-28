@@ -22,6 +22,7 @@ TOKEN_SPEC = [
     ("LPAREN",  r"\("),                # identifying parentheses for priority later on.
     ("RPAREN",  r"\)"),
     ("SEMI", r";"),                    # semicolon as statement separator
+    ("COMMA", r","),                   # comma as parameter separator
     ("SKIP",    r"[ \t\n]+"),          # whitespaces should be skipped
 ]
 

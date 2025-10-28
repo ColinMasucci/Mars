@@ -57,8 +57,13 @@ class VM:
                     self.stack.append(self.locals[name])
 
                 case "PRINT":
-                    val = self.stack.pop()
-                    print(val)
+                    n = int(args[0])  # number of arguments to print
+                    if n > len(self.stack):
+                        raise VMError(f"PRINT expected {n} values but stack has {len(self.stack)}")
+
+                    # Pop n values (last pushed first, so reverse to print in original order)
+                    vals = [self.stack.pop() for _ in range(n)][::-1]
+                    print(*vals)
 
                 case "JUMP":
                     self.pc = int(args[0])
