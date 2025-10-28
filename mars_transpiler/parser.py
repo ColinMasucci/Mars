@@ -1,4 +1,4 @@
-from ast_nodes import NumberLiteral, StringLiteral, BinaryOp, Call, Program, Var
+from ast_nodes import NumberLiteral, StringLiteral, BinaryOp, Call, Program, Var, Assign
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -35,8 +35,14 @@ class Parser:
     
     def statement(self):
         tok = self.current()
-        if tok.type == "PRINT": #print moved to call (handled in term)
-            pass # Placeholder for future statement handling
+        # Handle variable assignment like: x = expr;
+        if tok.type == "ID" and self.peek().type == "ASSIGN":
+            next_tok = self.tokens[self.pos + 1]
+            if next_tok.type == "ASSIGN":
+                name = self.eat("ID").value
+                self.eat("ASSIGN")
+                value = self.expr()
+                return Assign(name, value)
         else:
             return self.expr()
 
@@ -78,7 +84,6 @@ class Parser:
                 # variable reference
                 return Var(id_tok.value)
 
-
         elif tok.type == "LPAREN":
             self.eat("LPAREN")
             node = self.expr()
@@ -86,6 +91,16 @@ class Parser:
             return node
         else:
             raise SyntaxError(f"Unexpected token {tok.type} at {tok.position}")
+        
+
+    def peek(self, offset=1):
+        if self.pos + offset < len(self.tokens):
+            return self.tokens[self.pos + offset]
+        return self.tokens[-1]  # return EOF token safely
+
+
+
+
 
     def print_ast(self, node, indent=0):
         if indent == 0:
@@ -105,6 +120,9 @@ class Parser:
                 print(f"{prefix}Call({func_name})")
                 for arg in args:
                     self.print_ast(arg, indent + 1)
+            case Assign(name, value):
+                print(f"{prefix}Assign({name})")
+                self.print_ast(value, indent + 1)
             case _:
                 print(f"{prefix}Unknown node type: {node}")
         if indent == 0:
