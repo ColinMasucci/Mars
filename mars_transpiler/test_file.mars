@@ -12,3 +12,5 @@ y = 1 + 2 + "hello world";
 print (y);
 
 print (x+y);
+
+print(2+2*7 - (2+33/3));

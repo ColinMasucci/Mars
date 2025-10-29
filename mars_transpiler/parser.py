@@ -48,7 +48,7 @@ class Parser:
 
     def expr(self):
         node = self.term()
-        while self.current().type in ("PLUS", "MINUS", "MUL", "DIV"):
+        while self.current().type in ("PLUS", "MINUS"):
             op = self.current().type
             self.eat(op)
             right = self.term()
@@ -56,7 +56,35 @@ class Parser:
         return node
 
     def term(self):
+        node = self.factor()
+        while self.current().type in ("MUL", "DIV"):
+            op = self.current().type
+            self.eat(op)
+            right = self.factor()
+            node = BinaryOp(op, node, right)
+        return node
+
+    def factor(self):
         tok = self.current()
+
+        # Handle unary +/-
+        if tok.type in ("PLUS", "MINUS"):
+            op = tok.type
+            self.eat(op)
+            node = self.factor()
+            # Treat unary as multiplying by -1 for MINUS, or just return node for PLUS
+            if op == "MINUS":
+                return BinaryOp("MUL", NumberLiteral(-1), node)
+            return node
+
+        # Parentheses have highest precedence
+        if tok.type == "LPAREN":
+            self.eat("LPAREN")
+            node = self.expr()
+            self.eat("RPAREN")
+            return node
+
+        # Literals and identifiers
         if tok.type == "INT":
             self.eat("INT")
             return NumberLiteral(int(tok.value))
@@ -66,11 +94,10 @@ class Parser:
         elif tok.type == "STRING":
             self.eat("STRING")
             return StringLiteral(tok.value.strip('"'))
-        
         elif tok.type == "ID":
-            # Possible function call
             id_tok = self.eat("ID")
             if self.current().type == "LPAREN":
+                # function call
                 self.eat("LPAREN")
                 args = []
                 if self.current().type != "RPAREN":
@@ -81,16 +108,10 @@ class Parser:
                 self.eat("RPAREN")
                 return Call(func=Var(id_tok.value), args=args)
             else:
-                # variable reference
                 return Var(id_tok.value)
 
-        elif tok.type == "LPAREN":
-            self.eat("LPAREN")
-            node = self.expr()
-            self.eat("RPAREN")
-            return node
-        else:
-            raise SyntaxError(f"Unexpected token {tok.type} at {tok.position}")
+        raise SyntaxError(f"Unexpected token {tok.type} at {tok.position}")
+
         
 
     def peek(self, offset=1):
