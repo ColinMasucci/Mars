@@ -24,6 +24,8 @@ class VM:
                     self.stack.append(float(args[0]))
                 case "PUSH_STR":
                     self.stack.append(args[0])
+                case "PUSH_BOOL":
+                    self.stack.append(bool(args[0]))
 
                 case "ADD":
                     b = self.stack.pop(); a = self.stack.pop()

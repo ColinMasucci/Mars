@@ -14,3 +14,30 @@ print (y);
 print (x+y);
 
 print(2+2*7 - (2+33/3));
+
+print(false);
+
+if (true) {
+    print(x);
+}
+
+x=2;
+if (x){
+    print(x, "is not 0");
+}
+else{
+    print(x, "is indeed 0");
+}
+
+if(true){
+    if (true){
+        print("im inside an if inside an if statement!");
+    }
+    print("hello");
+}
+
+x=3;
+while(x){
+    print(x);
+    x=x-1;
+}

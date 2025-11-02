@@ -1,4 +1,4 @@
-from ast_nodes import NumberLiteral, StringLiteral, BinaryOp, Call, Program, Var, Assign
+from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -24,9 +24,14 @@ class Parser:
         while self.current().type != "EOF":
             stmt = self.statement()
             statements.append(stmt)
-            if self.current().type == "SEMI":
-                self.eat("SEMI")  
-            elif self.current().type != "EOF":
+
+            needs_semi = True
+            if (isinstance(stmt, If) or isinstance(stmt, While) or isinstance(stmt, Block)): #cases for if statement needs a ';'. (should probably implement a better way)
+                needs_semi = False
+
+            if needs_semi and self.current().type == "SEMI":
+                self.eat("SEMI")
+            elif needs_semi:
                 raise SyntaxError(f"Expected ';' got {self.current().type}")
         if printAST:
             for stmt in statements:
@@ -35,6 +40,13 @@ class Parser:
     
     def statement(self):
         tok = self.current()
+
+        # Handle if/else/while
+        if tok.type == "IF":
+            return self.if_statement() #helper defined below
+        elif tok.type == "WHILE":
+            return self.while_statement() #helper defined below
+
         # Handle variable assignment like: x = expr;
         if tok.type == "ID" and self.peek().type == "ASSIGN":
             next_tok = self.tokens[self.pos + 1]
@@ -45,6 +57,61 @@ class Parser:
                 return Assign(name, value)
         else:
             return self.expr()
+        
+    
+    def if_statement(self):
+        self.eat("IF")
+        self.eat("LPAREN")
+        condition = self.expr() # parse the condition expression
+        self.eat("RPAREN")
+
+        if self.current().type == "LBRACE":
+            then_branch = self.parse_block() # for if the then_branch is a block
+        else:
+            raise SyntaxError(f"Expected '{{' got {self.current().type}")
+        else_branch = None
+        if self.current().type == "ELSE":
+            self.eat("ELSE")
+
+            if self.current().type == "LBRACE":
+                else_branch = self.parse_block() # for if the else_branch is a block
+            else:
+                raise SyntaxError(f"Expected '{{' got {self.current().type}")
+        
+        return If(condition, then_branch, else_branch)
+
+    def while_statement(self):
+        self.eat("WHILE")
+        self.eat("LPAREN")
+        condition = self.expr() # parse the condition expression
+        self.eat("RPAREN")
+        if self.current().type == "LBRACE":
+            body = self.parse_block() # for if the body is a block
+        else:
+            raise SyntaxError(f"Expected '{{' got {self.current().type}")
+        return While(condition, body)
+    
+    def parse_block(self):
+        stmts = []
+        self.eat("LBRACE")
+        while self.current().type != "RBRACE":
+            stmt = self.statement()
+            stmts.append(stmt)
+
+            needs_semi = True
+            if (isinstance(stmt, If) or isinstance(stmt, While) or isinstance(stmt, Block)): #cases for if statement needs a ';'. (should probably implement a better way)
+                needs_semi = False
+
+            if self.current().type == "EOF":
+                raise SyntaxError("Expected '}' before end of file")
+            if needs_semi and self.current().type == "SEMI":
+                self.eat("SEMI")
+            elif needs_semi:
+                raise SyntaxError(f"Expected ';' got {self.current().type}")
+
+        self.eat("RBRACE")
+        return Block(stmts)
+
 
     def expr(self):
         node = self.term()
@@ -94,6 +161,12 @@ class Parser:
         elif tok.type == "STRING":
             self.eat("STRING")
             return StringLiteral(tok.value.strip('"'))
+        elif tok.type == "TRUE":
+            self.eat("TRUE")
+            return BooleanLiteral(True)
+        elif tok.type == "FALSE":
+            self.eat("FALSE")
+            return BooleanLiteral(False)
         elif tok.type == "ID":
             id_tok = self.eat("ID")
             if self.current().type == "LPAREN":

@@ -9,13 +9,13 @@ class Token:
     #lineNumber
 
 TOKEN_SPEC = [
-    # --- Numbers & Strings ---
+    # --- Literals ---
     ("FLOAT",   r"\d+\.\d+"),          # check for float first (so 3.14 is not parsed as int + .14)
     ("INT",     r"\d+"),               # next we can check for ints
     ("STRING",  r'"[^"]*"'),           # string should be in double quotes
+    ("TRUE",  r"\btrue\b"),            # boolean true literal
+    ("FALSE", r"\bfalse\b"),           # boolean false literal
 
-    # --- Identifiers & Keywords ---
-    ("ID",      r"[A-Za-z_][A-Za-z0-9_]*"), # identifiers (including 'print')
 
     # --- Operators ---
     ("INC",     r"\+\+"),              # check for increment operator
@@ -27,10 +27,20 @@ TOKEN_SPEC = [
     ("DIV",   r"/"),                   # check for division signs
 
     # --- Parentheses & punctuation ---
+    ("LBRACE", r"\{"),                 # identifying braces for blocks later on.
+    ("RBRACE", r"\}"),
     ("LPAREN",  r"\("),                # identifying parentheses for priority later on.
     ("RPAREN",  r"\)"),
     ("SEMI", r";"),                    # semicolon as statement separator
     ("COMMA", r","),                   # comma as parameter separator
+
+    # --- conditionals ---
+    ("IF", r"if"),                     # check for if statements
+    ("ELSE", r"else"),                 # check for else statements
+    ("WHILE", r"while"),               # check for while loops
+
+    # --- Identifiers & Keywords ---
+    ("ID",      r"[A-Za-z_][A-Za-z0-9_]*"), # identifiers (including 'print')
 
     # --- Other ---
     ("COMMENT", r"#.*"),               # skip everything after #
