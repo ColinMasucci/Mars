@@ -16,6 +16,10 @@ TOKEN_SPEC = [
     ("TRUE",  r"\btrue\b"),            # boolean true literal
     ("FALSE", r"\bfalse\b"),           # boolean false literal
 
+    # --- Other ---
+    ("COMMENT", r"#.*"),               # skip everything after #
+    ("BLOCK_COMMENT", r"/\*[\s\S]*?\*/"), # skip everything between /* and */
+    ("SKIP",    r"[ \t\n]+"),          # whitespaces should be skipped
 
     # --- Operators ---
     ("INC",     r"\+\+"),              # check for increment operator
@@ -42,9 +46,6 @@ TOKEN_SPEC = [
     # --- Identifiers & Keywords ---
     ("ID",      r"[A-Za-z_][A-Za-z0-9_]*"), # identifiers (including 'print')
 
-    # --- Other ---
-    ("COMMENT", r"#.*"),               # skip everything after #
-    ("SKIP",    r"[ \t\n]+"),          # whitespaces should be skipped
 ]
 
 #combines all of the regexs into one big regular expression seperated by (|) "or"
@@ -59,7 +60,7 @@ def tokenize(text, printTokens=False) -> list[Token]:
             raise SyntaxError(f"Unexpected character {text[pos]!r} at {pos}")
         kind = m.lastgroup #.lastgroup: Returns the name of the last matched capturing group, or None if the group had no name or if no group was matched at all.
         val = m.group(kind)#.group(): Returns the string matched by the specified group.
-        if kind != "SKIP": #Dont tokenize blank spaces
+        if kind not in ("SKIP", "COMMENT", "BLOCK_COMMENT"): #Dont tokenize blank spaces or comments
             tokens.append(Token(kind, val, pos)) #add the newly identified token to our token list
         pos = m.end() #(update pos) .end(): method returns the ending index (exclusive) of the substring matched by the regular expression.
     tokens.append(Token("EOF", "", pos)) #To mark end of our script we are tokenizing

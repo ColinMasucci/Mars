@@ -1,7 +1,6 @@
 #scope is done with a stack of dictionaries done after the AST generation
 
 TODO:
-    Comments
     incrementer/decrementer
     variable typing
     methods
@@ -9,3 +8,4 @@ TODO:
     Exponents/SquareRoot/AbsoluteValue/etc
     For loops
     Boolean operations (==, !=, <, etc)
+    change colors of our language (Text Mate, LSP Language Server Protocol)

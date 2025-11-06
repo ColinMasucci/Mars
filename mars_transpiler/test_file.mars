@@ -5,8 +5,15 @@ print (10 * 10 + "% done!");
 print(10, "hello", "world!");
 print(10+1, 1+89);
 
+#variable check
 x = 5;
 print (x);
+
+
+/*
+this is a block comment
+This is some other text
+*/
 
 y = 1 + 2 + "hello world";
 print (y);
@@ -44,8 +51,4 @@ x=3;
 while(x){
     print(x);
     x=x-1;
-}
-
-if(){
-    print("hello there bob");
 }
