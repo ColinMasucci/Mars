@@ -36,6 +36,8 @@ class Parser:
             return self.parse_if()
         elif tok.type == "WHILE":
             return self.parse_while()
+        elif tok.type == "FOR":
+            return self.parse_for()
         elif tok.type == "LBRACE":
             return self.parse_block()
 
@@ -84,6 +86,54 @@ class Parser:
         condition = self.expr() # parse the condition expression
         self.eat("RPAREN")
         return condition
+    
+    def parse_for(self):
+        self.eat("FOR")
+        self.eat("LPAREN")
+
+        # init can be assignment or empty
+        init = None
+        if self.current().type != "SEMI":
+            init = self.parse_simple_statement()
+        self.eat("SEMI")
+
+        # condition can be empty
+        condition = None
+        if self.current().type != "SEMI":
+            condition = self.expr()
+        self.eat("SEMI")
+
+        # increment can be empty
+        increment = None
+        if self.current().type != "RPAREN":
+            increment = self.parse_simple_statement()
+        self.eat("RPAREN")
+
+        body = self.parse_blockorstatement()
+
+        # Transform for into equivalent while
+        if condition is None:
+            condition = BooleanLiteral(True)
+        if increment is None:
+            loop_body = body
+        else:
+            loop_body = Block([body, increment])
+
+        if init is not None:
+            return Block([init, While(condition, loop_body)])
+        return While(condition, loop_body)
+    
+    def parse_simple_statement(self):
+        """Parse a statement without consuming a trailing semicolon."""
+        tok = self.current()
+        if tok.type == "ID" and self.peek().type == "ASSIGN":
+            name = self.eat("ID").value
+            self.eat("ASSIGN")
+            value = self.expr()
+            return Assign(name, value)
+        return self.expr()
+
+
     
     def parse_block(self):
         stmts = []

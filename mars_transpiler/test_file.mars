@@ -47,8 +47,14 @@ if(true){
     print("hello");
 }
 
+print("doing while loop");
 x=3;
 while(x){
     print(x);
     x=x-1;
+}
+
+print("doing for loop");
+for (i=3; i; i=i-1){
+    print(i);
 }

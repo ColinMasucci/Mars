@@ -42,6 +42,7 @@ TOKEN_SPEC = [
     ("IF", r"if"),                     # check for if statements
     ("ELSE", r"else"),                 # check for else statements
     ("WHILE", r"while"),               # check for while loops
+    ("FOR", r"for"),                 # check for for loops
 
     # --- Identifiers & Keywords ---
     ("ID",      r"[A-Za-z_][A-Za-z0-9_]*"), # identifiers (including 'print')
