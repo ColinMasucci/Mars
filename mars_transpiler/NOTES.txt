@@ -1,0 +1,11 @@
+#scope is done with a stack of dictionaries done after the AST generation
+
+TODO:
+    Comments
+    incrementer/decrementer
+    variable typing
+    methods
+    Shunting yard for order of operations
+    Exponents/SquareRoot/AbsoluteValue/etc
+    For loops
+    Boolean operations (==, !=, <, etc)

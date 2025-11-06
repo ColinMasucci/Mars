@@ -22,30 +22,22 @@ class Parser:
     def parse(self, printAST=False):
         statements = []
         while self.current().type != "EOF":
-            stmt = self.statement()
-            statements.append(stmt)
-
-            needs_semi = True
-            if (isinstance(stmt, If) or isinstance(stmt, While) or isinstance(stmt, Block)): #cases for if statement needs a ';'. (should probably implement a better way)
-                needs_semi = False
-
-            if needs_semi and self.current().type == "SEMI":
-                self.eat("SEMI")
-            elif needs_semi:
-                raise SyntaxError(f"Expected ';' got {self.current().type}")
+            statements.append(self.parse_statement())
         if printAST:
             for stmt in statements:
                 self.print_ast(stmt)
         return Program(statements)
     
-    def statement(self):
+    def parse_statement(self):
         tok = self.current()
 
         # Handle if/else/while
         if tok.type == "IF":
-            return self.if_statement() #helper defined below
+            return self.parse_if()
         elif tok.type == "WHILE":
-            return self.while_statement() #helper defined below
+            return self.parse_while()
+        elif tok.type == "LBRACE":
+            return self.parse_block()
 
         # Handle variable assignment like: x = expr;
         if tok.type == "ID" and self.peek().type == "ASSIGN":
@@ -54,63 +46,60 @@ class Parser:
                 name = self.eat("ID").value
                 self.eat("ASSIGN")
                 value = self.expr()
-                return Assign(name, value)
+                stmt = Assign(name, value)
         else:
-            return self.expr()
+            stmt = self.expr()
+        
+        # Expect a semicolon after the statement
+        if self.current().type == "SEMI":
+            self.eat("SEMI")
+        else:
+            raise SyntaxError(f"Expected ';' after statement, got {self.current().type}")
+
+        return stmt
+        
+
         
     
-    def if_statement(self):
+    def parse_if(self):
         self.eat("IF")
-        self.eat("LPAREN")
-        condition = self.expr() # parse the condition expression
-        self.eat("RPAREN")
-
-        if self.current().type == "LBRACE":
-            then_branch = self.parse_block() # for if the then_branch is a block
-        else:
-            raise SyntaxError(f"Expected '{{' got {self.current().type}")
+        condition = self.parse_condition() # parse the condition expression
+        then_branch = self.parse_blockorstatement() #parse the then branch
         else_branch = None
         if self.current().type == "ELSE":
             self.eat("ELSE")
-
-            if self.current().type == "LBRACE":
-                else_branch = self.parse_block() # for if the else_branch is a block
-            else:
-                raise SyntaxError(f"Expected '{{' got {self.current().type}")
-        
+            else_branch = self.parse_blockorstatement()
         return If(condition, then_branch, else_branch)
 
-    def while_statement(self):
+    def parse_while(self):
         self.eat("WHILE")
+        condition = self.parse_condition() # parse the condition expression
+        body = self.parse_blockorstatement()
+        return While(condition, body)
+    
+    def parse_condition(self):
         self.eat("LPAREN")
+        if self.current().type == "RPAREN":
+            raise SyntaxError("Empty condition in if/while statement")
         condition = self.expr() # parse the condition expression
         self.eat("RPAREN")
-        if self.current().type == "LBRACE":
-            body = self.parse_block() # for if the body is a block
-        else:
-            raise SyntaxError(f"Expected '{{' got {self.current().type}")
-        return While(condition, body)
+        return condition
     
     def parse_block(self):
         stmts = []
         self.eat("LBRACE")
         while self.current().type != "RBRACE":
-            stmt = self.statement()
-            stmts.append(stmt)
-
-            needs_semi = True
-            if (isinstance(stmt, If) or isinstance(stmt, While) or isinstance(stmt, Block)): #cases for if statement needs a ';'. (should probably implement a better way)
-                needs_semi = False
-
+            stmts.append(self.parse_statement())
             if self.current().type == "EOF":
                 raise SyntaxError("Expected '}' before end of file")
-            if needs_semi and self.current().type == "SEMI":
-                self.eat("SEMI")
-            elif needs_semi:
-                raise SyntaxError(f"Expected ';' got {self.current().type}")
-
         self.eat("RBRACE")
         return Block(stmts)
+    
+    def parse_blockorstatement(self):
+        if self.current().type == "LBRACE":
+            return self.parse_block()
+        else:
+            return self.parse_statement()
 
 
     def expr(self):

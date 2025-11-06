@@ -21,6 +21,10 @@ if (true) {
     print(x);
 }
 
+if (false) 
+    print("hello");
+    print("hello123");
+
 x=2;
 if (x){
     print(x, "is not 0");
@@ -40,4 +44,8 @@ x=3;
 while(x){
     print(x);
     x=x-1;
+}
+
+if(){
+    print("hello there bob");
 }
