@@ -1,6 +1,7 @@
 #scope is done with a stack of dictionaries done after the AST generation
 
 TODO:
+    scope
     incrementer/decrementer
     variable typing
     methods

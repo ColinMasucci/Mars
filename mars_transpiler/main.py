@@ -1,73 +1,62 @@
-from lexer import tokenize
-from parser import Parser
-from interpreter import evaluate #This backend is great for testeing our AST to make sure that it is working asintended before attempting to convert into a C++ file.
-from ast_visualizer import visualize
-from codegen import emit_cpp #This backend is what we used previously for converting our.mars file into a C++ file. (Now instead we have bytecode to a stack machine)
+import ast_nodes as ast #our layed out AST nodes
+from lexer import tokenize #tokenizer from lexer.py
+from parser import Parser #parser from parser.py
+from bytecodegen import compile_program #bytecode generator from bytecodegen.py
+from vm import VM #the stack-based virtual machine from vm.py
 
-import os
-import platform
-import subprocess
+from ast_visualizer import visualize #for visualizing the AST
 
 
+
+#FULL PROGRAM EXECUTION FLOW
+print("===EXAMPLE 001=================================================================================================================")
 
 # Access and read the test file
 with open("test_file.mars", "r", encoding="utf-8") as f:
     code = f.read()
 
-tokens = tokenize(code)
+#tokenize the input code
+tokens = tokenize(code, True)
+#Create Parser instance with tokens
 parser = Parser(tokens)
-ast = parser.parse()
-result = evaluate(ast)
+#Parse the tokens into an AST
+parsed_ast = parser.parse(True)
 
-print("Tokens: ", tokens)
-print("AST: ", ast)
-print("Result: ", result)
-
-
-## Visualize AST
-dot = visualize(ast)
-dot.render("ast_output", cleanup=True)
+#Visualize AST
+dot = visualize(parsed_ast)
 output_path = dot.render("ast_output", cleanup=True)
-print(f"AST visualization saved as {output_path}")
+print(f"AST visualization saved as {output_path} \n")
 
-# Open image upon creation  
-def open_image(path):
-    system = platform.system()
-    try:
-        if system == "Windows":
-            os.startfile(path)
-        elif system == "Darwin":  # macOS
-            subprocess.run(["open", path])
-        else:  # Linux and others
-            subprocess.run(["xdg-open", path])
-    except Exception as e:
-        print(f"Could not open image automatically: {e}")
-
-open_image(output_path)
+#prog1 = ast.Program(statements=[parsed_ast])  #wrap parsed AST in a Program node
+bytecode1 = compile_program(parsed_ast, True) #compile the AST into bytecode (True for printing bytecode)
+vm1 = VM(bytecode1) #create VM instance with the bytecode
+vm1.run() #run the bytecode on the VM
 
 
 
-#Run full pipeline from .mars like lines into c++
-def transpile_text_to_cpp(source_text: str, out_cpp_path: str = "out.cpp"):
-    tokens = tokenize(source_text)
-    parser = Parser(tokens)
-    ast = parser.parse()           # this is your AST root
-    cpp_source = emit_cpp(ast, out_path=out_cpp_path)
-    print(f"Wrote C++ to {out_cpp_path}")
-    return cpp_source
 
-if __name__ == "__main__":
-    examples = [
-        '42 + 5',                 # int + int
-        '3.5 + 2',                # float + int -> double
-        '"hi" + " there"',        # string + string
-        '1 + " apples"',          # number + string -> concatenation
-        '"x: " + 3.14',           # string + number -> concatenation
-        '10 - 2'                  # subtraction
-    ]
-    for i, ex in enumerate(examples, start=1):
-        path = f"out_example_{i}.cpp"
-        print("Source:", ex)
-        cpp = transpile_text_to_cpp(ex, out_cpp_path=path)
-        print("C++ snippet:\n", cpp)
-        print("-" * 40)
+# print("===EXAMPLE 002=================================================================================================================")
+# # Example 1: print(1 + 2 * 3)
+# prog = ast.Program(statements=[
+#     ast.Print(expr=ast.BinaryOp("PLUS",
+#         left=ast.NumberLiteral(1),
+#         right=ast.BinaryOp("MUL", ast.NumberLiteral(2), ast.NumberLiteral(3))
+#     ))
+# ])
+
+# #True is used for printing the bytecode (Can leave blank for default False)
+# bytecode = compile_program(prog, True)
+# vm = VM(bytecode)
+# vm.run()  # should print 7
+
+
+# print("===EXAMPLE 003=================================================================================================================")
+# # Example 2: x = 10; print(x + 5)
+# prog2 = ast.Program(statements=[
+#     ast.Assign(name="x", value=ast.NumberLiteral(10)),
+#     ast.Print(expr=ast.BinaryOp("PLUS", ast.Var("x"), ast.NumberLiteral(5)))
+# ])
+
+# bytecode2 = compile_program(prog2, True)
+# vm2 = VM(bytecode2)
+# vm2.run()  # should print 15
