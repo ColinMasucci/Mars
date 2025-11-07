@@ -47,6 +47,34 @@ class VM:
                     b = self.stack.pop(); a = self.stack.pop()
                     self.stack.append(a / b)
 
+                case "NEGATE":
+                    val = self.stack.pop()
+                    self.stack.append(-val)
+
+                case "NOT":
+                    val = self.stack.pop()
+                    # Numbers: 0->True, nonzero->False; bools invert normally
+                    if isinstance(val, (int, float)):
+                        self.stack.append(val == 0)
+                    else:
+                        self.stack.append(not val)
+
+                case "INC":
+                    name = args[0]
+                    if name not in self.locals:
+                        raise VMError(f"Undefined variable '{name}'")
+                    val, vartype = self.locals[name]
+                    self.locals[name] = (val + 1, vartype)
+                    self.stack.append(val) 
+
+                case "DEC":
+                    name = args[0]
+                    if name not in self.locals:
+                        raise VMError(f"Undefined variable '{name}'")
+                    val, vartype = self.locals[name]
+                    self.locals[name] = (val - 1, vartype)
+                    self.stack.append(val) 
+
                 case "DECLARE":
                     name, vartype = args[0], args[1]
                     val = self.stack.pop()

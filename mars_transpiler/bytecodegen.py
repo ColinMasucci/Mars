@@ -58,6 +58,29 @@ def compile_node(node, code: List[Instr]):
                     code.append(("DIV",))
                 case _:
                     raise NotImplementedError(op)
+                
+        case ast.UnaryOp(op, operand):
+            match op:
+                case "NEGATE":    # unary minus
+                    compile_node(operand, code)
+                    code.append(("NEGATE",))
+                case "BANG":      # logical not
+                    compile_node(operand, code)
+                    code.append(("NOT",))
+                case "INC":
+                    if isinstance(operand, ast.Var):
+                        # directly tell VM which variable to increment
+                        code.append(("INC", operand.name))
+                    else:
+                        raise NotImplementedError("INC can only be applied to variables")
+                case "DEC":
+                    if isinstance(operand, ast.Var):
+                        code.append(("DEC", operand.name))
+                    else:
+                        raise NotImplementedError("DEC can only be applied to variables")
+                case _:
+                    raise NotImplementedError(f"Unary operator not implemented: {op}")
+
 
         case ast.Assign(name, value):
             compile_node(value, code)
