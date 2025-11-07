@@ -47,6 +47,10 @@ class VM:
                     b = self.stack.pop(); a = self.stack.pop()
                     self.stack.append(a / b)
 
+                case "POW":
+                    b = self.stack.pop(); a = self.stack.pop()
+                    self.stack.append(a ** b)
+
                 case "NEGATE":
                     val = self.stack.pop()
                     self.stack.append(-val)

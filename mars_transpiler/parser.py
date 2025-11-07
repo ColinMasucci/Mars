@@ -197,7 +197,9 @@ class Parser:
         "PLUS":      (4, "left", 2, "binary"),
         "MINUS":     (4, "left", 2, "binary"),  # binary minus
 
-        # (assignment handled elsewhere, not here)
+        # exponentiation
+        "POW": (6, "right", 2, "binary"),
+
     }
 
 
@@ -294,7 +296,7 @@ class Parser:
 
             # Operators
             # Distinguish prefix unary vs binary vs postfix by expect_operand context
-            if tok.type in ("PLUS", "MINUS", "BANG", "INC", "DEC", "MUL", "DIV"):
+            if tok.type in ("PLUS", "MINUS", "BANG", "INC", "DEC", "MUL", "DIV", "POW"):
                 if expect_operand:
                     # we are expecting/allowing a prefix/unary operator
                     if expect_operand:

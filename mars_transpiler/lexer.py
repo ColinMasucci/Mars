@@ -33,6 +33,7 @@ TOKEN_SPEC = [
     ("ASSIGN",  r"="),                 # check for operator
     ("BANG",    r"!"),                 # logical NOT
     ("PLUS",    r"\+"),                # check for plus signs
+    ("POW", r"\^"),                    # check for exponent
     ("MINUS",   r"-"),                 # check for minus signs
     ("MUL",    r"\*"),                 # check for muliplication signs
     ("DIV",   r"/"),                   # check for division signs

@@ -52,7 +52,7 @@ class TypeChecker:
                 left_type = self.check(left)
                 right_type = self.check(right)
 
-                if op in ("PLUS", "MINUS", "MUL", "DIV"):
+                if op in ("PLUS", "MINUS", "MUL", "DIV", "POW"):
                     # --- Handle addition separately (since it can be string concat) ---
                     if op == "PLUS":
                         # If either operand is a string, result is string

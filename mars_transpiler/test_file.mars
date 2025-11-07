@@ -1,12 +1,1 @@
-int x = 5;
-int y = 12;
-bool flag = true;
-int z = 3;
-
-x = -x;
-flag = !true;
-flag = !flag;
-z++;
-y--;
-
-print(x, flag, z, y);
+print(3^2);

@@ -56,6 +56,8 @@ def compile_node(node, code: List[Instr]):
                     code.append(("MUL",))
                 case "DIV":
                     code.append(("DIV",))
+                case "POW":
+                    code.append(("POW",))
                 case _:
                     raise NotImplementedError(op)
                 
