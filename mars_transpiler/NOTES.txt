@@ -3,10 +3,8 @@
 TODO:
     scope
     incrementer/decrementer
-    variable typing
     methods
     Shunting yard for order of operations
     Exponents/SquareRoot/AbsoluteValue/etc
-    For loops
     Boolean operations (==, !=, <, etc)
     change colors of our language (Text Mate, LSP Language Server Protocol)

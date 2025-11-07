@@ -1,4 +1,4 @@
-from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While
+from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -31,8 +31,16 @@ class Parser:
     def parse_statement(self):
         tok = self.current()
 
+        # Handle typed variable declarations
+        if tok.type in ("INT_KW", "FLOAT_KW", "BOOL_KW", "STRING_KW"):
+            vartype = self.eat(tok.type).type.replace("_KW", "").lower()  # e.g., "INT_KW" → "int"
+            name = self.eat("ID").value
+            self.eat("ASSIGN")
+            value = self.expr()
+            stmt = VarDecl(vartype, name, value)
+
         # Handle if/else/while
-        if tok.type == "IF":
+        elif tok.type == "IF":
             return self.parse_if()
         elif tok.type == "WHILE":
             return self.parse_while()
@@ -42,7 +50,7 @@ class Parser:
             return self.parse_block()
 
         # Handle variable assignment like: x = expr;
-        if tok.type == "ID" and self.peek().type == "ASSIGN":
+        elif tok.type == "ID" and self.peek().type == "ASSIGN":
             next_tok = self.tokens[self.pos + 1]
             if next_tok.type == "ASSIGN":
                 name = self.eat("ID").value
@@ -124,13 +132,27 @@ class Parser:
         return While(condition, loop_body)
     
     def parse_simple_statement(self):
-        """Parse a statement without consuming a trailing semicolon."""
+        """
+        Parses a simple statement (assignment, variable declaration, or expression).
+        Does NOT consume a trailing semicolon.
+        """
         tok = self.current()
+        # --- Variable declaration ---
+        if tok.type in ("INT_KW", "FLOAT_KW", "STRING_KW", "BOOL_KW"):
+            vartype = self.eat(tok.type).type.replace("_KW", "").lower()  # store type as lowercase string
+            name = self.eat("ID").value
+            value = None
+            if self.current().type == "ASSIGN":
+                self.eat("ASSIGN")
+                value = self.expr()
+            return VarDecl(vartype, name, value)
+        # --- Assignment ---
         if tok.type == "ID" and self.peek().type == "ASSIGN":
             name = self.eat("ID").value
             self.eat("ASSIGN")
             value = self.expr()
             return Assign(name, value)
+        # --- Otherwise treat as an expression statement ---
         return self.expr()
 
 

@@ -24,6 +24,12 @@ class BinaryOp: # (Ex. PLUS, MUL, DIV, MINUS)
 class Var:
     name: str
 
+@dataclass
+class VarDecl:
+    vartype: str
+    name: str
+    value: Any
+
 # used for assigning variables
 @dataclass
 class Assign:

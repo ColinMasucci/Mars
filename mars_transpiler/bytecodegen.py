@@ -27,6 +27,21 @@ def compile_node(node, code: List[Instr]):
         
         case ast.BooleanLiteral(value):
             code.append(("PUSH_BOOL", value))
+        
+        case ast.VarDecl(vartype, name, value):
+            if value is not None:
+                compile_node(value, code)
+            else:
+                match vartype:
+                    case "int" | "float":
+                        code.append(("PUSH_INT", 0))
+                    case "bool":
+                        code.append(("PUSH_BOOL", False))
+                    case "string":
+                        code.append(("PUSH_STR", ""))
+                    case _:
+                        raise ValueError(f"Unknown vartype '{vartype}' in VarDecl")
+            code.append(("DECLARE", name, vartype))
 
         case ast.BinaryOp(op, left, right):
             # compile left then right (stack-based order)

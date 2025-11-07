@@ -9,6 +9,12 @@ class Token:
     #lineNumber
 
 TOKEN_SPEC = [
+    # --- Type Keywords ---
+    ("INT_KW", r"\bint\b"),           # integer type keyword
+    ("FLOAT_KW", r"\bfloat\b"),       # float type keyword
+    ("BOOL_KW", r"\bbool\b"),         # boolean type keyword
+    ("STRING_KW", r"\bstring\b"),     # string type keyword
+
     # --- Literals ---
     ("FLOAT",   r"\d+\.\d+"),          # check for float first (so 3.14 is not parsed as int + .14)
     ("INT",     r"\d+"),               # next we can check for ints

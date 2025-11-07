@@ -9,7 +9,7 @@ class VM:
         self.code = bytecode
         self.stack = []
         self.pc = 0
-        self.locals = {}  # simple flat namespace for now
+        self.locals = {}  # {name: (value, vartype)}
 
     def run(self):
         while self.pc < len(self.code):
@@ -47,16 +47,27 @@ class VM:
                     b = self.stack.pop(); a = self.stack.pop()
                     self.stack.append(a / b)
 
+                case "DECLARE":
+                    name, vartype = args[0], args[1]
+                    val = self.stack.pop()
+                    if name in self.locals:
+                        raise VMError(f"Variable '{name}' already declared")
+                    self.locals[name] = (val, vartype)
+
                 case "STORE":
                     name = args[0]
                     val = self.stack.pop()
-                    self.locals[name] = val
+                    if name not in self.locals:
+                        raise VMError(f"Assignment to undeclared variable '{name}'")
+                    old_val, vartype = self.locals[name]
+                    self.locals[name] = (val, vartype)
 
                 case "LOAD":
                     name = args[0]
                     if name not in self.locals:
-                        raise VMError(f"Undefined variable {name}")
-                    self.stack.append(self.locals[name])
+                        raise VMError(f"Undefined variable '{name}'")
+                    val, _type = self.locals[name]
+                    self.stack.append(val)
 
                 case "PRINT":
                     n = int(args[0])  # number of arguments to print
@@ -74,6 +85,8 @@ class VM:
                 case "JUMP_IF_FALSE":
                     target = int(args[0])
                     cond = self.stack.pop()
+                    if isinstance(cond, (int, float)):# Numbers collapse to bools
+                        cond = cond != 0
                     if not cond:
                         self.pc = target
                         continue

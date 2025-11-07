@@ -6,16 +6,15 @@ print(10, "hello", "world!");
 print(10+1, 1+89);
 
 #variable check
-x = 5;
+int x = 5;
 print (x);
-
 
 /*
 this is a block comment
 This is some other text
 */
 
-y = 1 + 2 + "hello world";
+string y = 1 + 2 + "hello world";
 print (y);
 
 print (x+y);
@@ -55,6 +54,6 @@ while(x){
 }
 
 print("doing for loop");
-for (i=3; i; i=i-1){
+for (int i=3; i; i=i-1){
     print(i);
 }
