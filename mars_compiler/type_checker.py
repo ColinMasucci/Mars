@@ -1,4 +1,4 @@
-from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp
+from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import
 
 class TypeChecker:
     def __init__(self):
@@ -104,6 +104,10 @@ class TypeChecker:
                 for arg in args:
                     self.check(arg)
                 return "int"  # default, update if you add function signatures later
+            
+            case Import(module):
+                return None  # imports don't have a type themselves
+
 
             case _:
                 raise TypeError(f"Unknown AST node type: {type(node).__name__}")

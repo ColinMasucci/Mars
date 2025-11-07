@@ -28,6 +28,17 @@ class Parser:
                 self.print_ast(stmt)
         return Program(statements)
     
+    def parse_dotted_var(self):
+        """Parse a variable or dotted variable like a.b.c"""
+        id_tok = self.eat("ID")
+        name_parts = [id_tok.value]
+
+        while self.current().type == "DOT":
+            self.eat("DOT")
+            name_parts.append(self.eat("ID").value)
+
+        return Var(".".join(name_parts))
+    
     def parse_statement(self):
         tok = self.current()
 
@@ -53,16 +64,21 @@ class Parser:
         elif tok.type == "IMPORT":
             return self.parse_import()
 
-        # Handle variable assignment like: x = expr;
-        elif tok.type == "ID" and self.peek().type == "ASSIGN":
-            next_tok = self.tokens[self.pos + 1]
-            if next_tok.type == "ASSIGN":
-                name = self.eat("ID").value
+        # Handle variable assignment like: x = expr; or a.b = expr;
+        elif tok.type == "ID":
+            # Look ahead to check if this could be an assignment
+            save_pos = self.pos
+            target = self.parse_dotted_var()  # parse possible dotted name
+
+            if self.current().type == "ASSIGN":
                 self.eat("ASSIGN")
                 value = self.expr()
-                stmt = Assign(name, value)
-        else:
-            stmt = self.expr()
+                stmt = Assign(target, value)
+            else:
+                # Not an assignment — roll back and treat it as expression
+                self.pos = save_pos
+                stmt = self.expr()
+
         
         # Expect a semicolon after the statement
         if self.current().type == "SEMI":
@@ -156,11 +172,16 @@ class Parser:
                 value = self.expr()
             return VarDecl(vartype, name, value)
         # --- Assignment ---
-        if tok.type == "ID" and self.peek().type == "ASSIGN":
-            name = self.eat("ID").value
-            self.eat("ASSIGN")
-            value = self.expr()
-            return Assign(name, value)
+        if tok.type == "ID":
+            save_pos = self.pos
+            target = self.parse_dotted_var()
+            if self.current().type == "ASSIGN":
+                self.eat("ASSIGN")
+                value = self.expr()
+                return Assign(target, value)
+            else:
+                self.pos = save_pos
+
         # --- Otherwise treat as an expression statement ---
         return self.expr()
 
@@ -277,15 +298,7 @@ class Parser:
 
                 # Identifier: variable or function call
                 if tok.type == "ID":
-                    id_tok = self.eat("ID")
-                    name_parts = [id_tok.value]
-
-                    # Handle optional dotted names (e.g, math.sqrt(), math.PI);
-                    while self.current().type == "DOT":
-                        self.eat("DOT")
-                        name_parts.append(self.eat("ID").value)
-
-                    var_node = Var(".".join(name_parts))
+                    var_node = self.parse_dotted_var()
 
                     # function call?
                     if self.current().type == "LPAREN":

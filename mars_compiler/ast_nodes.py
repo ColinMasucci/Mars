@@ -38,7 +38,7 @@ class VarDecl:
 # used for assigning variables
 @dataclass
 class Assign:
-    name: str
+    name: Any
     value: Any
 
 @dataclass

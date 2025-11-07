@@ -1,7 +1,11 @@
+import os
+import importlib.util
 from typing import List, Tuple
 import ast_nodes as ast
 
+
 Instr = Tuple[str, ...] # instruction is a tuple of strings and then somtimes numbers. (Ex. ("PUSH_INT", 42) or ("ADD",) )
+
 
 #This returns a List of instructions (bytecode) from the AST, and will give them to the Stack VM.
 def compile_program(node: ast.Program, printBytecode = False) -> List[Instr]:
@@ -86,10 +90,37 @@ def compile_node(node, code: List[Instr]):
 
         case ast.Assign(name, value):
             compile_node(value, code)
-            code.append(("STORE", name))
+            if "." in name:
+                # Split like "a.b.c" → base="a", fields=["b","c"]
+                parts = name.split(".")
+                base = parts[0]
+                fields = parts[1:]
+                code.append(("LOAD", base))
+                for f in fields[:-1]:
+                    code.append(("GET_FIELD", f))
+                code.append(("SET_FIELD", fields[-1]))
+            else:
+                code.append(("STORE", name))
 
         case ast.Var(name):
+            """Access a variable or module member."""
+            parts = name.split(".")
+            if len(parts) == 2:
+                module_name, member_name = parts
+                # Check module exists
+                module_path = os.path.join("builtins", f"{module_name}.py")
+                if not os.path.exists(module_path):
+                    raise TypeError(f"Module '{module_name}' not found")
+                spec = importlib.util.spec_from_file_location(module_name, module_path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                funcs_dict = getattr(mod, f"{module_name.upper()}_FUNCS", {})
+                if member_name not in funcs_dict:
+                    raise TypeError(f"Module '{module_name}' has no member '{member_name}'")
+            # Finally, emit the LOAD instruction for the VM
             code.append(("LOAD", name))
+
+
         
         case ast.If(cond, then_branch, else_branch):
             compile_node(cond, code) # first compile the condition statement
@@ -122,17 +153,51 @@ def compile_node(node, code: List[Instr]):
                 compile_node(stmt, code)
 
         case ast.Call(func, args):
-            # compile each argument in order (so last argument ends up on top of stack)
+            """Compile a function call (top-level or module function)."""
+            if isinstance(func, ast.Var):
+                parts = func.name.split(".")
+                if len(parts) == 2:
+                    # Module function: compile-time check
+                    module_name, func_name = parts
+                    module_path = os.path.join("builtins", f"{module_name}.py")
+                    if not os.path.exists(module_path):
+                        raise TypeError(f"Module '{module_name}' not found")
+                    spec = importlib.util.spec_from_file_location(module_name, module_path)
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    funcs_dict = getattr(mod, f"{module_name.upper()}_FUNCS", {})
+                    if func_name not in funcs_dict:
+                        raise TypeError(f"Module '{module_name}' has no function '{func_name}'")
+                else:
+                    # Top-level function
+                    if func.name not in {"print"}:
+                        raise TypeError(f"Unknown function '{func.name}'")
+
+            # Compile arguments
             for arg in args:
                 compile_node(arg, code)
-            # currently only support 'print' as builtin
-            if isinstance(func, ast.Var) and func.name == "print":
-                code.append(("PRINT", len(args)))  # PUSH all args, then PRINT n args
-            else:
-                raise NotImplementedError(f"Function call not implemented: {func}")
 
-        case ast.Import(module):
-            code.append(("IMPORT", module))
+            # Emit appropriate opcode
+            if func.name == "print":
+                code.append(("PRINT", len(args)))       # special PRINT opcode
+            else:
+                code.append(("CALL", func.name, len(args)))  # normal CALL for module functions
+
+
+        case ast.Import(module_name):
+            """Compile-time check that module exists in builtins."""
+            module_path = os.path.join("builtins", f"{module_name}.py")
+            if not os.path.exists(module_path):
+                raise TypeError(f"Module '{module_name}' not found")
+
+            # Dynamically load module just to validate functions/constants exist
+            spec = importlib.util.spec_from_file_location(module_name, module_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+
+            # Emit IMPORT opcode for the VM
+            code.append(("IMPORT", module_name))
+
 
         case _:
             raise TypeError(f"Unknown AST node {node}")

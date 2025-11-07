@@ -13,6 +13,8 @@ class VM:
         self.stack = []
         self.pc = 0
         self.locals = {}  # {name: (value, vartype)}
+        self._modules = {}  # module_name -> module object
+
 
     def run(self):
         while self.pc < len(self.code):
@@ -98,11 +100,12 @@ class VM:
                     self.locals[name] = (val, vartype)
 
                 case "LOAD":
-                    name = args[0]
+                    name = args[0]  # could be "math.PI"
                     if name not in self.locals:
                         raise VMError(f"Undefined variable '{name}'")
                     val, _type = self.locals[name]
                     self.stack.append(val)
+
 
                 case "PRINT":
                     n = int(args[0])  # number of arguments to print
@@ -131,14 +134,43 @@ class VM:
 
                 case "IMPORT":
                     module_name = args[0]
-                    # dynamically import the library from builtins folder
+
+                    if module_name in self._modules:
+                        break
+
                     spec = importlib.util.spec_from_file_location(module_name, f"builtins/{module_name}.py")
                     module = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(module)
+
+                    self._modules[module_name] = module
+
+                    # populate locals with dotted names
+                    funcs_dict = getattr(module, f"{module_name.upper()}_FUNCS", {})
+                    for name, val in funcs_dict.items():
+                        self.locals[f"{module_name}.{name}"] = (val, "function" if callable(val) else type(val).__name__)
+
+
+                case "CALL":
+                    # args[0] = function name (e.g., "math.sqrt")
+                    # args[1] = number of arguments
+                    func_name, n_args = args
+                    n_args = int(n_args)
+
+                    # Pop arguments off the stack in reverse (last pushed = last arg)
+                    arg_values = [self.stack.pop() for _ in range(n_args)][::-1]
+
+                    # Look up function in locals
+                    if func_name not in self.locals:
+                        raise VMError(f"Unknown function '{func_name}'")
                     
-                    # store functions in VM locals or global function table
-                    for func_name, func_impl in getattr(module, f"{module_name.upper()}_FUNCS").items():
-                        self.locals[func_name] = (func_impl, "function")
+                    func, typ = self.locals[func_name]
+                    if typ != "function":
+                        raise VMError(f"'{func_name}' is not a function")
+
+                    # Call the function
+                    result = func(*arg_values)
+                    self.stack.append(result)
+
 
                 case _:
                     raise VMError(f"Unknown opcode {op}")
