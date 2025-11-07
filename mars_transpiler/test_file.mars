@@ -1,59 +1,12 @@
-print ((3/3) + 24 +  "% done!");
-print (5 * 10 + 25 + "% done!");
-print (10 * 10 + "% done!");
-
-print(10, "hello", "world!");
-print(10+1, 1+89);
-
-#variable check
 int x = 5;
-print (x);
+int y = 12;
+bool flag = true;
+int z = 3;
 
-/*
-this is a block comment
-This is some other text
-*/
+x = -x;
+flag = !true;
+flag = !flag;
+z++;
+y--;
 
-string y = 1 + 2 + "hello world";
-print (y);
-
-print (x+y);
-
-print(2+2*7 - (2+33/3));
-
-print(false);
-
-if (true) {
-    print(x);
-}
-
-if (false) 
-    print("hello");
-    print("hello123");
-
-x=2;
-if (x){
-    print(x, "is not 0");
-}
-else{
-    print(x, "is indeed 0");
-}
-
-if(true){
-    if (true){
-        print("im inside an if inside an if statement!");
-    }
-    print("hello");
-}
-
-print("doing while loop");
-x=3;
-while(x){
-    print(x);
-    x=x-1;
-}
-
-print("doing for loop");
-for (int i=3; i; i=i-1){
-    print(i);
-}
+print(x, flag, z, y);

@@ -19,6 +19,11 @@ class BinaryOp: # (Ex. PLUS, MUL, DIV, MINUS)
     left: Any
     right: Any
 
+@dataclass
+class UnaryOp:  # (Ex. NEGATE, INC, DEC, BANG)
+    op: str
+    operand: Any
+
 #used for referencing variables (grabbing their value)
 @dataclass
 class Var:

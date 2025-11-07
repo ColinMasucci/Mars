@@ -1,4 +1,4 @@
-from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl
+from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp
 
 class TypeChecker:
     def __init__(self):
@@ -69,6 +69,22 @@ class TypeChecker:
                     raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
                 else:
                     raise TypeError(f"Unknown binary operator {op}")
+
+            case UnaryOp(op, operand):
+                operand_type = self.check(operand)
+                if op == "NEGATE":  # prefix numeric negation
+                    if operand_type not in ("int", "float"):
+                        raise TypeError(f"Unary '-' requires numeric type, got {operand_type}")
+                    return operand_type
+                if op == "BANG":   # logical NOT
+                    if operand_type != "bool":
+                        raise TypeError(f"Unary '!' requires boolean type, got {operand_type}")
+                    return "bool"
+                if op in ("INC", "DEC"):
+                    if operand_type not in ("int", "float"):
+                        raise TypeError(f"Postfix '{op}' requires numeric type, got {operand_type}")
+                    return operand_type
+                raise TypeError(f"Unknown unary operator {op}")
 
             case If(condition, then_branch, else_branch):
                 cond_type = self.check(condition)

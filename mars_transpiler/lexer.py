@@ -31,6 +31,7 @@ TOKEN_SPEC = [
     ("INC",     r"\+\+"),              # check for increment operator
     ("DEC",     r"--"),                # check for decrement operator
     ("ASSIGN",  r"="),                 # check for operator
+    ("BANG",    r"!"),                 # logical NOT
     ("PLUS",    r"\+"),                # check for plus signs
     ("MINUS",   r"-"),                 # check for minus signs
     ("MUL",    r"\*"),                 # check for muliplication signs
