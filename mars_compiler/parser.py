@@ -1,4 +1,4 @@
-from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp
+from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -48,6 +48,10 @@ class Parser:
             return self.parse_for()
         elif tok.type == "LBRACE":
             return self.parse_block()
+        
+        # Handle other keywords
+        elif tok.type == "IMPORT":
+            return self.parse_import()
 
         # Handle variable assignment like: x = expr;
         elif tok.type == "ID" and self.peek().type == "ASSIGN":
@@ -69,7 +73,12 @@ class Parser:
         return stmt
         
 
-        
+    def parse_import(self):
+            self.eat("IMPORT")
+            module_name = self.eat("ID").value  # we only support single module imports for now
+            stmt = Import(module_name)
+            self.eat("SEMI")
+            return stmt
     
     def parse_if(self):
         self.eat("IF")
@@ -269,25 +278,30 @@ class Parser:
                 # Identifier: variable or function call
                 if tok.type == "ID":
                     id_tok = self.eat("ID")
+                    name_parts = [id_tok.value]
+
+                    # Handle optional dotted names (e.g, math.sqrt(), math.PI);
+                    while self.current().type == "DOT":
+                        self.eat("DOT")
+                        name_parts.append(self.eat("ID").value)
+
+                    var_node = Var(".".join(name_parts))
+
                     # function call?
                     if self.current().type == "LPAREN":
-                        # parse call arguments (possibly empty)
                         self.eat("LPAREN")
                         args = []
                         if self.current().type != "RPAREN":
                             while True:
-                                arg = self.parse_expression(stop_tokens={"COMMA", "RPAREN"})
-                                args.append(arg)
+                                args.append(self.parse_expression(stop_tokens={"COMMA","RPAREN"}))
                                 if self.current().type == "COMMA":
                                     self.eat("COMMA")
                                     continue
                                 break
                         self.eat("RPAREN")
-                        output.append(Call(func=Var(id_tok.value), args=args))
+                        output.append(Call(var_node, args))
                     else:
-                        output.append(Var(id_tok.value))
-                    expect_operand = False
-                    continue
+                        output.append(var_node)
 
             # Comma — end of expression in argument lists; stop and let caller handle (TODO: implement)
             if tok.type == "COMMA":

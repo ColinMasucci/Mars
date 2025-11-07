@@ -131,6 +131,9 @@ def compile_node(node, code: List[Instr]):
             else:
                 raise NotImplementedError(f"Function call not implemented: {func}")
 
+        case ast.Import(module):
+            code.append(("IMPORT", module))
+
         case _:
             raise TypeError(f"Unknown AST node {node}")
 

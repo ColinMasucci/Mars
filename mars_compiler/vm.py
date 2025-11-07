@@ -1,4 +1,7 @@
 from typing import List, Tuple, Any
+import importlib.util
+import os
+
 
 Instr = Tuple[str, ...]
 
@@ -125,6 +128,17 @@ class VM:
 
                 case "HALT":
                     break
+
+                case "IMPORT":
+                    module_name = args[0]
+                    # dynamically import the library from builtins folder
+                    spec = importlib.util.spec_from_file_location(module_name, f"builtins/{module_name}.py")
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    
+                    # store functions in VM locals or global function table
+                    for func_name, func_impl in getattr(module, f"{module_name.upper()}_FUNCS").items():
+                        self.locals[func_name] = (func_impl, "function")
 
                 case _:
                     raise VMError(f"Unknown opcode {op}")

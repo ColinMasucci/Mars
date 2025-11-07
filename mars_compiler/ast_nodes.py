@@ -58,6 +58,10 @@ class Call:
     func: Any      
     args: List[Any] 
 
+@dataclass
+class Import:
+    module: str
+
 #A block of statements (used for bodies of if/while)
 @dataclass
 class Block:

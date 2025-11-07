@@ -15,6 +15,9 @@ TOKEN_SPEC = [
     ("BOOL_KW", r"\bbool\b"),         # boolean type keyword
     ("STRING_KW", r"\bstring\b"),     # string type keyword
 
+    # --- Other Keywords ---
+    ("IMPORT", r"\bimport\b"),  # import keyword
+
     # --- Literals ---
     ("FLOAT",   r"\d+\.\d+"),          # check for float first (so 3.14 is not parsed as int + .14)
     ("INT",     r"\d+"),               # next we can check for ints
@@ -45,6 +48,7 @@ TOKEN_SPEC = [
     ("RPAREN",  r"\)"),
     ("SEMI", r";"),                    # semicolon as statement separator
     ("COMMA", r","),                   # comma as parameter separator
+    ("DOT", r"\."),                    # for module.function syntax
 
     # --- conditionals ---
     ("IF", r"if"),                     # check for if statements
