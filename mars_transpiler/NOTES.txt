@@ -2,9 +2,9 @@
 
 TODO:
     scope
-    incrementer/decrementer
+    //incrementer/decrementer
     methods
-    Shunting yard for order of operations
+    //Shunting yard for order of operations
     Exponents/SquareRoot/AbsoluteValue/etc
     Boolean operations (==, !=, <, etc)
     change colors of our language (Text Mate, LSP Language Server Protocol)
