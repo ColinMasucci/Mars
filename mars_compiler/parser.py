@@ -93,7 +93,7 @@ class Parser:
             self.eat("IMPORT")
             module_name = self.eat("ID").value  # we only support single module imports for now
             stmt = Import(module_name)
-            self.eat("SEMI")
+            #self.eat("SEMI")
             return stmt
     
     def parse_if(self):

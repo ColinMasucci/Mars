@@ -1,4 +1,5 @@
 import math as _math
+import builtins
 
 # --- Basic Math ---
 def sqrt(x):
@@ -14,7 +15,7 @@ def floor(x):
     return _math.floor(x)
 
 def round(x, ndigits=0):
-    return _math.round(x, ndigits)
+    return builtins.round(x, ndigits)
 
 def exp(x):
     return _math.exp(x)
