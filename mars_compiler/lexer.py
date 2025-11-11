@@ -9,6 +9,10 @@ class Token:
     #lineNumber
 
 TOKEN_SPEC = [
+    # --- Comments ---
+    ("COMMENT", r"#.*"),               # skip everything after #
+    ("BLOCK_COMMENT", r"/\*[\s\S]*?\*/"), # skip everything between /* and */
+
     # --- Type Keywords ---
     ("INT_KW", r"\bint\b"),           # integer type keyword
     ("FLOAT_KW", r"\bfloat\b"),       # float type keyword
@@ -25,10 +29,15 @@ TOKEN_SPEC = [
     ("TRUE",  r"\btrue\b"),            # boolean true literal
     ("FALSE", r"\bfalse\b"),           # boolean false literal
 
-    # --- Other ---
-    ("COMMENT", r"#.*"),               # skip everything after #
-    ("BLOCK_COMMENT", r"/\*[\s\S]*?\*/"), # skip everything between /* and */
-    ("SKIP",    r"[ \t\n]+"),          # whitespaces should be skipped
+    # --- Boolean Operators ---
+    ("AND", r"&&"),                    # logical AND
+    ("OR", r"\|\|"),                    # logical OR
+    ("EQ", r"=="),                     # equality operator
+    ("NEQ", r"!="),                    # not equal operator
+    ("LEQ", r"<="),                    # less than or equal to
+    ("GEQ", r">="),                    # greater than or equal to
+    ("LT", r"<"),                      # less than operator
+    ("GT", r">"),                      # greater than operator
 
     # --- Operators ---
     ("INC",     r"\+\+"),              # check for increment operator
@@ -58,6 +67,9 @@ TOKEN_SPEC = [
 
     # --- Identifiers & Keywords ---
     ("ID",      r"[A-Za-z_][A-Za-z0-9_]*"), # identifiers (including 'print')
+
+    # --- Blanks and Newlines ---
+    ("SKIP",    r"[ \t\n]+"),          # whitespaces should be skipped
 
 ]
 

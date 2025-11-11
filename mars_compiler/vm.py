@@ -55,6 +55,38 @@ class VM:
                 case "POW":
                     b = self.stack.pop(); a = self.stack.pop()
                     self.stack.append(a ** b)
+                
+                case "AND":
+                    b = self.stack.pop(); a = self.stack.pop()
+                    self.stack.append(a and b)
+                
+                case "OR":
+                    b = self.stack.pop(); a = self.stack.pop()
+                    self.stack.append(a or b)
+
+                case "LT":
+                    b = self.stack.pop(); a = self.stack.pop()
+                    self.stack.append(a < b)
+
+                case "GT":
+                    b = self.stack.pop(); a = self.stack.pop()
+                    self.stack.append(a > b)
+
+                case "LEQ":
+                    b = self.stack.pop(); a = self.stack.pop()
+                    self.stack.append(a <= b)
+
+                case "GEQ":
+                    b = self.stack.pop(); a = self.stack.pop()
+                    self.stack.append(a >= b)
+
+                case "EQ":
+                    b = self.stack.pop(); a = self.stack.pop()
+                    self.stack.append(a == b)
+
+                case "NEQ":
+                    b = self.stack.pop(); a = self.stack.pop()
+                    self.stack.append(a != b)
 
                 case "NEGATE":
                     val = self.stack.pop()

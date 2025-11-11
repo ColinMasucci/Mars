@@ -62,6 +62,22 @@ def compile_node(node, code: List[Instr]):
                     code.append(("DIV",))
                 case "POW":
                     code.append(("POW",))
+                case "AND":
+                    code.append(("AND",))
+                case "OR":
+                    code.append(("OR",))
+                case "LT":
+                    code.append(("LT",))
+                case "GT":
+                    code.append(("GT",))
+                case "LEQ":
+                    code.append(("LEQ",))
+                case "GEQ":
+                    code.append(("GEQ",))
+                case "EQ":
+                    code.append(("EQ",))
+                case "NEQ":
+                    code.append(("NEQ",))
                 case _:
                     raise NotImplementedError(op)
                 

@@ -97,6 +97,7 @@ class TypeChecker:
                 left_type = self.check(left)
                 right_type = self.check(right)
 
+                # --- Arithmetic Operators ---
                 if op in ("PLUS", "MINUS", "MUL", "DIV", "POW"):
                     # --- Handle addition separately (since it can be string concat) ---
                     if op == "PLUS":
@@ -112,6 +113,26 @@ class TypeChecker:
                     if left_type in ("int", "float") and right_type in ("int", "float"):
                         return "float" if "float" in (left_type, right_type) else "int"
                     raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
+                
+                # --- Comparison Operators (result is always bool) ---
+                elif op in ("EQ", "NEQ", "LT", "LEQ", "GT", "GEQ"):
+                    # Equality (==, !=) allows any matching types
+                    if op in ("EQ", "NEQ"):
+                        if left_type != right_type:
+                            raise TypeError(f"Cannot compare values of different types: {left_type} and {right_type}")
+                        return "bool"
+
+                    # Relational (<, <=, >, >=) — only numeric types allowed
+                    if left_type in ("int", "float") and right_type in ("int", "float"):
+                        return "bool"
+                    raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
+
+                # --- Logical Operators (&&, ||) ---
+                elif op in ("AND", "OR"):
+                    if left_type != "bool" or right_type != "bool":
+                        raise TypeError(f"Logical operator '{op}' requires boolean operands, got {left_type} and {right_type}")
+                    return "bool"
+
                 else:
                     raise TypeError(f"Unknown binary operator {op}")
 

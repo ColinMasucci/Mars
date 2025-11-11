@@ -227,6 +227,20 @@ class Parser:
         "PLUS":      (4, "left", 2, "binary"),
         "MINUS":     (4, "left", 2, "binary"),  # binary minus
 
+        # comparison
+        "LT":   (3, "left", 2, "binary"),
+        "GT":   (3, "left", 2, "binary"),
+        "LEQ":  (3, "left", 2, "binary"),
+        "GEQ":  (3, "left", 2, "binary"),
+
+        # equality
+        "EQ":   (2, "left", 2, "binary"),
+        "NEQ":  (2, "left", 2, "binary"),
+
+        # logical
+        "AND":  (1, "left", 2, "binary"),
+        "OR":   (0, "left", 2, "binary"),
+
         # exponentiation
         "POW": (6, "right", 2, "binary"),
 
@@ -323,7 +337,9 @@ class Parser:
 
             # Operators
             # Distinguish prefix unary vs binary vs postfix by expect_operand context
-            if tok.type in ("PLUS", "MINUS", "BANG", "INC", "DEC", "MUL", "DIV", "POW"):
+            if tok.type in ("PLUS", "MINUS", "BANG", "INC", "DEC", 
+                            "MUL", "DIV", "POW", 
+                            "LT", "GT", "LEQ", "GEQ", "EQ", "NEQ", "AND", "OR"):
                 if expect_operand:
                     # we are expecting/allowing a prefix/unary operator
                     if expect_operand:

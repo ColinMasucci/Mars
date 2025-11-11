@@ -1,10 +1,12 @@
 #scope is done with a stack of dictionaries done after the AST generation
 
 TODO:
-    scope
-    //incrementer/decrementer
     methods
-    //Shunting yard for order of operations
-    Exponents/SquareRoot/AbsoluteValue/etc
-    Boolean operations (==, !=, <, etc)
+    arrays
+    hashmaps
+    classes
+    scope
+    multifile support
+    better error handling
+    external packages
     change colors of our language (Text Mate, LSP Language Server Protocol)
