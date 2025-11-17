@@ -1,17 +1,32 @@
-from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import
+from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, Return, FuncDecl
 import os
 import importlib.util
 
 
 class TypeChecker:
     def __init__(self):
-        self.symbols = {}  #  variable dictionary {name : type}
+        # Scopes: list of dicts, each dict: name -> { 'type': str or 'function', 'mutable': bool, 'info': dict }
+        self.scopes = [{}]
         self._loaded_modules = {}  # cache loaded builtin modules
+        self.function_return_stack = [] # stack of return types
+
+        # pre-load built-in functions and constants (not from library)
+        self._declare_symbol(
+            "print",
+            "function",
+            mutable=False,
+            info={"return": "void", "params": None}  # no type info for simplicity
+        )
+
 
     def _type_from_python_obj(self, obj):
         """Map Python object -> MARS type or 'function'."""
         if callable(obj):
-            return "function"
+            if hasattr(obj, "_mars_sig"):
+                
+                sig = getattr(obj, "_mars_sig")
+                return {"type":"function","return":sig[0],"params":sig[1]}
+            return {"type":"function","return":None,"params":None}
         if isinstance(obj, bool):
             return "bool"
         if isinstance(obj, int):
@@ -21,25 +36,62 @@ class TypeChecker:
         if isinstance(obj, str):
             return "string"
         return type(obj).__name__
+    
+    # scope helpers
+    def _current_scope(self):
+        return self.scopes[-1]
+
+    def _push_scope(self):
+        self.scopes.append({})
+
+    def _pop_scope(self):
+        self.scopes.pop()
+
+    # symbol helpers // help with: avoiding assigning vars to constants, scope, and param/return types
+    def _declare_symbol(self, name, typ, mutable=True, info=None):
+        scope = self._current_scope()
+        if name in scope:
+            raise TypeError(f"Symbol '{name}' already declared in current scope")
+        scope[name] = {"type": typ, "mutable": mutable, "info": info or {}}
+
+    def _set_symbol(self, name, typ, mutable=True, info=None):
+        for scope in reversed(self.scopes):
+            if name in scope:
+                scope[name] = {"type": typ, "mutable": mutable, "info": info or {}}
+                return
+        self._declare_symbol(name, typ, mutable, info)
+
+    def _lookup_symbol(self, name):
+        for scope in reversed(self.scopes):
+            if name in scope:
+                return scope[name]
+        return None
+
+
 
 
     def _register_module_members(self, module_name, mod):
         """Load vars & functions from library module."""
-        # primary exported mapping name (e.g., MATH_FUNCS)
         keyname = f"{module_name.upper()}_FUNCS"
         funcs_dict = getattr(mod, keyname, {})
 
-        # Register everything in that mapping (functions or constants)
         for name, obj in funcs_dict.items():
-            full = f"{module_name}.{name}"
-            self.symbols[full] = self._type_from_python_obj(obj)
+            if callable(obj) and hasattr(obj, "_mars_sig"):
+                ret, params = getattr(obj, "_mars_sig")
+                info = {"return": ret, "params": params}
+                self._declare_symbol(f"{module_name}.{name}", "function", mutable=False, info=info)
+            else:
+                # Not a function — treat as constant
+                typ = self._type_from_python_obj(obj)
+                self._declare_symbol(f"{module_name}.{name}", typ, mutable=False, info={})
 
-        # Optionally support a separate CONSTS mapping if library author used it
-        const_key = f"{module_name.upper()}_CONSTS"
-        consts_dict = getattr(mod, const_key, {})
-        for name, obj in consts_dict.items():
-            full = f"{module_name}.{name}"
-            self.symbols[full] = self._type_from_python_obj(obj)
+
+        # # Optionally support a separate CONSTS mapping if library author used it
+        # const_key = f"{module_name.upper()}_CONSTS"
+        # consts_dict = getattr(mod, const_key, {})
+        # for name, obj in consts_dict.items():
+        #     full = f"{module_name}.{name}"
+        #     self.symbols[full] = self._type_from_python_obj(obj)
 
 
     def check(self, node):
@@ -49,39 +101,48 @@ class TypeChecker:
                     self.check(stmt)
 
             case Block(statements):
-                for stmt in statements:
-                    self.check(stmt)
+                self._push_scope()
+                try:
+                    for stmt in statements:
+                        self.check(stmt)
+                finally:
+                    self._pop_scope()
+
 
             case VarDecl(vartype, name, value):
-                if name in self.symbols:
+                if name in self._current_scope():
                     raise TypeError(f"Variable '{name}' already declared")
-
-                value_type = self.check(value)
-                if vartype != value_type:
+                value_type = None
+                if value is not None:
+                    value_type = self.check(value)
+                if value_type is not None and vartype != value_type:
                     raise TypeError(f"Type mismatch in declaration of '{name}': expected {vartype}, got {value_type}")
-
-                self.symbols[name] = vartype
+                self._declare_symbol(name, vartype, mutable=True, info={})
                 return vartype
 
-            case Assign(name, value):
-                if name not in self.symbols:
+
+            case Assign(name_node, value):
+                if not isinstance(name_node, Var):
+                    raise TypeError("LHS must be Var")
+                name = name_node.name
+                sym = self._lookup_symbol(name)
+                if sym is None:
                     raise TypeError(f"Assignment to undeclared variable '{name}'")
+                if sym.get("mutable") is False:
+                    raise TypeError("Cannot assign to immutable symbol")
                 value_type = self.check(value)
-                expected = self.symbols[name]
+                expected = sym["type"]
                 if expected != value_type:
                     raise TypeError(f"Type mismatch in assignment to '{name}': expected {expected}, got {value_type}")
                 return expected
 
+
             case Var(name):
-                # handle dotted module.member names e.g., "math.PI"
-                if "." in name:
-                    if name not in self.symbols:
-                        raise TypeError(f"Undefined variable '{name}'")
-                    return self.symbols[name]
-                # otherwise normal variable
-                if name not in self.symbols:
-                    raise TypeError(f"Undefined variable '{name}'")
-                return self.symbols[name]
+                sym = self._lookup_symbol(name)
+                if sym is None:
+                    raise TypeError(f"Undefined variable or symbol '{name}'")
+                return sym["type"]
+
 
 
             case NumberLiteral(value):
@@ -147,8 +208,13 @@ class TypeChecker:
                         raise TypeError(f"Unary '!' requires boolean type, got {operand_type}")
                     return "bool"
                 if op in ("INC", "DEC"):
+                    if not isinstance(operand, Var):
+                        raise TypeError(f"Unary '{op}' can only be applied to variables")
+
+                    # must be numeric
                     if operand_type not in ("int", "float"):
-                        raise TypeError(f"Postfix '{op}' requires numeric type, got {operand_type}")
+                        raise TypeError(f"Unary '{op}' requires numeric type, got {operand_type}")
+
                     return operand_type
                 raise TypeError(f"Unknown unary operator {op}")
 
@@ -166,22 +232,63 @@ class TypeChecker:
                     raise TypeError(f"Condition must be boolean or numeric, got {cond_type}") # allow numeric conditions as truthy/falsy
                 self.check(body)
 
+
             case Call(func, args):
-                for arg in args:
+                for arg in args: 
                     self.check(arg)
-
-                # If calling a module function like math.round, verify it exists & is callable
-                if isinstance(func, Var) and "." in func.name:
-                    if func.name not in self.symbols:
+                if isinstance(func, Var):
+                    sym = self._lookup_symbol(func.name)
+                    if not sym: 
                         raise TypeError(f"Undefined function '{func.name}'")
-                    typ = self.symbols[func.name]
-                    if typ != "function":
+                    if sym["type"] != "function": 
                         raise TypeError(f"'{func.name}' is not callable")
-                    # We don't have detailed signatures yet — assume numeric return
-                    return "int"
+                    ret_type = sym["info"].get("return")
+                    param_types = sym["info"].get("params")
+                    if param_types is not None:
+                        if len(param_types) != len(args): 
+                            raise TypeError(f"You have provided the wrong number of arguments. Provided: {len(args)}, expected: {len(param_types)}")
+                        for expected, arg_node in zip(param_types, args):
+                            arg_type = self.check(arg_node)
+                            if expected != arg_type:
+                                raise TypeError(f"Argument type mismatch in call to '{func.name}': expected {expected}, got {arg_type}")
+                return ret_type or "void"
 
-                # Top-level calls (print) — accept for now
-                return "int"
+
+            case FuncDecl(return_type, name, params, body):
+                if name in self._current_scope(): raise TypeError(f"Function '{name}' already declared")
+                param_types = [ptype for ptype,pname in params]
+                sig_info = {"return": return_type, "params": param_types}
+                self._declare_symbol(name, "function", mutable=False, info=sig_info)
+                self._push_scope()
+                self.function_return_stack.append(return_type)
+                try:
+                    for ptype, pname in params:
+                        if pname in self._current_scope():
+                            raise TypeError(f"Parameter '{pname}' already declared in function '{name}'")
+                        self._declare_symbol(pname, ptype, mutable=True)
+                    self.function_return_stack.append(return_type)
+                    try:
+                        self.check(body)
+                    finally:
+                        self.function_return_stack.pop()
+                finally:
+                    self._pop_scope()
+                return None
+            
+            case Return(value):
+                if not self.function_return_stack:
+                    raise TypeError("Return outside function")
+                expected = self.function_return_stack[-1]
+                if value is None:
+                    if expected is not None: raise TypeError("Return without value in function expecting ...")
+                if expected == "void":
+                    raise TypeError("Cannot return a value from a void function")
+                else:
+                    value_type = self.check(value)
+                    if expected != value_type:
+                        raise TypeError("Return type mismatch")
+                return value_type or None
+
 
 
 

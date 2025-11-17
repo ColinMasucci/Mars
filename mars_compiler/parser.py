@@ -1,4 +1,4 @@
-from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import
+from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -42,52 +42,105 @@ class Parser:
     def parse_statement(self):
         tok = self.current()
 
-        # Handle typed variable declarations
+        # --- IMPORT ---
+        if tok.type == "IMPORT":
+            self.eat("IMPORT")
+            module_name = self.eat("ID").value
+            self.eat("SEMI")
+            return Import(module_name)
+
+        # --- RETURN ---
+        if tok.type == "RETURN":
+            self.eat("RETURN")
+            value = None
+            if self.current().type not in ("SEMI", "RBRACE"):
+                value = self.expr()
+            self.eat("SEMI")
+            return Return(value)
+
+        # --- IF ---
+        if tok.type == "IF":
+            stmt = self.parse_if()
+            return stmt
+
+        # --- WHILE ---
+        if tok.type == "WHILE":
+            stmt = self.parse_while()
+            return stmt
+
+        # --- BLOCK ---
+        if tok.type == "LBRACE":
+            stmt = self.parse_block()
+            return stmt
+
+        # --- VAR & FUNC DECLARATION ---
         if tok.type in ("INT_KW", "FLOAT_KW", "BOOL_KW", "STRING_KW"):
-            vartype = self.eat(tok.type).type.replace("_KW", "").lower()  # e.g., "INT_KW" → "int"
+            vartype = self.eat(tok.type).type.replace("_KW", "").lower()
             name = self.eat("ID").value
-            self.eat("ASSIGN")
-            value = self.expr()
-            stmt = VarDecl(vartype, name, value)
+            if self.current().type == "LPAREN":
+                # Function declaration
+                return self.parse_function(vartype, name)
+            else:
+                value = None
+                if self.current().type == "ASSIGN":
+                    self.eat("ASSIGN")
+                    value = self.expr()
+                stmt = VarDecl(vartype, name, value)
+                self.eat("SEMI")
+                return stmt
 
-        # Handle if/else/while
-        elif tok.type == "IF":
-            return self.parse_if()
-        elif tok.type == "WHILE":
-            return self.parse_while()
-        elif tok.type == "FOR":
-            return self.parse_for()
-        elif tok.type == "LBRACE":
-            return self.parse_block()
-        
-        # Handle other keywords
-        elif tok.type == "IMPORT":
-            return self.parse_import()
-
-        # Handle variable assignment like: x = expr; or a.b = expr;
-        elif tok.type == "ID":
-            # Look ahead to check if this could be an assignment
+        # --- ASSIGNMENT OR EXPRESSION ---
+        if tok.type == "ID":
             save_pos = self.pos
-            target = self.parse_dotted_var()  # parse possible dotted name
+            target = self.parse_dotted_var()  # parse x or math.PI
 
             if self.current().type == "ASSIGN":
                 self.eat("ASSIGN")
                 value = self.expr()
                 stmt = Assign(target, value)
             else:
-                # Not an assignment — roll back and treat it as expression
+                # Roll back and treat as expression
                 self.pos = save_pos
                 stmt = self.expr()
 
-        
-        # Expect a semicolon after the statement
-        if self.current().type == "SEMI":
             self.eat("SEMI")
-        else:
-            raise SyntaxError(f"Expected ';' after statement, got {self.current().type}")
+            return stmt
 
-        return stmt
+        # --- Anything else is invalid ---
+        raise SyntaxError(f"Unexpected token {tok.type} at position {tok.position}")
+
         
+    def parse_function(self, rettype, name):
+        # Parameter list
+        self.eat("LPAREN")
+        params = []
+
+        if self.current().type != "RPAREN":
+            while True:
+                # param type
+                ptype = self.eat(self.current().type).type.replace("_KW", "").lower()
+                
+                # reject void parameters
+                if ptype == "void":
+                    raise SyntaxError("Parameter type cannot be void")
+
+                # param name
+                pname = self.eat("ID").value
+                params.append((ptype, pname))
+
+                if self.current().type == "COMMA":
+                    self.eat("COMMA")
+                else:
+                    break
+
+        self.eat("RPAREN")
+
+        # Body must be a block
+        body = self.parse_block()
+
+        return FuncDecl(rettype, name, params, body)
+    
+
 
     def parse_import(self):
             self.eat("IMPORT")
@@ -171,6 +224,8 @@ class Parser:
                 self.eat("ASSIGN")
                 value = self.expr()
             return VarDecl(vartype, name, value)
+
+
         # --- Assignment ---
         if tok.type == "ID":
             save_pos = self.pos
@@ -329,6 +384,9 @@ class Parser:
                         output.append(Call(var_node, args))
                     else:
                         output.append(var_node)
+                    
+                    expect_operand = False
+                    continue
 
             # Comma — end of expression in argument lists; stop and let caller handle (TODO: implement)
             if tok.type == "COMMA":

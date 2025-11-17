@@ -18,9 +18,12 @@ TOKEN_SPEC = [
     ("FLOAT_KW", r"\bfloat\b"),       # float type keyword
     ("BOOL_KW", r"\bbool\b"),         # boolean type keyword
     ("STRING_KW", r"\bstring\b"),     # string type keyword
+    ("VOID_KW", r"\bvoid\b"),         # void type keyword
 
     # --- Other Keywords ---
     ("IMPORT", r"\bimport\b"),  # import keyword
+    ("RETURN", r"\breturn\b"),  # return keyword
+
 
     # --- Literals ---
     ("FLOAT",   r"\d+\.\d+"),          # check for float first (so 3.14 is not parsed as int + .14)

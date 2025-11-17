@@ -52,7 +52,6 @@ class While:
     condition: Any
     body: Any
 
-#Uses for printing values to the console/stdout
 @dataclass
 class Call:
     func: Any      
@@ -61,6 +60,19 @@ class Call:
 @dataclass
 class Import:
     module: str
+
+@dataclass
+class FuncDecl:
+    return_type: Any
+    name: str
+    params: List[Any]
+    body: Any     
+
+@dataclass
+class Return:
+    value: Any
+
+
 
 #A block of statements (used for bodies of if/while)
 @dataclass

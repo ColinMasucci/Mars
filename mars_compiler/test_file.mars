@@ -1,19 +1,10 @@
-import math
+# Minimal user-defined function test
 
-float e = math.E;
-print(math.round(e, 2));
-
-bool mybool = true||false;
-print(mybool);
-
-print(true || false && false);
-
-print(2 >= 2);
-
-print(1< -1);
-
-print((true || false) && false);
-
-if(true || false && false){
-    print(true);
+# Function that adds two numbers
+float add(float a, float b) {
+    return a + b;
 }
+
+# Call the function
+float x = add(2.0, 3.0);
+print(x);  # should print 5

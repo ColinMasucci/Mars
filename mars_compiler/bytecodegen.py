@@ -5,17 +5,36 @@ import ast_nodes as ast
 
 
 Instr = Tuple[str, ...] # instruction is a tuple of strings and then somtimes numbers. (Ex. ("PUSH_INT", 42) or ("ADD",) )
-
+function_table = {}  # name -> start index
 
 #This returns a List of instructions (bytecode) from the AST, and will give them to the Stack VM.
 def compile_program(node: ast.Program, printBytecode = False) -> List[Instr]:
     code = []
+
+    # Reserve space for a JUMP over all function definitions
+    code.append(("JUMP", None))  # placeholder
+
+    # Compile function declarations first
     for stmt in node.statements:
-        compile_node(stmt, code)
-    code.append(("HALT",)) # this is for the ending of the program (so we know when to stop)
+        if isinstance(stmt, ast.FuncDecl):
+            compile_node(stmt, code)
+
+    # Mark the start of the main program
+    main_start = len(code)
+
+    # Patch the jump
+    code[0] = ("JUMP", main_start)
+
+    # Compile all NON-function statements
+    for stmt in node.statements:
+        if not isinstance(stmt, ast.FuncDecl):
+            compile_node(stmt, code)
+
+    code.append(("HALT",))
     if printBytecode:
         print_bytecode(code)
     return code
+
 
 def compile_node(node, code: List[Instr]):
     """Emit bytecode for a single AST node appending into code list."""
@@ -136,6 +155,35 @@ def compile_node(node, code: List[Instr]):
             # Finally, emit the LOAD instruction for the VM
             code.append(("LOAD", name))
 
+        case ast.FuncDecl(return_type, name, params, body):
+            # Record the function start
+            func_start = len(code)
+            function_table[name] = func_start
+
+            # Emit label for VM to know where function starts
+            code.append(("FUNC_BEGIN", name, len(params)))
+
+            # Push parameters into local variables
+            for ptype, pname in params:
+                code.append(("DECLARE", pname, ptype))
+
+            # Compile function body
+            compile_node(body, code)
+
+            # Ensure function always returns; for void functions, push None
+            code.append(("FUNC_END", name))
+            return
+
+        case ast.Return(value):
+            # Compile the return value onto the stack
+            if value is not None:
+                compile_node(value, code)
+            else:
+                code.append(("PUSH_NONE",))  # placeholder for void return
+
+            # Signal VM to return from function
+            code.append(("RETURN",))
+            return
 
         
         case ast.If(cond, then_branch, else_branch):
@@ -186,7 +234,7 @@ def compile_node(node, code: List[Instr]):
                         raise TypeError(f"Module '{module_name}' has no function '{func_name}'")
                 else:
                     # Top-level function
-                    if func.name not in {"print"}:
+                    if func.name not in {"print"} and func.name not in function_table:
                         raise TypeError(f"Unknown function '{func.name}'")
 
             # Compile arguments

@@ -14,6 +14,7 @@ class VM:
         self.pc = 0
         self.locals = {}  # {name: (value, vartype)}
         self._modules = {}  # module_name -> module object
+        self.call_stack = []  # stack of (return_pc, locals_snapshot)
 
 
     def run(self):
@@ -182,26 +183,85 @@ class VM:
                         self.locals[f"{module_name}.{name}"] = (val, "function" if callable(val) else type(val).__name__)
 
 
+                case "FUNC_BEGIN":
+                    # Skip function body if running normally
+                    # args: name, param_count
+                    self.pc += 1
+                    while self.pc < len(self.code):
+                        next_op = self.code[self.pc][0]
+                        if next_op == "FUNC_END":
+                            break
+                        self.pc += 1
+                    continue  # skip executing function body
+
+                case "FUNC_END":
+                    # Nothing: return should handle exiting
+                    pass
+
                 case "CALL":
-                    # args[0] = function name (e.g., "math.sqrt")
-                    # args[1] = number of arguments
                     func_name, n_args = args
                     n_args = int(n_args)
-
-                    # Pop arguments off the stack in reverse (last pushed = last arg)
                     arg_values = [self.stack.pop() for _ in range(n_args)][::-1]
 
-                    # Look up function in locals
-                    if func_name not in self.locals:
-                        raise VMError(f"Unknown function '{func_name}'")
-                    
-                    func, typ = self.locals[func_name]
-                    if typ != "function":
-                        raise VMError(f"'{func_name}' is not a function")
+                    # Lookup locals for user-defined functions / builtins
+                    func_val, typ = self.locals.get(func_name, (None, None))
+                    if typ == "function" and callable(func_val):
+                        # Built-in Python function
+                        result = func_val(*arg_values)
+                        self.stack.append(result)
+                    else:
+                        # User-defined function: find FUNC_BEGIN index
+                        func_pc = None
+                        for idx, instr in enumerate(self.code):
+                            if instr[0] == "FUNC_BEGIN" and instr[1] == func_name:
+                                # idx points at FUNC_BEGIN; function body first instr is idx+1
+                                func_pc = idx + 1
+                                func_begin_idx = idx
+                                break
+                        if func_pc is None:
+                            raise VMError(f"User function '{func_name}' not found")
 
-                    # Call the function
-                    result = func(*arg_values)
-                    self.stack.append(result)
+                        # Read parameter count from FUNC_BEGIN tuple (third element)
+                        param_count = int(self.code[func_begin_idx][2]) if len(self.code[func_begin_idx]) > 2 else 0
+
+                        # Read parameter names from the next param_count instructions.
+                        # Expect those to be DECLARE instructions emitted by the compiler.
+                        param_names = []
+                        for i in range(param_count):
+                            decl_idx = func_pc + i
+                            if decl_idx >= len(self.code):
+                                raise VMError(f"Malformed function '{func_name}': missing parameter DECLAREs")
+                            decl_instr = self.code[decl_idx]
+                            if decl_instr[0] != "DECLARE":
+                                raise VMError(f"Malformed function '{func_name}': expected DECLARE for parameter at bytecode index {decl_idx}, found {decl_instr[0]}")
+                            # DECLARE format: ("DECLARE", name, vartype)
+                            param_names.append(decl_instr[1])
+
+                        # Save current pc+1 (next instruction after CALL) and locals snapshot on call stack
+                        self.call_stack.append((self.pc + 1, self.locals.copy()))
+
+                        # Install fresh locals and bind parameters
+                        self.locals = {}
+                        for name, val in zip(param_names, arg_values):
+                            self.locals[name] = (val, "unknown")  # type info optional
+
+                        # Jump to the first instruction of the function body (skip the param DECLAREs)
+                        self.pc = func_pc + param_count
+                        continue
+
+
+                case "RETURN":
+                    # Optional: push return value
+                    ret_val = self.stack.pop() if self.stack else None
+
+                    if not self.call_stack:
+                        raise VMError("Return outside function")
+
+                    self.pc, self.locals = self.call_stack.pop()
+                    if ret_val is not None:
+                        self.stack.append(ret_val)
+                    continue
+
 
 
                 case _:
