@@ -1,4 +1,4 @@
-from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, Return, FuncDecl
+from ast_nodes import ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, Return, FuncDecl
 import os
 import importlib.util
 
@@ -122,19 +122,48 @@ class TypeChecker:
 
 
             case Assign(name_node, value):
-                if not isinstance(name_node, Var):
-                    raise TypeError("LHS must be Var")
-                name = name_node.name
-                sym = self._lookup_symbol(name)
-                if sym is None:
-                    raise TypeError(f"Assignment to undeclared variable '{name}'")
-                if sym.get("mutable") is False:
-                    raise TypeError("Cannot assign to immutable symbol")
-                value_type = self.check(value)
-                expected = sym["type"]
-                if expected != value_type:
-                    raise TypeError(f"Type mismatch in assignment to '{name}': expected {expected}, got {value_type}")
-                return expected
+                # LHS can be Var or ArrayAccess (e.g., arr[i])
+                if isinstance(name_node, Var):
+                    name = name_node.name
+                    sym = self._lookup_symbol(name)
+                    if sym is None:
+                        raise TypeError(f"Assignment to undeclared variable '{name}'")
+                    if sym.get("mutable") is False:
+                        raise TypeError("Cannot assign to immutable symbol")
+                    value_type = self.check(value)
+                    expected = sym["type"]
+                    if expected != value_type:
+                        raise TypeError(f"Type mismatch in assignment to '{name}': expected {expected}, got {value_type}")
+                    return expected
+
+                # Assignment to an array element: ArrayAccess(array, index)
+                if isinstance(name_node, ArrayAccess):
+                    # base must be a variable (we require assignable lvalue)
+                    base = name_node.array
+                    if not isinstance(base, Var):
+                        raise TypeError("Left-hand side of assignment must be a variable or array element of a variable")
+                    base_sym = self._lookup_symbol(base.name)
+                    if base_sym is None:
+                        raise TypeError(f"Assignment to undeclared variable '{base.name}'")
+                    if base_sym.get("mutable") is False:
+                        raise TypeError("Cannot assign to immutable symbol")
+
+                    base_type = base_sym["type"]
+                    if not (isinstance(base_type, str) and base_type.startswith("array<") and base_type.endswith(">")):
+                        raise TypeError(f"Trying to index non-array type '{base_type}'")
+
+                    elem_type = base_type[len("array<"):-1]  # extract element type
+                    # check index type
+                    idx_type = self.check(name_node.index)
+                    if idx_type != "int":
+                        raise TypeError(f"Array index must be an int, got {idx_type}")
+
+                    value_type = self.check(value)
+                    if value_type != elem_type:
+                        raise TypeError(f"Type mismatch assigning to array element: expected {elem_type}, got {value_type}")
+                    return elem_type
+
+                raise TypeError("LHS of assignment must be a variable or an array access")
 
 
             case Var(name):
@@ -231,7 +260,30 @@ class TypeChecker:
                 if cond_type not in ("bool", "int", "float"):
                     raise TypeError(f"Condition must be boolean or numeric, got {cond_type}") # allow numeric conditions as truthy/falsy
                 self.check(body)
+            
+            case ArrayLiteral(elements):
+                # empty array -> array<any>
+                if not elements:
+                    return "array<any>"
+                # check types of all elements (must match)
+                elem_types = [self.check(e) for e in elements]
+                first = elem_types[0]
+                for t in elem_types[1:]:
+                    if t != first:
+                        raise TypeError(f"Array literal contains mixed element types: {first} and {t}")
+                return f"array<{first}>"
 
+            case ArrayAccess(array_expr, index_expr):
+                # check index type
+                idx_t = self.check(index_expr)
+                if idx_t != "int":
+                    raise TypeError(f"Array index must be an int, got {idx_t}")
+
+                arr_t = self.check(array_expr)
+                if not (isinstance(arr_t, str) and arr_t.startswith("array<") and arr_t.endswith(">")):
+                    raise TypeError(f"Trying to index non-array type '{arr_t}'")
+                elem_type = arr_t[len("array<"):-1]
+                return elem_type
 
             case Call(func, args):
                 for arg in args: 

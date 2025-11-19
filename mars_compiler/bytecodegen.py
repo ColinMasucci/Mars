@@ -50,20 +50,34 @@ def compile_node(node, code: List[Instr]):
         
         case ast.BooleanLiteral(value):
             code.append(("PUSH_BOOL", value))
+
+        case ast.ArrayLiteral(elements):
+            # compile elements in-order (left-to-right)
+            for elem in elements:
+                compile_node(elem, code)
+            # BUILD_ARRAY will pop N items and push a single array object (preserving element order)
+            code.append(("BUILD_ARRAY", len(elements)))
         
         case ast.VarDecl(vartype, name, value):
             if value is not None:
                 compile_node(value, code)
             else:
-                match vartype:
-                    case "int" | "float":
-                        code.append(("PUSH_INT", 0))
-                    case "bool":
-                        code.append(("PUSH_BOOL", False))
-                    case "string":
-                        code.append(("PUSH_STR", ""))
-                    case _:
-                        raise ValueError(f"Unknown vartype '{vartype}' in VarDecl")
+                # Provides default initialization based on type (Now just empty array for array types)
+                # Add support for array types like "array<int>"
+                if isinstance(vartype, str) and vartype.startswith("array<") and vartype.endswith(">"):
+                    # push an empty array
+                    # VM should create an empty array object
+                    code.append(("PUSH_EMPTY_ARRAY",))
+                else:
+                    match vartype:
+                        case "int" | "float":
+                            code.append(("PUSH_INT", 0))
+                        case "bool":
+                            code.append(("PUSH_BOOL", False))
+                        case "string":
+                            code.append(("PUSH_STR", ""))
+                        case _:
+                            raise ValueError(f"Unknown vartype '{vartype}' in VarDecl")
             code.append(("DECLARE", name, vartype))
 
         case ast.BinaryOp(op, left, right):
@@ -123,19 +137,39 @@ def compile_node(node, code: List[Instr]):
                     raise NotImplementedError(f"Unary operator not implemented: {op}")
 
 
-        case ast.Assign(name, value):
-            compile_node(value, code)
-            if "." in name:
-                # Split like "a.b.c" → base="a", fields=["b","c"]
-                parts = name.split(".")
+        case ast.Assign(name_node, value):
+            # Assignment to a plain variable (Var)
+            if isinstance(name_node, ast.Var):
+                compile_node(value, code)
+                # store expects: <value> on top, then STORE will pop it and store into name
+                code.append(("STORE", name_node.name))
+                return
+
+            # Assignment to a dotted field like a.b.c (Split like "a.b.c" → base="a", fields=["b","c"])
+            if isinstance(name_node, str) and "." in name_node:
+                parts = name_node.split(".")
                 base = parts[0]
                 fields = parts[1:]
+                # compile value then set through fields
+                compile_node(value, code)
                 code.append(("LOAD", base))
                 for f in fields[:-1]:
                     code.append(("GET_FIELD", f))
                 code.append(("SET_FIELD", fields[-1]))
-            else:
-                code.append(("STORE", name))
+                return
+
+            # Assignment to array element: ArrayAccess(array_expr, index_expr)
+            if isinstance(name_node, ast.ArrayAccess):
+                # We will compile: <array>, <index>, <value> then ARRAY_SET will pop value,index,array and set.
+                # But to avoid temporaries, compile array and index first, then compile value.
+                # This order yields stack: [..., array, index, value]
+                compile_node(name_node.array, code)
+                compile_node(name_node.index, code)
+                compile_node(value, code)
+                code.append(("ARRAY_SET",))
+                return
+
+            raise NotImplementedError("Unsupported LHS in assignment")
 
         case ast.Var(name):
             """Access a variable or module member."""
@@ -154,6 +188,16 @@ def compile_node(node, code: List[Instr]):
                     raise TypeError(f"Module '{module_name}' has no member '{member_name}'")
             # Finally, emit the LOAD instruction for the VM
             code.append(("LOAD", name))
+        
+        case ast.ArrayAccess(array_expr, index_expr):
+            # compile array, then index, then ARRAY_GET
+            # stack after compile: [..., array, index]
+            compile_node(array_expr, code)
+            compile_node(index_expr, code)
+            # ARRAY_GET will pop index and array (in whichever order your VM expects),
+            # and push the retrieved element
+            code.append(("ARRAY_GET",))
+            return
 
         case ast.FuncDecl(return_type, name, params, body):
             # Record the function start

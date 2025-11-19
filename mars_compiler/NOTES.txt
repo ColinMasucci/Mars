@@ -10,3 +10,6 @@ TODO:
     better error handling
     external packages
     change colors of our language (Text Mate, LSP Language Server Protocol)
+
+    use constants instead of strings for the role in shunting yard
+    templates and generics for array

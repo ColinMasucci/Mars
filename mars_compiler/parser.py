@@ -1,4 +1,4 @@
-from ast_nodes import NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return
+from ast_nodes import ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -143,11 +143,11 @@ class Parser:
 
 
     def parse_import(self):
-            self.eat("IMPORT")
-            module_name = self.eat("ID").value  # we only support single module imports for now
-            stmt = Import(module_name)
-            #self.eat("SEMI")
-            return stmt
+        self.eat("IMPORT")
+        module_name = self.eat("ID").value  # we only support single module imports for now
+        stmt = Import(module_name)
+        #self.eat("SEMI")
+        return stmt
     
     def parse_if(self):
         self.eat("IF")
@@ -327,7 +327,26 @@ class Parser:
             tok = self.current()
 
             # Literals / identifiers / function calls / parenthesized expressions
-            if tok.type in ("INT", "FLOAT", "STRING", "TRUE", "FALSE", "ID", "LPAREN"):
+            if tok.type in ("INT", "FLOAT", "STRING", "TRUE", "FALSE", "ID", "LPAREN", "LBRACKET"):
+
+                # --- ARRAY LITERAL ---
+                if tok.type == "LBRACKET":
+                    self.eat("LBRACKET")
+                    elements = []
+                    if self.current().type != "RBRACKET":
+                        while True:
+                            elements.append(self.parse_expression(stop_tokens={"COMMA", "RBRACKET"}))
+                            if self.current().type == "COMMA":
+                                self.eat("COMMA")
+                                continue
+                            break
+                    self.eat("RBRACKET")
+                    node = ArrayLiteral(elements)
+                    output.append(node)
+                    expect_operand = False
+                    continue
+
+                # --- PARENTHESIZED EXPRESSION ---
                 # If it's a parenthesized expression -> parse inner expression recursively
                 if tok.type == "LPAREN":
                     self.eat("LPAREN")
@@ -338,7 +357,7 @@ class Parser:
                     expect_operand = False
                     continue
 
-                # Literals
+                # --- LITERALS ---
                 if tok.type == "INT":
                     self.eat("INT")
                     output.append(NumberLiteral(int(tok.value)))
@@ -381,10 +400,18 @@ class Parser:
                                     continue
                                 break
                         self.eat("RPAREN")
-                        output.append(Call(var_node, args))
+                        node = Call(var_node, args)
                     else:
-                        output.append(var_node)
-                    
+                        node = var_node
+
+                    # --- ARRAY INDEXING (postfix) ---
+                    while self.current().type == "LBRACKET":
+                        self.eat("LBRACKET")
+                        index_expr = self.parse_expression(stop_tokens={"RBRACKET"})
+                        self.eat("RBRACKET")
+                        node = ArrayAccess(node, index_expr)
+
+                    output.append(node)
                     expect_operand = False
                     continue
 

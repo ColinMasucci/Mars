@@ -14,6 +14,15 @@ class BooleanLiteral:
     value: bool
 
 @dataclass
+class ArrayLiteral:
+    elements: List[Any]
+
+@dataclass
+class ArrayAccess:
+    array: Any
+    index: Any
+
+@dataclass
 class BinaryOp: # (Ex. PLUS, MUL, DIV, MINUS)
     op: str
     left: Any

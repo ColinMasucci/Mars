@@ -61,6 +61,8 @@ TOKEN_SPEC = [
     ("SEMI", r";"),                    # semicolon as statement separator
     ("COMMA", r","),                   # comma as parameter separator
     ("DOT", r"\."),                    # for module.function syntax
+    ("LBRACKET", r"\["),               # for arrays
+    ("RBRACKET", r"\]"),
 
     # --- conditionals ---
     ("IF", r"if"),                     # check for if statements
