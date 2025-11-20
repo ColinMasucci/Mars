@@ -67,6 +67,14 @@ class TypeChecker:
                 return scope[name]
         return None
 
+    def _normalize_type(self, typ: str):
+        # Convert parser array syntax -> type checker array syntax (e.g., int[] -> array<int>)
+        # This is because parser uses int[] syntax for easier parsing, but type checker uses array<int> internally
+        # We make this change because its better for the type checker to handle nested arrays (e.g., array<array<int>> vs int[][])
+        if typ.endswith("[]"):
+            elem_type = typ[:-2]
+            return f"array<{elem_type}>"
+        return typ
 
 
 
@@ -110,6 +118,7 @@ class TypeChecker:
 
 
             case VarDecl(vartype, name, value):
+                vartype = self._normalize_type(vartype)   # normalize type (e.g., int[] -> array<int>)
                 if name in self._current_scope():
                     raise TypeError(f"Variable '{name}' already declared")
                 value_type = None

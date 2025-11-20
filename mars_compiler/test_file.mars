@@ -1,3 +1,5 @@
+import math;
+
 # Minimal user-defined function test
 
 # Function that adds two numbers
@@ -8,3 +10,17 @@ float add(float a, float b) {
 # Call the function
 float x = add(2.0, 3.0);
 print(x);  # should print 5
+
+
+print(math.abs(-4.0));
+
+int[] arr = [1, 2, 3];
+float[] data = [1.0, 2.5, 3.7];
+string[] names = ["Alice", "Bob"];
+bool[] flags = [true, false, true];
+
+print(arr, data, names, flags);
+print(arr[1]);
+
+#arr[1] = 98;
+print(arr[1]);

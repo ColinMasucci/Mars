@@ -75,7 +75,17 @@ class Parser:
 
         # --- VAR & FUNC DECLARATION ---
         if tok.type in ("INT_KW", "FLOAT_KW", "BOOL_KW", "STRING_KW"):
+            #Base type for variable declaration
             vartype = self.eat(tok.type).type.replace("_KW", "").lower()
+
+            # Check for array type
+            is_array = False
+            if self.current().type == "LBRACKET":
+                self.eat("LBRACKET")
+                self.eat("RBRACKET")
+                vartype += "[]"  # ex. "int[]"
+                is_array = True
+
             name = self.eat("ID").value
             if self.current().type == "LPAREN":
                 # Function declaration
@@ -578,6 +588,19 @@ class Parser:
             case Assign(name, value):
                 print(f"{prefix}Assign({name})")
                 self.print_ast(value, indent + 1)
+            case VarDecl(vartype, name, value):
+                print(f"{prefix}VarDecl({vartype} {name})")
+                if value:
+                    self.print_ast(value, indent+1)
+            case ArrayLiteral(elements):
+                print(f"{prefix}ArrayLiteral([")
+                for el in elements:
+                    self.print_ast(el, indent+1)
+                print(f"{prefix}])")
+            case ArrayAccess(array, index):
+                print(f"{prefix}ArrayAccess")
+                self.print_ast(array, indent+1)
+                self.print_ast(index, indent+1)
             case _:
                 print(f"{prefix}Unknown node type: {node}")
         if indent == 0:

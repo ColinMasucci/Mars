@@ -262,7 +262,49 @@ class VM:
                         self.stack.append(ret_val)
                     continue
 
+                case "BUILD_ARRAY":
+                    # args[0] is N (may be passed as int or string)
+                    n = int(args[0])
+                    if n > len(self.stack):
+                        raise VMError(f"BUILD_ARRAY expected {n} values but stack has {len(self.stack)}")
+                    # pop elements in reverse order, then rebuild correct left-to-right order
+                    elems = [self.stack.pop() for _ in range(n)][::-1]
+                    self.stack.append(elems)  # represent arrays as Python lists
 
+                case "PUSH_EMPTY_ARRAY":
+                    self.stack.append([])
+
+                case "ARRAY_GET":
+                    # Compiler pushes: array, then index  -> stack [..., array, index]
+                    # So pop index then array, then push array[index]
+                    if len(self.stack) < 2:
+                        raise VMError("ARRAY_GET requires array and index on stack")
+                    idx = self.stack.pop()
+                    arr = self.stack.pop()
+                    if not isinstance(idx, int):
+                        raise VMError(f"Array index must be int, got {type(idx).__name__}")
+                    if not isinstance(arr, list):
+                        raise VMError(f"Trying to index non-array value of type {type(arr).__name__}")
+                    if idx < 0 or idx >= len(arr):
+                        raise VMError(f"Array index out of bounds: {idx}")
+                    self.stack.append(arr[idx])
+
+                case "ARRAY_SET":
+                    # Compiler pushes: array, index, value -> stack [..., array, index, value]
+                    # Pop in order value, index, array; perform array[index] = value
+                    if len(self.stack) < 3:
+                        raise VMError("ARRAY_SET requires array, index, and value on stack")
+                    val = self.stack.pop()
+                    idx = self.stack.pop()
+                    arr = self.stack.pop()
+                    if not isinstance(idx, int):
+                        raise VMError(f"Array index must be int, got {type(idx).__name__}")
+                    if not isinstance(arr, list):
+                        raise VMError(f"Trying to index-assign into non-array value of type {type(arr).__name__}")
+                    if idx < 0 or idx >= len(arr):
+                        raise VMError(f"Array index out of bounds: {idx}")
+                    arr[idx] = val
+                    # ARRAY_SET returns nothing (assignment statement).
 
                 case _:
                     raise VMError(f"Unknown opcode {op}")
