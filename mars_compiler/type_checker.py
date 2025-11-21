@@ -72,7 +72,7 @@ class TypeChecker:
         # This is because parser uses int[] syntax for easier parsing, but type checker uses array<int> internally
         # We make this change because its better for the type checker to handle nested arrays (e.g., array<array<int>> vs int[][])
         if typ.endswith("[]"):
-            elem_type = typ[:-2]
+            elem_type = self._normalize_type(typ[:-2])  # recursive call
             return f"array<{elem_type}>"
         return typ
 

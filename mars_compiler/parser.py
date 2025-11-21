@@ -39,6 +39,26 @@ class Parser:
 
         return Var(".".join(name_parts))
     
+    def parse_assignable(self):
+        """
+        Parse something that can appear on the LEFT of '='
+        Examples:
+        x
+        obj.field
+        arr[0]
+        matrix[1][2]
+        """
+        node = self.parse_dotted_var()
+
+        while self.current().type == "LBRACKET":
+            self.eat("LBRACKET")
+            index = self.parse_expression(stop_tokens={"RBRACKET"})
+            self.eat("RBRACKET")
+            node = ArrayAccess(node, index)
+
+        return node
+
+    
     def parse_statement(self):
         tok = self.current()
 
@@ -78,13 +98,10 @@ class Parser:
             #Base type for variable declaration
             vartype = self.eat(tok.type).type.replace("_KW", "").lower()
 
-            # Check for array type
-            is_array = False
-            if self.current().type == "LBRACKET":
+            while self.current().type == "LBRACKET":
                 self.eat("LBRACKET")
                 self.eat("RBRACKET")
                 vartype += "[]"  # ex. "int[]"
-                is_array = True
 
             name = self.eat("ID").value
             if self.current().type == "LPAREN":
@@ -100,15 +117,16 @@ class Parser:
                 return stmt
 
         # --- ASSIGNMENT OR EXPRESSION ---
-        if tok.type == "ID":
+        if tok.type in ("ID", "LPAREN", "LBRACKET"):
             save_pos = self.pos
-            target = self.parse_dotted_var()  # parse x or math.PI
+            target = self.parse_assignable()
 
             if self.current().type == "ASSIGN":
                 self.eat("ASSIGN")
                 value = self.expr()
                 stmt = Assign(target, value)
             else:
+                #stmt = target  # it's just an expression
                 # Roll back and treat as expression
                 self.pos = save_pos
                 stmt = self.expr()
