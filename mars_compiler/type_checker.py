@@ -1,4 +1,4 @@
-from ast_nodes import ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, Return, FuncDecl
+from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, Return, FuncDecl
 import os
 import importlib.util
 
@@ -281,18 +281,58 @@ class TypeChecker:
                     if t != first:
                         raise TypeError(f"Array literal contains mixed element types: {first} and {t}")
                 return f"array<{first}>"
+            
+            case DictLiteral(pairs):
+                if not pairs:
+                    return "dict<any, any>"
 
-            case ArrayAccess(array_expr, index_expr):
-                # check index type
+                key_types = []
+                value_types = []
+
+                for key, value in pairs:
+                    k_type = self.check(key)
+                    v_type = self.check(value)
+                    key_types.append(k_type)
+                    value_types.append(v_type)
+
+                # All keys must match
+                first_key = key_types[0]
+                for k in key_types[1:]:
+                    if k != first_key:
+                        raise TypeError(f"Dictionary contains mixed key types: {first_key} and {k}")
+
+                # All values must match
+                first_val = value_types[0]
+                for v in value_types[1:]:
+                    if v != first_val:
+                        raise TypeError(f"Dictionary contains mixed value types: {first_val} and {v}")
+
+                return f"dict<{first_key}, {first_val}>"
+
+            #Used for both Arrays and Dictionaries
+            case ArrayAccess(container_expr, index_expr):
+                # check index and container types
                 idx_t = self.check(index_expr)
-                if idx_t != "int":
-                    raise TypeError(f"Array index must be an int, got {idx_t}")
+                cont_t = self.check(container_expr)
 
-                arr_t = self.check(array_expr)
-                if not (isinstance(arr_t, str) and arr_t.startswith("array<") and arr_t.endswith(">")):
-                    raise TypeError(f"Trying to index non-array type '{arr_t}'")
-                elem_type = arr_t[len("array<"):-1]
-                return elem_type
+                # ARRAY ACCESS
+                if isinstance(cont_t, str) and cont_t.startswith("array<") and cont_t.endswith(">"):
+                    if idx_t != "int":
+                        raise TypeError(f"Array index must be an int, got {idx_t}")
+                    return cont_t[len("array<"):-1]
+                
+
+                # DICT ACCESS
+                if isinstance(cont_t, str) and cont_t.startswith("dict<") and cont_t.endswith(">"):
+                    inside = cont_t[len("dict<"):-1]  # "keyType, valueType"
+                    key_t, val_t = [x.strip() for x in inside.split(",")]
+
+                    if idx_t != key_t:
+                        raise TypeError(f"Dictionary key must be {key_t}, got {idx_t}")
+
+                    return val_t
+
+                raise TypeError(f"Trying to index non-indexable type '{cont_t}'")
 
             case Call(func, args):
                 for arg in args: 

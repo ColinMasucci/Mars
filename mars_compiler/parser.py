@@ -1,4 +1,5 @@
-from ast_nodes import ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return
+from sys import prefix
+from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -349,7 +350,7 @@ class Parser:
 
             if self.current().type not in OP_INFO: # For Unrecognized operators, Quit parsing
                 break
-
+            
             # Get current token info
             op_tok = self.current()
             key = op_tok.type
@@ -435,6 +436,35 @@ class Parser:
     def parse_primary(self):
         tok = self.current()
 
+        # DICTIONARY LITERAL
+        if tok.type == "LBRACE":
+            self.eat("LBRACE")
+            pairs = []
+
+            if self.current().type != "RBRACE":
+                while True:
+                    # Parse key
+                    key = self.parse_expression({"COLON"})
+
+                    if self.current().type != "COLON":
+                        raise SyntaxError(f"Expected ':' in dictionary at {self.current().position}")
+
+                    self.eat("COLON")
+
+                    # Parse value
+                    value = self.parse_expression({"COMMA", "RBRACE"})
+
+                    pairs.append((key, value))
+
+                    if self.current().type == "COMMA":
+                        self.eat("COMMA")
+                        continue # if theres a comma, continue parsing more key:value pairs
+                    break
+            
+            self.eat("RBRACE")
+            return DictLiteral(pairs)
+
+
         # ARRAY LITERAL
         if tok.type == "LBRACKET":
             self.eat("LBRACKET")
@@ -445,7 +475,7 @@ class Parser:
                     elements.append(self.parse_expression({"COMMA", "RBRACKET"}))
                     if self.current().type == "COMMA":
                         self.eat("COMMA")
-                        continue
+                        continue # if theres a comma, continue parsing more elements
                     break
 
             self.eat("RBRACKET")
@@ -589,6 +619,15 @@ class Parser:
                 print(f"{prefix}ArrayAccess")
                 self.print_ast(array, indent+1)
                 self.print_ast(index, indent+1)
+            case DictLiteral(pairs):
+                print(f"{prefix}DictLiteral{{")
+                for k, v in pairs:
+                    print(f"{prefix}  Key:")
+                    self.print_ast(k, indent + 2)
+                    print(f"{prefix}  Value:")
+                    self.print_ast(v, indent + 2)
+                print(f"{prefix}}}")
+
             case _:
                 print(f"{prefix}Unknown node type: {node}")
         if indent == 0:
