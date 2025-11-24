@@ -12,7 +12,7 @@ float x = add(2.0, 3.0);
 print(x);  # should print 5
 
 
-print(math.abs(-4.0));
+print(4*math.abs(-4.0)-2);
 
 int[] arr = [1, 2, 3];
 float[] data = [1.0, 2.5, 3.7];
@@ -33,3 +33,5 @@ print(numcube);
 
 string[][][] string_cube = [[["hello", "hello"],["world", "world"],["WOW", "WOW"]], [["This is", "empty->"],[""],["<-empty", "string"]]];
 print(string_cube);
+
+

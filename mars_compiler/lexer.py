@@ -19,6 +19,7 @@ TOKEN_SPEC = [
     ("BOOL_KW", r"\bbool\b"),         # boolean type keyword
     ("STRING_KW", r"\bstring\b"),     # string type keyword
     ("VOID_KW", r"\bvoid\b"),         # void type keyword
+    ("DICT_KW", r"\bdict\b"),       # dict type keyword
 
     # --- Other Keywords ---
     ("IMPORT", r"\bimport\b"),  # import keyword
@@ -39,8 +40,8 @@ TOKEN_SPEC = [
     ("NEQ", r"!="),                    # not equal operator
     ("LEQ", r"<="),                    # less than or equal to
     ("GEQ", r">="),                    # greater than or equal to
-    ("LT", r"<"),                      # less than operator
-    ("GT", r">"),                      # greater than operator
+    ("LT", r"<"),                      # less than operator (also for dict<K,V>)
+    ("GT", r">"),                      # greater than operator (also for dict<K,V>)
 
     # --- Operators ---
     ("INC",     r"\+\+"),              # check for increment operator
@@ -54,7 +55,7 @@ TOKEN_SPEC = [
     ("DIV",   r"/"),                   # check for division signs
 
     # --- Parentheses & punctuation ---
-    ("LBRACE", r"\{"),                 # identifying braces for blocks later on.
+    ("LBRACE", r"\{"),                 # identifying braces for blocks and also for dictionaries.
     ("RBRACE", r"\}"),
     ("LPAREN",  r"\("),                # identifying parentheses for priority later on.
     ("RPAREN",  r"\)"),

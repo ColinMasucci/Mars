@@ -14,6 +14,10 @@ class BooleanLiteral:
     value: bool
 
 @dataclass
+class DictLiteral:
+    pairs: List[tuple[Any, Any]]
+    
+@dataclass
 class ArrayLiteral:
     elements: List[Any]
 

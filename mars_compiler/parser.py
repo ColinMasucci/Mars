@@ -290,8 +290,10 @@ class Parser:
     ### SHUNTING YARD ALGORITHM FOR EXPRESSIONS ###
     # operator table:
     # key -> (precedence, associativity, arity (num ops), role)
+    # precedence is an integer (higher number = higher precedence), We perform operations with higher precedence first.
+    # associativity is "left" or "right" meaning if two operators of same precedence appear, which one to apply first (ex. 2^3^4 is right associative = 2^(3^4) vs 2*3*4 is left associative = (2*3)*4).
+    # arity is number of operands/numbers used for operation (1 for unary, 2 for binary)
     # role is "prefix", "postfix", or "binary" — used mostly for clarity/debug
-    # higher precedence number -> binds tighter
     global OP_INFO
     OP_INFO = {
         # postfix unary
@@ -334,204 +336,177 @@ class Parser:
         """Parse an expression up to a stop token (SEMI, RPAREN, COMMA, RBRACE)."""
         return self.parse_expression(stop_tokens={"SEMI", "RPAREN", "COMMA", "RBRACE"})
 
+
     def parse_expression(self, stop_tokens):
-        """Shunting-yard implementation to parse expressions with operator precedence.\n
+        """Shunting-yard implementation to parse expressions with operator precedence.
         stop_tokens: set of token types that indicate the end of the expression."""
 
-        output = []   # AST node stack
-        ops = []      # operator stack (items: dicts with fields "tok", "key")
+        output = [self.parse_prefix()] # initial operand (If we see a prefix operator, we must immediately parse the thing it belongs to and push that result to the output first.)
+        ops = []    # operator stack
 
-        def peek_ops():
-            return ops[-1] if ops else None
+        # While not at end of expression, start implement shunting-yard
+        while self.current().type not in stop_tokens and self.current().type != "EOF": 
 
-        def is_token_end():
-            return self.current().type in stop_tokens or self.current().type == "EOF"
-
-        # Sets our context, we need to know whether the next operator we see should be treated as prefix if we reach operators
-        # At the start we are in a "prefix-allowed" context (i.e., we expect a unary/prefix or primary) because we haven't seen a left operand yet
-        expect_operand = True
-
-        while not is_token_end():
-            tok = self.current()
-
-            # Literals / identifiers / function calls / parenthesized expressions
-            if tok.type in ("INT", "FLOAT", "STRING", "TRUE", "FALSE", "ID", "LPAREN", "LBRACKET"):
-
-                # --- ARRAY LITERAL ---
-                if tok.type == "LBRACKET":
-                    self.eat("LBRACKET")
-                    elements = []
-                    if self.current().type != "RBRACKET":
-                        while True:
-                            elements.append(self.parse_expression(stop_tokens={"COMMA", "RBRACKET"}))
-                            if self.current().type == "COMMA":
-                                self.eat("COMMA")
-                                continue
-                            break
-                    self.eat("RBRACKET")
-                    node = ArrayLiteral(elements)
-                    output.append(node)
-                    expect_operand = False
-                    continue
-
-                # --- PARENTHESIZED EXPRESSION ---
-                # If it's a parenthesized expression -> parse inner expression recursively
-                if tok.type == "LPAREN":
-                    self.eat("LPAREN")
-                    # parse inner expression until RPAREN
-                    node = self.parse_expression(stop_tokens={"RPAREN"})
-                    self.eat("RPAREN")
-                    output.append(node)
-                    expect_operand = False
-                    continue
-
-                # --- LITERALS ---
-                if tok.type == "INT":
-                    self.eat("INT")
-                    output.append(NumberLiteral(int(tok.value)))
-                    expect_operand = False
-                    continue
-                if tok.type == "FLOAT":
-                    self.eat("FLOAT")
-                    output.append(NumberLiteral(float(tok.value)))
-                    expect_operand = False
-                    continue
-                if tok.type == "STRING":
-                    self.eat("STRING")
-                    output.append(StringLiteral(tok.value.strip('"')))
-                    expect_operand = False
-                    continue
-                if tok.type == "TRUE":
-                    self.eat("TRUE")
-                    output.append(BooleanLiteral(True))
-                    expect_operand = False
-                    continue
-                if tok.type == "FALSE":
-                    self.eat("FALSE")
-                    output.append(BooleanLiteral(False))
-                    expect_operand = False
-                    continue
-
-                # Identifier: variable or function call
-                if tok.type == "ID":
-                    var_node = self.parse_dotted_var()
-
-                    # function call?
-                    if self.current().type == "LPAREN":
-                        self.eat("LPAREN")
-                        args = []
-                        if self.current().type != "RPAREN":
-                            while True:
-                                args.append(self.parse_expression(stop_tokens={"COMMA","RPAREN"}))
-                                if self.current().type == "COMMA":
-                                    self.eat("COMMA")
-                                    continue
-                                break
-                        self.eat("RPAREN")
-                        node = Call(var_node, args)
-                    else:
-                        node = var_node
-
-                    # --- ARRAY INDEXING (postfix) ---
-                    while self.current().type == "LBRACKET":
-                        self.eat("LBRACKET")
-                        index_expr = self.parse_expression(stop_tokens={"RBRACKET"})
-                        self.eat("RBRACKET")
-                        node = ArrayAccess(node, index_expr)
-
-                    output.append(node)
-                    expect_operand = False
-                    continue
-
-            # Comma — end of expression in argument lists; stop and let caller handle (TODO: implement)
-            if tok.type == "COMMA":
-                # exit to allow caller (arg parser) to consume comma
+            if self.current().type not in OP_INFO: # For Unrecognized operators, Quit parsing
                 break
 
-            # Operators
-            # Distinguish prefix unary vs binary vs postfix by expect_operand context
-            if tok.type in ("PLUS", "MINUS", "BANG", "INC", "DEC", 
-                            "MUL", "DIV", "POW", 
-                            "LT", "GT", "LEQ", "GEQ", "EQ", "NEQ", "AND", "OR"):
-                if expect_operand:
-                    # we are expecting/allowing a prefix/unary operator
-                    if expect_operand:
-                        if tok.type == "MINUS":
-                            key = "NEGATE"  # lexer does not know context, so we convert to NEGATE here
-                            self.eat("MINUS")
-                        elif tok.type == "BANG":
-                            key = "BANG"
-                            self.eat("BANG")
-                    else:
-                        # INC/DEC are not allowed as prefix per your requirement
-                        if tok.type in ("INC", "DEC"):
-                            raise SyntaxError(f"Prefix {tok.type} not supported as a prefix operation. Please use postfix form (ex: myVar++;) at {tok.position}")
-                        # PLUS as prefix is allowed (no-op) but we'll treat it as unary plus (we can ignore it)
-                        if tok.type == "PLUS":
-                            # eat it and do nothing (unary plus)
-                            self.eat("PLUS")
-                            continue
-                        # otherwise unexpected
-                        raise SyntaxError(f"Unexpected prefix operator {tok.type} at {tok.position}")
+            # Get current token info
+            op_tok = self.current()
+            key = op_tok.type
+            prec, assoc, _, _ = OP_INFO[key]
+            self.eat(op_tok.type)
+
+            # While there is an operator on the ops stack with greater precedence (Ex. if we have * on the ops stack while the current_op/op_tok is +), 
+            # or equal precedence and left-associative (Ex. if we have + on the ops stack while the current_op/op_tok is +),
+            # pop and apply it.
+            while ops:
+                top = ops[-1]
+                top_prec, _, _, _ = OP_INFO[top]
+
+                if (top_prec > prec) or (top_prec == prec and assoc == "left"):
+                    self._apply_op(output, ops.pop())
                 else:
-                    # expecting a binary or postfix operator
-                    # check for postfix (INC/DEC) — valid only in this position (after an operand)
-                    if tok.type in ("INC", "DEC"):
-                        # postfix binding
-                        key = f"{tok.type}"
-                        self.eat(tok.type)
-                        # Because postfix has very high precedence and arity 1, we will push it on ops
-                        # but we can also apply it immediately: treat like normal operator push (below)
-                    else:
-                        # it's binary (MUL, DIV, PLUS, MINUS)
-                        key = tok.type
-                        self.eat(tok.type)
+                    break
+            
+            # Otherwise, push the current operator onto the ops stack
+            ops.append(key)
+            if self.current().type in stop_tokens or self.current().type == "EOF":
+                raise SyntaxError(f"Missing operand after {key} at {op_tok.position}")
+            output.append(self.parse_prefix())
 
-                # now we have 'key' for operator; apply shunting-yard operator popping rules
-                # get info for this operator
-                if key not in OP_INFO:
-                    raise SyntaxError(f"Unknown operator form {key} at {tok.position}")
-                prec, assoc, arity, role = OP_INFO[key]
-
-                # While there is an operator on the ops stack with greater precedence, or equal precedence and left-associative, pop and apply it.
-                while True:
-                    top = peek_ops()
-                    if not top or top["tok"].type == "LPAREN":
-                        break
-                    top_key = top["key"]
-                    top_prec, top_assoc, _, _ = OP_INFO[top_key]
-                    if (top_prec > prec) or (top_prec == prec and assoc == "left"):
-                        # pop and apply top
-                        self._apply_op(output, ops.pop()["key"])
-                    else:
-                        break
-
-                # push current operator
-                ops.append({"tok": tok, "key": key})
-                # after an operator, we expect an operand next if it's prefix or binary operator;
-                # but if it was postfix we just consumed it and now we do not expect operand.
-                expect_operand = (role in ("prefix", "binary"))
-                continue
-
-            # 4) Parentheses closing / unexpected tokens
-            # If we reach here and didn't match anything, break to avoid infinite loop
-            break
-
-        # end loop: pop remaining operators until empty
+        # After we reach the end of the expression, pop and apply all remaining operators to finish shunting-yard
         while ops:
-            top = ops.pop()
-            if top["tok"].type == "LPAREN":
-                raise SyntaxError("Mismatched '('")
-            self._apply_op(output, top["key"])
+            self._apply_op(output, ops.pop())
 
         if not output:
             raise SyntaxError(f"Expected expression but found {self.current().type} at {self.current().position}")
-
+        
         if len(output) != 1:
             # should reduce to single AST node; if not, it's an error
             raise SyntaxError("Expression parsing error: output stack did not convert to AST correctly. Possible causes: incorrect syntax, recieved an empty expression, missed operators during process")
 
         return output[0]
+    
+    # Prefix unary operators, then return to postfix/primary parsing
+    # Note: When calling this function, 
+    #       First all prefix operators will be consumed, 
+    #       then the primary expression will be parsed,
+    #       then any postfix operators will be applied to the primary expression.
+    def parse_prefix(self):
+        tok = self.current()
+
+        if tok.type == "MINUS":       # unary negation
+            self.eat("MINUS")
+            return UnaryOp("NEGATE", self.parse_prefix())
+
+        if tok.type == "BANG":        # logical not
+            self.eat("BANG")
+            return UnaryOp("BANG", self.parse_prefix())
+
+        if tok.type == "PLUS":        # unary plus (does nothing, but valid)
+            self.eat("PLUS")
+            return self.parse_prefix()
+        
+        # Otherwise, parse primary and then postfix
+        return self.parse_postfix(self.parse_primary())
+
+    # Postfix unary operators and array indexing
+    def parse_postfix(self, node):
+        while True:
+            # array indexing
+            if self.current().type == "LBRACKET":
+                self.eat("LBRACKET")
+                index = self.parse_expression({"RBRACKET"})
+                if self.current().type != "RBRACKET":
+                    raise SyntaxError(f"Expected ']' at {self.current().position}")
+                self.eat("RBRACKET")
+                node = ArrayAccess(node, index)
+                continue
+
+            # postfix ++ / --
+            if self.current().type in ("INC", "DEC"):
+                op = self.eat(self.current().type).type
+                node = UnaryOp(op, node)
+                continue
+            break
+        return node
+
+    # Primary expressions: literals, grouped expressions, variables, function calls
+    def parse_primary(self):
+        tok = self.current()
+
+        # ARRAY LITERAL
+        if tok.type == "LBRACKET":
+            self.eat("LBRACKET")
+            elements = []
+
+            if self.current().type != "RBRACKET":
+                while True:
+                    elements.append(self.parse_expression({"COMMA", "RBRACKET"}))
+                    if self.current().type == "COMMA":
+                        self.eat("COMMA")
+                        continue
+                    break
+
+            self.eat("RBRACKET")
+            return ArrayLiteral(elements)
+
+        # GROUPED EXPRESSION (parentheses)
+        if tok.type == "LPAREN":
+            self.eat("LPAREN")
+            if self.current().type == "RPAREN":
+                raise SyntaxError(f"Empty parentheses at {self.current().position}")
+            node = self.parse_expression({"RPAREN"})
+            if self.current().type != "RPAREN":
+                raise SyntaxError(f"Expected ')' at {self.current().position}")
+            self.eat("RPAREN")
+            return node
+
+        # LITERALS
+        if tok.type == "INT":
+            self.eat("INT")
+            return NumberLiteral(int(tok.value))
+
+        if tok.type == "FLOAT":
+            self.eat("FLOAT")
+            return NumberLiteral(float(tok.value))
+
+        if tok.type == "STRING":
+            self.eat("STRING")
+            return StringLiteral(tok.value.strip('"'))
+
+        if tok.type == "TRUE":
+            self.eat("TRUE")
+            return BooleanLiteral(True)
+
+        if tok.type == "FALSE":
+            self.eat("FALSE")
+            return BooleanLiteral(False)
+
+        # VARIABLE / CALL / ACCESS
+        if tok.type == "ID":
+            node = self.parse_dotted_var()
+
+            # function call
+            if self.current().type == "LPAREN":
+                self.eat("LPAREN")
+                args = []
+
+                if self.current().type != "RPAREN":
+                    while True:
+                        args.append(self.parse_expression({"COMMA","RPAREN"}))
+                        if self.current().type == "COMMA":
+                            self.eat("COMMA")
+                            continue
+                        break
+
+                self.eat("RPAREN")
+                node = Call(node, args)
+
+            return node
+
+        raise SyntaxError(f"Unexpected token {tok.type} in expression")
+
 
     def _apply_op(self, output_stack, op_key):
         """Helper to consume operator 'op_key' and build AST nodes using nodes from output_stack.
@@ -570,18 +545,13 @@ class Parser:
                 return
             raise SyntaxError(f"Unhandled unary op {op_key}")
 
-
-
-
-
-
-
-
-
     def peek(self, offset=1):
         if self.pos + offset < len(self.tokens):
             return self.tokens[self.pos + offset]
         return self.tokens[-1]  # return EOF token safely
+
+
+
 
 
 
