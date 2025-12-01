@@ -35,3 +35,4 @@ string[][][] string_cube = [[["hello", "hello"],["world", "world"],["WOW", "WOW"
 print(string_cube);
 
 
+dict<int, string> dictionary = {1 : "Bob", 2 : "Sally"};

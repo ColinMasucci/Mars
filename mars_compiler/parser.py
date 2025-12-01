@@ -30,7 +30,7 @@ class Parser:
         return Program(statements)
     
     def parse_dotted_var(self):
-        """Parse a variable or dotted variable like a.b.c"""
+        """Parse a variable or dotted variable like a.b.c -> abc"""
         id_tok = self.eat("ID")
         name_parts = [id_tok.value]
 
@@ -95,18 +95,13 @@ class Parser:
             return stmt
 
         # --- VAR & FUNC DECLARATION ---
-        if tok.type in ("INT_KW", "FLOAT_KW", "BOOL_KW", "STRING_KW"):
+        if tok.type in ("INT_KW", "FLOAT_KW", "BOOL_KW", "STRING_KW", "VOID_KW", "DICT_KW"):
             #Base type for variable declaration
-            vartype = self.eat(tok.type).type.replace("_KW", "").lower()
+            vartype = self.parse_type()
 
-            while self.current().type == "LBRACKET":
-                self.eat("LBRACKET")
-                self.eat("RBRACKET")
-                vartype += "[]"  # ex. "int[]"
-
+            # Grab variable or function name
             name = self.eat("ID").value
-            if self.current().type == "LPAREN":
-                # Function declaration
+            if self.current().type == "LPAREN": # detect function declaration
                 return self.parse_function(vartype, name)
             else:
                 value = None
@@ -137,6 +132,41 @@ class Parser:
 
         # --- Anything else is invalid ---
         raise SyntaxError(f"Unexpected token {tok.type} at position {tok.position}")
+    
+    # Parse types including dict<K,V> and arrays (Used in variable and function declarations above)
+    def parse_type(self):
+        tok = self.current()
+
+        # Primitive, dict, or void
+        if tok.type in ("INT_KW","FLOAT_KW","BOOL_KW",
+                        "STRING_KW","VOID_KW","DICT_KW"):
+
+            base = self.eat(tok.type).type.replace("_KW","").lower()
+
+            # dict<K,V>
+            if base == "dict":
+                self.eat("LT")
+                key = self.parse_type()
+                self.eat("COMMA")
+                val = self.parse_type()
+                self.eat("GT")
+                base = f"dict<{key},{val}>"
+
+            # array suffix: int[][], dict<int,string>[][]
+            while self.current().type == "LBRACKET":
+                self.eat("LBRACKET")
+                self.eat("RBRACKET")
+                base += "[]"
+
+            return base
+
+        # User-defined types (This is for later when we add classes/structs) (The typechecker should handle checking if these types exist)
+        elif tok.type == "ID":
+            return self.eat("ID").value
+
+        else:
+            raise SyntaxError(f"Unexpected type token: {tok.type}")
+
 
         
     def parse_function(self, rettype, name):
