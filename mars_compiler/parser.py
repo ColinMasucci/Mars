@@ -133,7 +133,7 @@ class Parser:
         # --- Anything else is invalid ---
         raise SyntaxError(f"Unexpected token {tok.type} at position {tok.position}")
     
-    # Parse types including dict<K,V> and arrays (Used in variable and function declarations above)
+    # Parse types (Used in variable and function declarations above) Ex. int, float, dict<int,string>, string[][], dict<string,dict<int,float>>[]
     def parse_type(self):
         tok = self.current()
 

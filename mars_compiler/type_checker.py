@@ -9,6 +9,7 @@ class TypeChecker:
         self.scopes = [{}]
         self._loaded_modules = {}  # cache loaded builtin modules
         self.function_return_stack = [] # stack of return types
+        self.user_types = set()  # placeholder for user-defined types (classes, structs, enums, etc) - not implemented yet
 
         # pre-load built-in functions and constants (not from library)
         self._declare_symbol(
@@ -76,6 +77,58 @@ class TypeChecker:
             return f"array<{elem_type}>"
         return typ
 
+    # Compare two types for compatibility (including structured types) Ex. dict<int,string> and dict<int,string> are compatible, but dict<int,string> and dict<string,string> are not.
+    def _types_compatible(self, a, b):
+        """Compare structured types like dict<K,V> and array<T>."""
+        if a == b:
+            return True
+
+        # array<T>
+        if a.startswith("array<") and a.endswith(">") and \
+        b.startswith("array<") and b.endswith(">"):
+            a_inner = a[len("array<"):-1]
+            b_inner = b[len("array<"):-1]
+            return self._types_compatible(a_inner, b_inner)
+
+        # dict<K,V>
+        if a.startswith("dict<") and a.endswith(">") and \
+        b.startswith("dict<") and b.endswith(">"):
+            a_inside = a[len("dict<"):-1]
+            b_inside = b[len("dict<"):-1]
+            a_key, a_val = [x.strip() for x in a_inside.split(",")]
+            b_key, b_val = [x.strip() for x in b_inside.split(",")]
+            return self._types_compatible(a_key, b_key) and \
+                self._types_compatible(a_val, b_val)
+        
+        return False
+
+    # Validate declared types, making sure dict<K,V> and array<T> are well-formed Ex. dict<int,string> is valid, but dict<int> or dict<int,string,float> is not.
+    def _validate_declared_type(self, t):
+        """Ensure declared types like dict<int,string> or array<string> are legal."""
+        # primitive
+        if t in ("int", "float", "bool", "string", "void", "any"):
+            return True
+        
+        # User-defined types (classes, structs, enums, etc) - placeholder for future implementation
+        if t in self.user_types:
+            return True
+
+        # array<T>
+        if t.startswith("array<") and t.endswith(">"):
+            inner = t[len("array<"):-1]
+            return self._validate_declared_type(inner)
+
+        # dict<K,V>
+        if t.startswith("dict<") and t.endswith(">"):
+            inside = t[len("dict<"):-1]
+            if "," not in inside:
+                raise TypeError(f"Invalid dict type '{t}'")
+            key, val = [x.strip() for x in inside.split(",")]
+            return self._validate_declared_type(key) and \
+                self._validate_declared_type(val)
+
+        raise TypeError(f"Unknown type '{t}'")
+
 
 
     def _register_module_members(self, module_name, mod):
@@ -118,16 +171,28 @@ class TypeChecker:
 
 
             case VarDecl(vartype, name, value):
-                vartype = self._normalize_type(vartype)   # normalize type (e.g., int[] -> array<int>)
+                # Normalize (e.g., int[] → array<int>)
+                vartype = self._normalize_type(vartype)
+
+                # Check the type exists or is valid (dict/array)
+                self._validate_declared_type(vartype)
+
+                # Check redeclaration
                 if name in self._current_scope():
                     raise TypeError(f"Variable '{name}' already declared")
-                value_type = None
+
+                # If initializer exists, ensure type compatibility
                 if value is not None:
                     value_type = self.check(value)
-                if value_type is not None and vartype != value_type:
-                    raise TypeError(f"Type mismatch in declaration of '{name}': expected {vartype}, got {value_type}")
-                self._declare_symbol(name, vartype, mutable=True, info={})
+                    if not self._types_compatible(vartype, value_type):
+                        raise TypeError(
+                            f"Type mismatch in declaration of '{name}': "
+                            f"expected {vartype}, got {value_type}"
+                        )
+                # Add to symbol table
+                self._declare_symbol(name, vartype, mutable=True)
                 return vartype
+
 
 
             case Assign(name_node, value):

@@ -58,16 +58,30 @@ def compile_node(node, code: List[Instr]):
             # BUILD_ARRAY will pop N items and push a single array object (preserving element order)
             code.append(("BUILD_ARRAY", len(elements)))
         
+        case ast.DictLiteral(pairs):
+            # compile key/value pairs in-order (left-to-right)
+            # push key then value for each pair
+            for key, value in pairs:
+                compile_node(key, code)
+                compile_node(value, code)
+            # BUILD_DICT will pop 2*N items (value, key pairs) and push a dict object
+            code.append(("BUILD_DICT", len(pairs)))
+        
         case ast.VarDecl(vartype, name, value):
-            if value is not None:
+            if value is not None: # if there is an initializer expression
                 compile_node(value, code)
             else:
-                # Provides default initialization based on type (Now just empty array for array types)
+                # -------- DEFAULT INITIALIZATION --------
+
                 # Add support for array types like "array<int>"
                 if isinstance(vartype, str) and vartype.startswith("array<") and vartype.endswith(">"):
-                    # push an empty array
-                    # VM should create an empty array object
                     code.append(("PUSH_EMPTY_ARRAY",))
+
+                # Detect dictionary types: starts with dict<...>
+                elif isinstance(vartype, str) and vartype.startswith("dict<"):
+                    code.append(("PUSH_EMPTY_DICT",))
+                    
+                # Primitive defaults
                 else:
                     match vartype:
                         case "int" | "float":
@@ -76,8 +90,12 @@ def compile_node(node, code: List[Instr]):
                             code.append(("PUSH_BOOL", False))
                         case "string":
                             code.append(("PUSH_STR", ""))
-                        case _:
+                        case "void":
+                            raise ValueError("Variables cannot be of type void")
+                        case _:# For user-defined types or unsupported types
                             raise ValueError(f"Unknown vartype '{vartype}' in VarDecl")
+            
+            # Finally declare the variable
             code.append(("DECLARE", name, vartype))
 
         case ast.BinaryOp(op, left, right):
@@ -158,15 +176,19 @@ def compile_node(node, code: List[Instr]):
                 code.append(("SET_FIELD", fields[-1]))
                 return
 
-            # Assignment to array element: ArrayAccess(array_expr, index_expr)
+            # Assignment to array or dictionary element: arr[i] = value OR dict[key] = value
             if isinstance(name_node, ast.ArrayAccess):
-                # We will compile: <array>, <index>, <value> then ARRAY_SET will pop value,index,array and set.
+                ''' We will compile: <array>, <index>, <value> then INDEX_SET will pop value,index,array and set.
                 # But to avoid temporaries, compile array and index first, then compile value.
-                # This order yields stack: [..., array, index, value]
+                # This order yields stack: [..., array, index, value]'''
+                # compile container expression (array or dict)
                 compile_node(name_node.array, code)
+                # compile index/key expression
                 compile_node(name_node.index, code)
+                # compile value to assign
                 compile_node(value, code)
-                code.append(("ARRAY_SET",))
+                # VM: pops value, index, container — sets and pushes nothing
+                code.append(("INDEX_SET",))
                 return
 
             raise NotImplementedError("Unsupported LHS in assignment")
@@ -190,13 +212,12 @@ def compile_node(node, code: List[Instr]):
             code.append(("LOAD", name))
         
         case ast.ArrayAccess(array_expr, index_expr):
-            # compile array, then index, then ARRAY_GET
-            # stack after compile: [..., array, index]
+            # compile array/dict expression
             compile_node(array_expr, code)
+            # compile index/key expression
             compile_node(index_expr, code)
-            # ARRAY_GET will pop index and array (in whichever order your VM expects),
-            # and push the retrieved element
-            code.append(("ARRAY_GET",))
+            # VM will decide array vs dict indexing
+            code.append(("INDEX_GET",))
             return
 
         case ast.FuncDecl(return_type, name, params, body):

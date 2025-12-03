@@ -60,6 +60,7 @@ TOKEN_SPEC = [
     ("LPAREN",  r"\("),                # identifying parentheses for priority later on.
     ("RPAREN",  r"\)"),
     ("SEMI", r";"),                    # semicolon as statement separator
+    ("COLON", r":"),                  # colon for dict key-value pairs
     ("COMMA", r","),                   # comma as parameter separator
     ("DOT", r"\."),                    # for module.function syntax
     ("LBRACKET", r"\["),               # for arrays

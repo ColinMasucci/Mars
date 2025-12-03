@@ -141,6 +141,7 @@ class VM:
 
 
                 case "PRINT":
+                    print("PRINT:", args)
                     n = int(args[0])  # number of arguments to print
                     if n > len(self.stack):
                         raise VMError(f"PRINT expected {n} values but stack has {len(self.stack)}")
@@ -273,40 +274,105 @@ class VM:
 
                 case "PUSH_EMPTY_ARRAY":
                     self.stack.append([])
+                
+                case "BUILD_DICT":
+                    # args[0] = number of key/value pairs
+                    n = int(args[0])
 
-                case "ARRAY_GET":
-                    # Compiler pushes: array, then index  -> stack [..., array, index]
-                    # So pop index then array, then push array[index]
+                    # We need 2*n items (key1, val1, key2, val2, ...)
+                    if len(self.stack) < 2 * n:
+                        raise VMError(
+                            f"BUILD_DICT expected {2*n} stack values but only {len(self.stack)} present"
+                        )
+
+                    # Pop key/value pairs in reverse (stack is LIFO)
+                    # Example: stack [..., key1, val1, key2, val2]
+                    # Popping yields: val2, key2, val1, key1
+                    items = []
+                    for _ in range(n):
+                        val = self.stack.pop()
+                        key = self.stack.pop()
+                        items.append((key, val))
+
+                    # Reverse the item list to restore original ordering
+                    items.reverse()
+
+                    # Build dictionary
+                    d = {}
+                    for key, val in items:
+                        # Allow any hashable type as key (same as Python)
+                        d[key] = val
+
+                    self.stack.append(d)
+
+                case "PUSH_EMPTY_DICT":
+                    self.stack.append({})
+
+                case "INDEX_GET":
+                    # stack: [..., container, index]
                     if len(self.stack) < 2:
-                        raise VMError("ARRAY_GET requires array and index on stack")
-                    idx = self.stack.pop()
-                    arr = self.stack.pop()
-                    if not isinstance(idx, int):
-                        raise VMError(f"Array index must be int, got {type(idx).__name__}")
-                    if not isinstance(arr, list):
-                        raise VMError(f"Trying to index non-array value of type {type(arr).__name__}")
-                    if idx < 0 or idx >= len(arr):
-                        raise VMError(f"Array index out of bounds: {idx}")
-                    self.stack.append(arr[idx])
+                        raise VMError("INDEX_GET requires container and index on stack")
 
-                case "ARRAY_SET":
-                    # Compiler pushes: array, index, value -> stack [..., array, index, value]
-                    # Pop in order value, index, array; perform array[index] = value
+                    idx = self.stack.pop()
+                    container = self.stack.pop()
+                    print("INDEX_GET:", container, idx)
+
+                    # ---- dictionary access ----
+                    if isinstance(container, dict):
+                        # dictionary keys can be strings, ints, bools, etc — allow anything hashable
+                        if idx not in container:
+                            raise VMError(f"Dictionary key not found: {idx}")
+                        self.stack.append(container[idx])
+                        break
+
+                    # ---- array access ----
+                    if isinstance(container, list):
+                        print("ARRAY ACCESS:", container, idx)
+                        if not isinstance(idx, int):
+                            raise VMError(f"Array index must be int, got {type(idx).__name__}")
+                        if idx < 0 or idx >= len(container):
+                            raise VMError(f"Array index out of bounds: {idx}")
+                        self.stack.append(container[idx])
+                        print("PUSHED:", container[idx])
+                        break
+
+                    # ---- unsupported type ----
+                    raise VMError(f"Trying to index into unsupported type {type(container).__name__}")
+
+                case "INDEX_SET":
+                    # Note: INDEX_SET returns nothing (assignment statement).
+                    # stack: [..., container, index, value]
                     if len(self.stack) < 3:
-                        raise VMError("ARRAY_SET requires array, index, and value on stack")
+                        raise VMError("INDEX_SET requires container, index, value on stack")
+
                     val = self.stack.pop()
                     idx = self.stack.pop()
-                    arr = self.stack.pop()
-                    if not isinstance(idx, int):
-                        raise VMError(f"Array index must be int, got {type(idx).__name__}")
-                    if not isinstance(arr, list):
-                        raise VMError(f"Trying to index-assign into non-array value of type {type(arr).__name__}")
-                    if idx < 0 or idx >= len(arr):
-                        raise VMError(f"Array index out of bounds: {idx}")
-                    arr[idx] = val
-                    # ARRAY_SET returns nothing (assignment statement).
+                    container = self.stack.pop()
+
+                    # ---- dictionary assignment ----
+                    if isinstance(container, dict):
+                        container[idx] = val   # keys can be anything hashable
+                        break
+
+                    # ---- array assignment ----
+                    if isinstance(container, list):
+                        if not isinstance(idx, int):
+                            raise VMError(f"Array index must be int, got {type(idx).__name__}")
+                        if idx < 0 or idx >= len(container):
+                            raise VMError(f"Array index out of bounds: {idx}")
+                        container[idx] = val
+                        break
+
+                    # ---- unsupported type ----
+                    raise VMError(
+                        f"Trying to index-assign into unsupported type {type(container).__name__}"
+                    )
+
 
                 case _:
                     raise VMError(f"Unknown opcode {op}")
 
             self.pc += 1
+        
+        print("VM halted. Final stack:", self.stack)
+        print(self.pc, len(self.code))
