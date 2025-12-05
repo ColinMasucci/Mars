@@ -210,7 +210,7 @@ class TypeChecker:
                         raise TypeError(f"Type mismatch in assignment to '{name}': expected {expected}, got {value_type}")
                     return expected
 
-                # Assignment to an array element: ArrayAccess(array, index)
+                # Assignment to array or dictionary element: ArrayAccess(container, index)
                 if isinstance(name_node, ArrayAccess):
                     # base must be a variable (we require assignable lvalue)
                     base = name_node.array
@@ -223,20 +223,37 @@ class TypeChecker:
                         raise TypeError("Cannot assign to immutable symbol")
 
                     base_type = base_sym["type"]
-                    if not (isinstance(base_type, str) and base_type.startswith("array<") and base_type.endswith(">")):
-                        raise TypeError(f"Trying to index non-array type '{base_type}'")
 
-                    elem_type = base_type[len("array<"):-1]  # extract element type
-                    # check index type
-                    idx_type = self.check(name_node.index)
-                    if idx_type != "int":
-                        raise TypeError(f"Array index must be an int, got {idx_type}")
+                    # ---------------- ARRAY ASSIGN ----------------
+                    if base_type.startswith("array<") and base_type.endswith(">"):
+                        elem_type = base_type[len("array<"):-1]
 
-                    value_type = self.check(value)
-                    if value_type != elem_type:
-                        raise TypeError(f"Type mismatch assigning to array element: expected {elem_type}, got {value_type}")
-                    return elem_type
+                        idx_type = self.check(name_node.index)
+                        if idx_type != "int":
+                            raise TypeError(f"Array index must be int, got {idx_type}")
 
+                        value_type = self.check(value)
+                        if value_type != elem_type:
+                            raise TypeError(f"Type mismatch assigning to array element: expected {elem_type}, got {value_type}")
+
+                        return elem_type
+
+                    # ---------------- DICT ASSIGN ----------------
+                    if base_type.startswith("dict<") and base_type.endswith(">"):
+                        inside = base_type[len("dict<"):-1]
+                        key_type, val_type = [x.strip() for x in inside.split(",")]
+
+                        idx_type = self.check(name_node.index)
+                        if idx_type != key_type:
+                            raise TypeError(f"Dictionary key must be {key_type}, got {idx_type}")
+
+                        value_type = self.check(value)
+                        if value_type != val_type:
+                            raise TypeError(f"Type mismatch assigning to dictionary element: expected {val_type}, got {value_type}")
+
+                        return val_type
+
+                    raise TypeError(f"Trying to index non-indexable type '{base_type}'")
                 raise TypeError("LHS of assignment must be a variable or an array access")
 
 

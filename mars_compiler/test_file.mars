@@ -35,5 +35,16 @@ string[][][] string_cube = [[["hello", "hello"],["world", "world"],["WOW", "WOW"
 print(string_cube);
 
 
-dict<int, string> dictionary = {1 : "Bob", 2 : "Sally"};
+dict<int, string> dictionary = {78 : "Bob", 17 : "Sally"};
 print(dictionary);
+
+print(dictionary[17]);
+dictionary[17] = "Jennifer";
+print(dictionary[17]);
+
+dict<string, string> dictionary2 = {"Bob" : "Belcher", "Homer" : "Simpson"};
+print(dictionary2["Bob"]);
+
+dict<int, string> dictionary3 = {71 : "Brad", 41 : "Lisa"};
+dictionary = dictionary3;
+print(dictionary[41]);
