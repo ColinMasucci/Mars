@@ -141,7 +141,6 @@ class VM:
 
 
                 case "PRINT":
-                    print("PRINT:", args)
                     n = int(args[0])  # number of arguments to print
                     if n > len(self.stack):
                         raise VMError(f"PRINT expected {n} values but stack has {len(self.stack)}")
@@ -170,7 +169,7 @@ class VM:
                     module_name = args[0]
 
                     if module_name in self._modules:
-                        break
+                        continue  # already imported
 
                     spec = importlib.util.spec_from_file_location(module_name, f"builtins/{module_name}.py")
                     module = importlib.util.module_from_spec(spec)
@@ -315,7 +314,6 @@ class VM:
 
                     idx = self.stack.pop()
                     container = self.stack.pop()
-                    print("INDEX_GET:", container, idx)
 
                     # ---- dictionary access ----
                     if isinstance(container, dict):
@@ -323,21 +321,18 @@ class VM:
                         if idx not in container:
                             raise VMError(f"Dictionary key not found: {idx}")
                         self.stack.append(container[idx])
-                        break
 
                     # ---- array access ----
-                    if isinstance(container, list):
-                        print("ARRAY ACCESS:", container, idx)
+                    elif isinstance(container, list):
                         if not isinstance(idx, int):
                             raise VMError(f"Array index must be int, got {type(idx).__name__}")
                         if idx < 0 or idx >= len(container):
                             raise VMError(f"Array index out of bounds: {idx}")
                         self.stack.append(container[idx])
-                        print("PUSHED:", container[idx])
-                        break
 
                     # ---- unsupported type ----
-                    raise VMError(f"Trying to index into unsupported type {type(container).__name__}")
+                    else:
+                        raise VMError(f"Trying to index into unsupported type {type(container).__name__}")
 
                 case "INDEX_SET":
                     # Note: INDEX_SET returns nothing (assignment statement).
@@ -352,21 +347,18 @@ class VM:
                     # ---- dictionary assignment ----
                     if isinstance(container, dict):
                         container[idx] = val   # keys can be anything hashable
-                        break
 
                     # ---- array assignment ----
-                    if isinstance(container, list):
+                    elif isinstance(container, list):
                         if not isinstance(idx, int):
                             raise VMError(f"Array index must be int, got {type(idx).__name__}")
                         if idx < 0 or idx >= len(container):
                             raise VMError(f"Array index out of bounds: {idx}")
                         container[idx] = val
-                        break
 
                     # ---- unsupported type ----
-                    raise VMError(
-                        f"Trying to index-assign into unsupported type {type(container).__name__}"
-                    )
+                    else:
+                        raise VMError(f"Trying to index-assign into unsupported type {type(container).__name__}")
 
 
                 case _:
@@ -374,5 +366,5 @@ class VM:
 
             self.pc += 1
         
-        print("VM halted. Final stack:", self.stack)
-        print(self.pc, len(self.code))
+        if self.stack is not None and len(self.stack) > 0:
+            raise VMError("VM halted prematurely. Final stack:", self.stack, "PC:", self.pc, " Code Length:", len(self.code))
