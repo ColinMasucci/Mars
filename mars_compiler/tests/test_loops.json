@@ -1,0 +1,24 @@
+{
+  "tests": [
+    {
+      "name": "simple while loop",
+      "code": "int i = 0; int s = 0; while (i < 3) { s = s + i; i = i + 1; } print(s);",
+      "expect": "3"
+    },
+    {
+      "name": "simple for loop",
+      "code": "int s = 0; for (int i = 0; i < 3; i = i + 1) { s = s + i; } print(s);",
+      "expect": "3"
+    },
+    {
+      "name": "break in loop",
+      "code_disabled": "int i = 0; int s = 0; while (true) { if (i == 4) { break; } s = s + i; i = i + 1; } print(s);",
+      "expect": "6"
+    },
+    {
+      "name": "continue in loop",
+      "code_disabled": "int i = 0; int s = 0; while (i < 5) { i = i + 1; if (i == 3) { continue; } s = s + i; } print(s);",
+      "expect": "12"
+    }
+  ]
+}

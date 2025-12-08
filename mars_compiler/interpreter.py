@@ -40,3 +40,28 @@ def interpret_code_from_file(file_path: str, print_debug: bool = False):
     #5. Run the bytecode on the VM
     vm1 = VM(bytecode1) #create VM instance with the bytecode
     vm1.run() #run the bytecode on the VM
+
+
+#Useful for running code from strings (like in tests)
+def interpret_code_from_string(code: str):
+    tokens = tokenize(code)
+    parser = Parser(tokens)
+    ast = parser.parse()
+    type_checker = TypeChecker()
+    type_checker.check(ast)
+    bytecode = compile_program(ast)
+    vm = VM(bytecode)
+
+    # Capture output
+    from io import StringIO
+    import sys
+
+    old_stdout = sys.stdout
+    sys.stdout = StringIO()
+
+    vm.run()
+
+    output = sys.stdout.getvalue()
+    sys.stdout = old_stdout
+
+    return output

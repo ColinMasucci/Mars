@@ -1,0 +1,19 @@
+{
+  "tests": [
+    {
+      "name": "basic import",
+      "code": "import math; print(1);",
+      "expect": "1"
+    },
+    {
+      "name": "import then variable",
+      "code": "import math; int x = 5; print(x);",
+      "expect": "5"
+    },
+    {
+      "name": "multiple imports",
+      "code_disabled": "import math; import io; print(2);",
+      "expect": "2"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "tests": [
+    {
+      "name": "dict literal + get",
+      "code": "dict<int, string> dictionary = {78 : \"Bob\", 17 : \"Sally\"}; print(dictionary[78]);",
+      "expect": "Bob"
+    },
+    {
+      "name": "dict update",
+      "code": "dict<int, string> dictionary = {78 : \"Bob\", 17 : \"Sally\"};print(dictionary[17]);dictionary[17] = \"Jennifer\";print(dictionary[17]);",
+      "expect": "Sally\nJennifer"
+    },
+    {
+      "name": "dict with arrays",
+      "code": "dict<string, int[]> dictionary = {\"nums\": [5,6,7]}; print(dictionary[\"nums\"][2]);",
+      "expect": "7"
+    }
+  ]
+}
