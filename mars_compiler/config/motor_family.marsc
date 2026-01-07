@@ -1,0 +1,48 @@
+component motor {
+    subcomponents{}
+    parameters{}
+    functions{
+        void spin(int speed);
+    }
+}
+
+component brushlessMotor extends motor {
+    subcomponents{}
+    parameters{
+        int direction;
+        int port;
+    }
+    functions{
+        void spin(int speed){
+            # empty implementation for now
+        }
+    }
+}
+
+component brandMotor extends brushlessMotor {
+    subcomponents{}
+    parameters{}
+    functions{
+        void spin(int speed){
+            if (speed > 5) {
+                print("we fast");
+            } else {
+                print("we no fast");
+            }
+        }
+    }
+}
+
+component twoWheelChassis {
+    subcomponents{
+        brandMotor leftMotor(direction = 1, port = 1);
+        brandMotor rightMotor(direction = -1, port = 2);
+    }
+    parameters{}
+    functions{
+        void drive(int speed){
+            leftMotor.spin(speed);
+            rightMotor.spin(speed);
+        }
+    }
+}

@@ -47,6 +47,7 @@ class VarDecl:
     vartype: str
     name: str
     value: Any
+    readonly: bool = False
 
 # used for assigning variables
 @dataclass
@@ -75,6 +76,12 @@ class Import:
     module: str
 
 @dataclass
+class SubcomponentDecl:
+    type_name: str
+    name: str
+    bindings: list[tuple[str, Any]] = None
+
+@dataclass
 class FuncDecl:
     return_type: Any
     name: str
@@ -97,3 +104,13 @@ class Block:
 @dataclass
 class Program:
     statements: List[Any]
+    components: List[Any]
+
+@dataclass
+class ComponentDef:
+    def __init__(self, name, parent, subcomponents, parameters, functions):
+        self.name = name
+        self.parent = parent  # None or string
+        self.subcomponents = subcomponents
+        self.parameters = parameters
+        self.functions = functions

@@ -8,11 +8,16 @@ Instr = Tuple[str, ...] # instruction is a tuple of strings and then somtimes nu
 function_table = {}  # name -> start index
 
 #This returns a List of instructions (bytecode) from the AST, and will give them to the Stack VM.
-def compile_program(node: ast.Program, printBytecode = False) -> List[Instr]:
+def compile_program(node: ast.Program, printBytecode = False, component_functions=None, component_params=None) -> List[Instr]:
     code = []
+    function_table.clear()
 
     # Reserve space for a JUMP over all function definitions
     code.append(("JUMP", None))  # placeholder
+
+    # Compile component functions first (they are already namespaced)
+    for func in component_functions or []:
+        compile_node(func, code)
 
     # Compile function declarations first
     for stmt in node.statements:
@@ -24,6 +29,10 @@ def compile_program(node: ast.Program, printBytecode = False) -> List[Instr]:
 
     # Patch the jump
     code[0] = ("JUMP", main_start)
+
+    # Emit component parameter declarations as globals
+    for decl in component_params or []:
+        compile_node(decl, code)
 
     # Compile all NON-function statements
     for stmt in node.statements:
@@ -67,7 +76,7 @@ def compile_node(node, code: List[Instr]):
             # BUILD_DICT will pop 2*N items (value, key pairs) and push a dict object
             code.append(("BUILD_DICT", len(pairs)))
         
-        case ast.VarDecl(vartype, name, value):
+        case ast.VarDecl(vartype, name, value, readonly):
             if value is not None: # if there is an initializer expression
                 compile_node(value, code)
             else:
@@ -96,7 +105,7 @@ def compile_node(node, code: List[Instr]):
                             raise ValueError(f"Unknown vartype '{vartype}' in VarDecl")
             
             # Finally declare the variable
-            code.append(("DECLARE", name, vartype))
+            code.append(("DECLARE", name, vartype, readonly))
 
         case ast.BinaryOp(op, left, right):
             # compile left then right (stack-based order)
@@ -194,21 +203,7 @@ def compile_node(node, code: List[Instr]):
             raise NotImplementedError("Unsupported LHS in assignment")
 
         case ast.Var(name):
-            """Access a variable or module member."""
-            parts = name.split(".")
-            if len(parts) == 2:
-                module_name, member_name = parts
-                # Check module exists
-                module_path = os.path.join("builtins", f"{module_name}.py")
-                if not os.path.exists(module_path):
-                    raise TypeError(f"Module '{module_name}' not found")
-                spec = importlib.util.spec_from_file_location(module_name, module_path)
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                funcs_dict = getattr(mod, f"{module_name.upper()}_FUNCS", {})
-                if member_name not in funcs_dict:
-                    raise TypeError(f"Module '{module_name}' has no member '{member_name}'")
-            # Finally, emit the LOAD instruction for the VM
+            """Access a variable or module/component member."""
             code.append(("LOAD", name))
         
         case ast.ArrayAccess(array_expr, index_expr):
@@ -234,6 +229,10 @@ def compile_node(node, code: List[Instr]):
 
             # Compile function body
             compile_node(body, code)
+            # Ensure function returns
+            if not code or code[-1][0] != "RETURN":
+                code.append(("PUSH_NONE",))
+                code.append(("RETURN",))
 
             # Ensure function always returns; for void functions, push None
             code.append(("FUNC_END", name))
@@ -282,49 +281,28 @@ def compile_node(node, code: List[Instr]):
                 compile_node(stmt, code)
 
         case ast.Call(func, args):
-            """Compile a function call (top-level or module function)."""
-            if isinstance(func, ast.Var):
-                parts = func.name.split(".")
-                if len(parts) == 2:
-                    # Module function: compile-time check
-                    module_name, func_name = parts
-                    module_path = os.path.join("builtins", f"{module_name}.py")
-                    if not os.path.exists(module_path):
-                        raise TypeError(f"Module '{module_name}' not found")
-                    spec = importlib.util.spec_from_file_location(module_name, module_path)
-                    mod = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(mod)
-                    funcs_dict = getattr(mod, f"{module_name.upper()}_FUNCS", {})
-                    if func_name not in funcs_dict:
-                        raise TypeError(f"Module '{module_name}' has no function '{func_name}'")
-                else:
-                    # Top-level function
-                    if func.name not in {"print"} and func.name not in function_table:
-                        raise TypeError(f"Unknown function '{func.name}'")
-
+            """Compile a function call (top-level, module, or component)."""
             # Compile arguments
             for arg in args:
                 compile_node(arg, code)
 
             # Emit appropriate opcode
-            if func.name == "print":
+            if isinstance(func, ast.Var) and func.name == "print":
                 code.append(("PRINT", len(args)))       # special PRINT opcode
             else:
-                code.append(("CALL", func.name, len(args)))  # normal CALL for module functions
+                target_name = func.name if isinstance(func, ast.Var) else "<callable>"
+                code.append(("CALL", target_name, len(args)))  # normal CALL
 
 
         case ast.Import(module_name):
             """Compile-time check that module exists in builtins."""
             module_path = os.path.join("builtins", f"{module_name}.py")
-            if not os.path.exists(module_path):
-                raise TypeError(f"Module '{module_name}' not found")
-
-            # Dynamically load module just to validate functions/constants exist
-            spec = importlib.util.spec_from_file_location(module_name, module_path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-
-            # Emit IMPORT opcode for the VM
+            if os.path.exists(module_path):
+                # Dynamically load module just to validate functions/constants exist
+                spec = importlib.util.spec_from_file_location(module_name, module_path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+            # Emit IMPORT opcode for the VM (no-op for components)
             code.append(("IMPORT", module_name))
 
 

@@ -1,0 +1,16 @@
+component robot {
+    subcomponents{}
+    parameters{}
+    functions{}
+}
+
+component myRobot extends robot {
+    subcomponents{
+        twoWheelChassis myChassis;
+    }
+    parameters{
+        float height = 5;
+        bool flying = false;
+    }
+    functions{}
+}

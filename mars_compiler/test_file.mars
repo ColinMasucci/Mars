@@ -1,50 +1,8 @@
-import math;
+import myRobot;
 
-# Minimal user-defined function test
+int mainVar = 0;
 
-# Function that adds two numbers
-float add(float a, float b) {
-    return a + b;
-}
+print(myRobot.height);
+print(myRobot.flying);
 
-# Call the function
-float x = add(2.0, 3.0);
-print(x);  # should print 5
-
-
-print(4*math.abs(-4.0)-2);
-
-int[] arr = [1, 2, 3];
-float[] data = [1.0, 2.5, 3.7];
-string[] names = ["Alice", "Bob"];
-bool[] flags = [true, false, true];
-
-print(arr, data, names, flags);
-print(arr[1]);
-
-arr[1] = 98;
-print(arr[1]);
-
-int[][] matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-print(matrix);
-
-int [][][] numcube = [[[1, 2, 3], [4, 5, 6], [7, 8, 9]], [[1, 2, 3], [4, 5, 6], [7, 8, 9]]];
-print(numcube);
-
-string[][][] string_cube = [[["hello", "hello"],["world", "world"],["WOW", "WOW"]], [["This is", "empty->"],[""],["<-empty", "string"]]];
-print(string_cube);
-
-
-dict<int, string> dictionary = {78 : "Bob", 17 : "Sally"};
-print(dictionary);
-
-print(dictionary[17]);
-dictionary[17] = "Jennifer";
-print(dictionary[17]);
-
-dict<string, string> dictionary2 = {"Bob" : "Belcher", "Homer" : "Simpson"};
-print(dictionary2["Bob"]);
-
-dict<int, string> dictionary3 = {71 : "Brad", 41 : "Lisa"};
-dictionary = dictionary3;
-print(dictionary[41]);
+myRobot.myChassis.drive(3);

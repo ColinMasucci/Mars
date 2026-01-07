@@ -4,12 +4,13 @@ import importlib.util
 
 
 class TypeChecker:
-    def __init__(self):
+    def __init__(self, component_interfaces=None):
         # Scopes: list of dicts, each dict: name -> { 'type': str or 'function', 'mutable': bool, 'info': dict }
         self.scopes = [{}]
         self._loaded_modules = {}  # cache loaded builtin modules
         self.function_return_stack = [] # stack of return types
         self.user_types = set()  # placeholder for user-defined types (classes, structs, enums, etc) - not implemented yet
+        self.component_interfaces = component_interfaces or {}
 
         # pre-load built-in functions and constants (not from library)
         self._declare_symbol(
@@ -108,6 +109,10 @@ class TypeChecker:
         # primitive
         if t in ("int", "float", "bool", "string", "void", "any"):
             return True
+
+        # Components (treated as user-defined types)
+        if t in self.component_interfaces:
+            return True
         
         # User-defined types (classes, structs, enums, etc) - placeholder for future implementation
         if t in self.user_types:
@@ -154,12 +159,136 @@ class TypeChecker:
         #     full = f"{module_name}.{name}"
         #     self.symbols[full] = self._type_from_python_obj(obj)
 
+    # Component-aware helpers
+    def check_components(self, components):
+        """Type-check the functions of each component using precomputed component interfaces."""
+        for comp in components:
+            self._check_component(comp)
+
+    def _check_component(self, comp):
+        iface = self.component_interfaces.get(comp.name, {"params": {}, "funcs": {}, "subcomponents": {}})
+
+        self._push_scope()
+        try:
+            # Component parameters are visible as variables
+            for pname, ptype in iface.get("params", {}).items():
+                normalized = self._normalize_type(ptype)
+                self._declare_symbol(pname, normalized, mutable=True)
+
+            # Subcomponents are visible as component-typed symbols
+            for sname, stype in iface.get("subcomponents", {}).items():
+                self._declare_symbol(sname, f"component:{stype}", mutable=True)
+
+            # Component functions are callable within the component
+            for fname, finfo in iface.get("funcs", {}).items():
+                info = {"return": finfo.get("return"), "params": finfo.get("params")}
+                self._declare_symbol(fname, "function", mutable=False, info=info)
+
+            # Check bodies for functions that have one
+            for func in getattr(comp, "functions", []):
+                if func.body is None:
+                    continue
+                self._check_component_function_body(func)
+        finally:
+            self._pop_scope()
+
+    def _check_component_function_body(self, func_decl):
+        self._push_scope()
+        self.function_return_stack.append(func_decl.return_type)
+        try:
+            for ptype, pname in func_decl.params:
+                if pname in self._current_scope():
+                    raise TypeError(f"Parameter '{pname}' already declared in function '{func_decl.name}'")
+                normalized = self._normalize_type(ptype)
+                self._declare_symbol(pname, normalized, mutable=True)
+            self.check(func_decl.body)
+        finally:
+            self.function_return_stack.pop()
+            self._pop_scope()
+
+    def _resolve_dotted_var(self, name):
+        parts = name.split(".")
+        base = parts[0]
+        sym = self._lookup_symbol(base)
+        if sym is None:
+            raise TypeError(f"Undefined variable or symbol '{base}'")
+        sym_type = sym["type"]
+        if not isinstance(sym_type, str) or not sym_type.startswith("component:"):
+            raise TypeError(f"'{base}' is not a component and has no members")
+        comp_type = sym_type.split(":", 1)[1]
+        return self._resolve_component_member(comp_type, parts[1:])
+
+    def _resolve_component_member(self, comp_type, member_parts):
+        iface = self.component_interfaces.get(comp_type)
+        if not iface:
+            raise TypeError(f"Unknown component type '{comp_type}'")
+        name = member_parts[0]
+
+        # Direct param or function
+        if len(member_parts) == 1:
+            if name in iface.get("params", {}):
+                return iface["params"][name]
+            if name in iface.get("funcs", {}):
+                # Accessing a function as a value is not supported; must be called
+                raise TypeError(f"'{name}' is a function on component '{comp_type}' and must be called")
+            raise TypeError(f"Component '{comp_type}' has no member '{name}'")
+
+        # Nested access through subcomponents
+        sub_map = iface.get("subcomponents", {})
+        if name not in sub_map:
+            raise TypeError(f"Component '{comp_type}' has no subcomponent '{name}'")
+        return self._resolve_component_member(sub_map[name], member_parts[1:])
+
+    def _check_component_call(self, dotted_name, arg_types):
+        parts = dotted_name.split(".")
+        base = parts[0]
+        sym = self._lookup_symbol(base)
+        if sym is None:
+            raise TypeError(f"Undefined variable or symbol '{base}'")
+        sym_type = sym["type"]
+        if not isinstance(sym_type, str) or not sym_type.startswith("component:"):
+            raise TypeError(f"'{base}' is not a component and has no callable members")
+        comp_type = sym_type.split(":", 1)[1]
+        return self._resolve_component_function(comp_type, parts[1:], arg_types)
+
+    def _resolve_component_function(self, comp_type, member_parts, arg_types):
+        iface = self.component_interfaces.get(comp_type)
+        if not iface:
+            raise TypeError(f"Unknown component type '{comp_type}'")
+
+        name = member_parts[0]
+        if len(member_parts) == 1:
+            finfo = iface.get("funcs", {}).get(name)
+            if not finfo:
+                raise TypeError(f"Component '{comp_type}' has no function '{name}'")
+            param_types = finfo.get("params", [])
+            if len(param_types) != len(arg_types):
+                raise TypeError(f"You have provided the wrong number of arguments. Provided: {len(arg_types)}, expected: {len(param_types)}")
+            for expected, got in zip(param_types, arg_types):
+                if expected != got:
+                    raise TypeError(f"Argument type mismatch in call to '{name}': expected {expected}, got {got}")
+            return finfo.get("return") or "void"
+
+        # Nested: traverse subcomponents
+        sub_map = iface.get("subcomponents", {})
+        if name not in sub_map:
+            raise TypeError(f"Component '{comp_type}' has no subcomponent '{name}'")
+        return self._resolve_component_function(sub_map[name], member_parts[1:], arg_types)
+
 
     def check(self, node):
         match node:
-            case Program(statements):
-                for stmt in statements:
-                    self.check(stmt)
+            case Program(statements, components):
+                self._push_scope()
+                try:
+                    # Expose components as symbols for dotted access in programs
+                    for cname in self.component_interfaces:
+                        self._declare_symbol(cname, f"component:{cname}", mutable=False)
+                    for stmt in statements:
+                        self.check(stmt)
+                finally:
+                    self._pop_scope()
+                # Components are validated separately; this matcher keeps parsing aligned with Program structure.
 
             case Block(statements):
                 self._push_scope()
@@ -258,6 +387,8 @@ class TypeChecker:
 
 
             case Var(name):
+                if "." in name:
+                    return self._resolve_dotted_var(name)
                 sym = self._lookup_symbol(name)
                 if sym is None:
                     raise TypeError(f"Undefined variable or symbol '{name}'")
@@ -417,9 +548,25 @@ class TypeChecker:
                 raise TypeError(f"Trying to index non-indexable type '{cont_t}'")
 
             case Call(func, args):
-                for arg in args: 
-                    self.check(arg)
+                arg_types = [self.check(arg) for arg in args]
                 if isinstance(func, Var):
+                    if "." in func.name:
+                        sym = self._lookup_symbol(func.name)
+                        if sym:
+                            # Dotted symbol resolved directly (e.g., module.func)
+                            if sym["type"] != "function":
+                                raise TypeError(f"'{func.name}' is not callable")
+                            ret_type = sym["info"].get("return")
+                            param_types = sym["info"].get("params")
+                            if param_types is not None:
+                                if len(param_types) != len(arg_types): 
+                                    raise TypeError(f"You have provided the wrong number of arguments. Provided: {len(arg_types)}, expected: {len(param_types)}")
+                                for expected, arg_type in zip(param_types, arg_types):
+                                    if expected != arg_type:
+                                        raise TypeError(f"Argument type mismatch in call to '{func.name}': expected {expected}, got {arg_type}")
+                            return ret_type or "void"
+                        return self._check_component_call(func.name, arg_types)
+
                     sym = self._lookup_symbol(func.name)
                     if not sym: 
                         raise TypeError(f"Undefined function '{func.name}'")
@@ -428,13 +575,14 @@ class TypeChecker:
                     ret_type = sym["info"].get("return")
                     param_types = sym["info"].get("params")
                     if param_types is not None:
-                        if len(param_types) != len(args): 
-                            raise TypeError(f"You have provided the wrong number of arguments. Provided: {len(args)}, expected: {len(param_types)}")
-                        for expected, arg_node in zip(param_types, args):
-                            arg_type = self.check(arg_node)
+                        if len(param_types) != len(arg_types): 
+                            raise TypeError(f"You have provided the wrong number of arguments. Provided: {len(arg_types)}, expected: {len(param_types)}")
+                        for expected, arg_type in zip(param_types, arg_types):
                             if expected != arg_type:
                                 raise TypeError(f"Argument type mismatch in call to '{func.name}': expected {expected}, got {arg_type}")
-                return ret_type or "void"
+                    return ret_type or "void"
+                # Non-var function not supported yet
+                raise TypeError("Unsupported function call target")
 
 
             case FuncDecl(return_type, name, params, body):
@@ -442,20 +590,18 @@ class TypeChecker:
                 param_types = [ptype for ptype,pname in params]
                 sig_info = {"return": return_type, "params": param_types}
                 self._declare_symbol(name, "function", mutable=False, info=sig_info)
-                self._push_scope()
-                self.function_return_stack.append(return_type)
-                try:
-                    for ptype, pname in params:
-                        if pname in self._current_scope():
-                            raise TypeError(f"Parameter '{pname}' already declared in function '{name}'")
-                        self._declare_symbol(pname, ptype, mutable=True)
+                if body is not None:
+                    self._push_scope()
                     self.function_return_stack.append(return_type)
                     try:
+                        for ptype, pname in params:
+                            if pname in self._current_scope():
+                                raise TypeError(f"Parameter '{pname}' already declared in function '{name}'")
+                            self._declare_symbol(pname, ptype, mutable=True)
                         self.check(body)
                     finally:
                         self.function_return_stack.pop()
-                finally:
-                    self._pop_scope()
+                        self._pop_scope()
                 return None
             
             case Return(value):
@@ -476,6 +622,12 @@ class TypeChecker:
 
 
             case Import(module_name):
+                # If importing a component, just declare it
+                if module_name in self.component_interfaces:
+                    if not self._lookup_symbol(module_name):
+                        self._declare_symbol(module_name, f"component:{module_name}", mutable=False)
+                    return None
+
                 # Load module once and register its exported members into the symbol table
                 if module_name in self._loaded_modules:
                     mod = self._loaded_modules[module_name]

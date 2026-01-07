@@ -21,6 +21,14 @@ TOKEN_SPEC = [
     ("VOID_KW", r"\bvoid\b"),         # void type keyword
     ("DICT_KW", r"\bdict\b"),       # dict type keyword
 
+    #--- Config Keywords ---
+    ("COMPONENT", r"\bcomponent\b"),
+    ("EXTENDS", r"\bextends\b"),
+    ("SUBCOMPONENTS", r"\bsubcomponents\b"),
+    ("PARAMETERS", r"\bparameters\b"),
+    ("FUNCTIONS", r"\bfunctions\b"),
+
+
     # --- Other Keywords ---
     ("IMPORT", r"\bimport\b"),  # import keyword
     ("RETURN", r"\breturn\b"),  # return keyword

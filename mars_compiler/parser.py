@@ -1,5 +1,5 @@
 from sys import prefix
-from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return
+from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -22,13 +22,110 @@ class Parser:
     # parse an entire given program as a Program, using ; as the delimeter
     def parse(self, printAST=False):
         statements = []
+        components = []
         while self.current().type != "EOF":
-            statements.append(self.parse_statement())
+                if self.current().type == "COMPONENT":
+                    components.append(self.parse_component())
+                else:
+                    statements.append(self.parse_statement())
         if printAST:
             for stmt in statements:
                 self.print_ast(stmt)
-        return Program(statements)
+        return Program(statements, components)
     
+
+    def parse_component(self):
+        self.eat("COMPONENT")
+        name = self.eat("ID").value
+
+        parent = None
+        if self.current().type == "EXTENDS":
+            self.eat("EXTENDS")
+            parent = self.eat("ID").value
+
+        self.eat("LBRACE")
+
+        subcomponents = []
+        parameters = []
+        functions = []
+
+        while not self.current().type == "RBRACE":
+            if self.current().type == "SUBCOMPONENTS":
+                self.eat("SUBCOMPONENTS")
+                subcomponents = self.parse_subcomponents_block()
+            elif self.current().type == "PARAMETERS":
+                self.eat("PARAMETERS")
+                parameters = self.parse_parameters_block()
+            elif self.current().type == "FUNCTIONS":
+                self.eat("FUNCTIONS")
+                functions = self.parse_functions_block()
+            else:
+                raise SyntaxError(self.peek(), "Unexpected token in component body")
+
+        self.eat("RBRACE")
+
+
+        return ComponentDef(name, parent, subcomponents, parameters, functions)
+
+    def parse_subcomponents_block(self):
+        self.eat("LBRACE")
+        subcomponents = []
+
+        while not self.current().type == "RBRACE":
+            comp_type = self.eat("ID").value
+            name = self.eat("ID").value
+
+            bindings = []
+            if self.current().type == "LPAREN":
+                self.eat("LPAREN")
+                if self.current().type != "RPAREN":
+                    while True:
+                        bname = self.eat("ID").value
+                        self.eat("ASSIGN")
+                        bval = self.parse_expression({"COMMA", "RPAREN"})
+                        bindings.append((bname, bval))
+                        if self.current().type == "COMMA":
+                            self.eat("COMMA")
+                            continue
+                        break
+                self.eat("RPAREN")
+
+            self.eat("SEMI")
+            subcomponents.append(SubcomponentDecl(comp_type, name, bindings))
+
+        self.eat("RBRACE")
+        return subcomponents
+
+    def parse_parameters_block(self):
+        params = []
+
+        self.eat("LBRACE")
+
+        while not self.current().type == "RBRACE":
+            param = self.parse_var_decl()
+            params.append(param)
+
+        self.eat("RBRACE")
+        return params
+
+
+    def parse_functions_block(self):
+        self.eat("LBRACE")
+        functions = []
+
+        while not self.current().type == "RBRACE":
+            # function return type and name
+            rettype = self.parse_type()
+            name = self.eat("ID").value
+
+            func = self.parse_function(rettype, name)
+            functions.append(func)
+
+        self.eat("RBRACE")
+        return functions
+
+
+
     def parse_dotted_var(self):
         """Parse a variable or dotted variable like a.b.c -> abc"""
         id_tok = self.eat("ID")
@@ -89,6 +186,11 @@ class Parser:
             stmt = self.parse_while()
             return stmt
 
+        # --- FOR ---
+        if tok.type == "FOR":
+            stmt = self.parse_for()
+            return stmt
+
         # --- BLOCK ---
         if tok.type == "LBRACE":
             stmt = self.parse_block()
@@ -132,6 +234,23 @@ class Parser:
 
         # --- Anything else is invalid ---
         raise SyntaxError(f"Unexpected token {tok.type} at position {tok.position}")
+    
+    def parse_var_decl(self, require_semi=True):
+        vartype = self.parse_type()
+        name = self.eat("ID").value
+
+        value = None
+        if self.current().type == "ASSIGN":
+            self.eat("ASSIGN")
+            value = self.expr()
+
+        decl = VarDecl(vartype, name, value)
+
+        if require_semi:
+            self.eat("SEMI")
+
+        return decl
+
     
     # Parse types (Used in variable and function declarations above) Ex. int, float, dict<int,string>, string[][], dict<string,dict<int,float>>[]
     def parse_type(self):
@@ -194,8 +313,13 @@ class Parser:
 
         self.eat("RPAREN")
 
-        # Body must be a block
-        body = self.parse_block()
+        # Body may be omitted (prototype) when followed by ';'
+        if self.current().type == "SEMI":
+            self.eat("SEMI")
+            body = None
+        else:
+            # Body must be a block
+            body = self.parse_block()
 
         return FuncDecl(rettype, name, params, body)
     

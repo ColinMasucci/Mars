@@ -12,16 +12,21 @@ class VM:
         self.code = bytecode
         self.stack = []
         self.pc = 0
-        self.locals = {}  # {name: (value, vartype)}
+        self.locals = {}  # {name: (value, vartype, readonly)}
         self._modules = {}  # module_name -> module object
         self.call_stack = []  # stack of (return_pc, locals_snapshot)
 
 
-    def run(self):
+    def run(self, max_steps=1000000, debug=False):
+        steps = 0
         while self.pc < len(self.code):
+            steps += 1
+            if steps > max_steps:
+                raise VMError("Exceeded maximum VM steps; possible infinite loop")
             instr = self.code[self.pc]
             op, *args = instr  # unpack opcode and any arguments
-            # debug: print(self.pc, instr, "stack:", self.stack)
+            if debug:
+                print(self.pc, instr, "stack:", self.stack)
 
             match op:
                 case "PUSH_INT":
@@ -32,6 +37,9 @@ class VM:
                     self.stack.append(args[0])
                 case "PUSH_BOOL":
                     self.stack.append(bool(args[0]))
+
+                case "PUSH_NONE":
+                    self.stack.append(None)
 
                 case "ADD":
                     b = self.stack.pop(); a = self.stack.pop()
@@ -105,38 +113,47 @@ class VM:
                     name = args[0]
                     if name not in self.locals:
                         raise VMError(f"Undefined variable '{name}'")
-                    val, vartype = self.locals[name]
-                    self.locals[name] = (val + 1, vartype)
+                    val, vartype, readonly = self.locals[name]
+                    if readonly:
+                        raise VMError(f"Cannot increment readonly variable '{name}'")
+                    self.locals[name] = (val + 1, vartype, readonly)
                     self.stack.append(val) 
 
                 case "DEC":
                     name = args[0]
                     if name not in self.locals:
                         raise VMError(f"Undefined variable '{name}'")
-                    val, vartype = self.locals[name]
-                    self.locals[name] = (val - 1, vartype)
+                    val, vartype, readonly = self.locals[name]
+                    if readonly:
+                        raise VMError(f"Cannot decrement readonly variable '{name}'")
+                    self.locals[name] = (val - 1, vartype, readonly)
                     self.stack.append(val) 
 
                 case "DECLARE":
                     name, vartype = args[0], args[1]
+                    readonly = False
+                    if len(args) > 2:
+                        readonly = bool(args[2])
                     val = self.stack.pop()
                     if name in self.locals:
                         raise VMError(f"Variable '{name}' already declared")
-                    self.locals[name] = (val, vartype)
+                    self.locals[name] = (val, vartype, readonly)
 
                 case "STORE":
                     name = args[0]
                     val = self.stack.pop()
                     if name not in self.locals:
                         raise VMError(f"Assignment to undeclared variable '{name}'")
-                    old_val, vartype = self.locals[name]
-                    self.locals[name] = (val, vartype)
+                    old_val, vartype, readonly = self.locals[name]
+                    if readonly:
+                        raise VMError(f"Cannot assign to readonly variable '{name}'")
+                    self.locals[name] = (val, vartype, readonly)
 
                 case "LOAD":
                     name = args[0]  # could be "math.PI"
                     if name not in self.locals:
                         raise VMError(f"Undefined variable '{name}'")
-                    val, _type = self.locals[name]
+                    val, _type, _ro = self.locals[name]
                     self.stack.append(val)
 
 
@@ -168,10 +185,17 @@ class VM:
                 case "IMPORT":
                     module_name = args[0]
 
+                    module_path = f"builtins/{module_name}.py"
+                    if not os.path.exists(module_path):
+                        # Component or unknown import: skip at runtime
+                        self.locals[f"{module_name}"] = (None, "module", False)
+                        self.pc += 1
+                        continue
                     if module_name in self._modules:
+                        self.pc += 1
                         continue  # already imported
 
-                    spec = importlib.util.spec_from_file_location(module_name, f"builtins/{module_name}.py")
+                    spec = importlib.util.spec_from_file_location(module_name, module_path)
                     module = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(module)
 
@@ -180,7 +204,7 @@ class VM:
                     # populate locals with dotted names
                     funcs_dict = getattr(module, f"{module_name.upper()}_FUNCS", {})
                     for name, val in funcs_dict.items():
-                        self.locals[f"{module_name}.{name}"] = (val, "function" if callable(val) else type(val).__name__)
+                        self.locals[f"{module_name}.{name}"] = (val, "function" if callable(val) else type(val).__name__, False)
 
 
                 case "FUNC_BEGIN":
@@ -204,7 +228,11 @@ class VM:
                     arg_values = [self.stack.pop() for _ in range(n_args)][::-1]
 
                     # Lookup locals for user-defined functions / builtins
-                    func_val, typ = self.locals.get(func_name, (None, None))
+                    func_val, typ = None, None
+                    if func_name in self.locals:
+                        lv = self.locals[func_name]
+                        if isinstance(lv, tuple) and len(lv) >= 2:
+                            func_val, typ = lv[0], lv[1]
                     if typ == "function" and callable(func_val):
                         # Built-in Python function
                         result = func_val(*arg_values)
@@ -243,7 +271,7 @@ class VM:
                         # Install fresh locals and bind parameters
                         self.locals = {}
                         for name, val in zip(param_names, arg_values):
-                            self.locals[name] = (val, "unknown")  # type info optional
+                            self.locals[name] = (val, "unknown", False)  # type info optional
 
                         # Jump to the first instruction of the function body (skip the param DECLAREs)
                         self.pc = func_pc + param_count
