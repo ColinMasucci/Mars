@@ -1,0 +1,18 @@
+class DifferentialFK {
+    differentialChassis chassis;
+    float[] position = [0, 0];
+
+    DifferentialFK(differentialChassis chassis){
+        this.chassis = chassis;
+    }
+
+    void updatePosition(float x, float y) {
+        this.position[0] = this.position[0] + x;
+        this.position[1] = this.position[1] + y;
+    }
+
+    float[] getPosition() {
+        return this.position;
+    }
+    
+}

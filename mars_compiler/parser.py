@@ -1,5 +1,4 @@
-from sys import prefix
-from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl
+from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -23,15 +22,18 @@ class Parser:
     def parse(self, printAST=False):
         statements = []
         components = []
+        classes = []
         while self.current().type != "EOF":
                 if self.current().type == "COMPONENT":
                     components.append(self.parse_component())
+                elif self.current().type == "CLASS":
+                    classes.append(self.parse_class())
                 else:
                     statements.append(self.parse_statement())
         if printAST:
             for stmt in statements:
                 self.print_ast(stmt)
-        return Program(statements, components)
+        return Program(statements, components, classes)
     
 
     def parse_component(self):
@@ -127,15 +129,16 @@ class Parser:
 
 
     def parse_dotted_var(self):
-        """Parse a variable or dotted variable like a.b.c -> abc"""
+        """Parse a variable or dotted access like a.b.c into MemberAccess chain"""
         id_tok = self.eat("ID")
-        name_parts = [id_tok.value]
+        node = Var(id_tok.value)
 
         while self.current().type == "DOT":
             self.eat("DOT")
-            name_parts.append(self.eat("ID").value)
+            attr = self.eat("ID").value
+            node = MemberAccess(node, attr)
 
-        return Var(".".join(name_parts))
+        return node
     
     def parse_assignable(self):
         """
@@ -196,23 +199,37 @@ class Parser:
             stmt = self.parse_block()
             return stmt
 
-        # --- VAR & FUNC DECLARATION ---
-        if tok.type in ("INT_KW", "FLOAT_KW", "BOOL_KW", "STRING_KW", "VOID_KW", "DICT_KW"):
-            #Base type for variable declaration
-            vartype = self.parse_type()
-
-            # Grab variable or function name
-            name = self.eat("ID").value
-            if self.current().type == "LPAREN": # detect function declaration
-                return self.parse_function(vartype, name)
+        # --- VAR / FUNC DECLARATION (supports const and user types) ---
+        if tok.type in ("CONST_KW","INT_KW","FLOAT_KW","BOOL_KW","STRING_KW","VOID_KW","DICT_KW","ID"):
+            save_pos = self.pos
+            readonly = False
+            if tok.type == "CONST_KW":
+                self.eat("CONST_KW")
+                readonly = True
+            try:
+                vartype = self.parse_type()
+            except SyntaxError:
+                # not a declaration
+                self.pos = save_pos
+                readonly = False
             else:
-                value = None
-                if self.current().type == "ASSIGN":
-                    self.eat("ASSIGN")
-                    value = self.expr()
-                stmt = VarDecl(vartype, name, value)
-                self.eat("SEMI")
-                return stmt
+                if self.current().type == "ID":
+                    name = self.eat("ID").value
+                    if self.current().type == "LPAREN":
+                        if readonly:
+                            raise SyntaxError("Functions cannot be declared const")
+                        return self.parse_function(vartype, name)
+                    value = None
+                    if self.current().type == "ASSIGN":
+                        self.eat("ASSIGN")
+                        value = self.expr()
+                    decl = VarDecl(vartype, name, value, readonly)
+                    self.eat("SEMI")
+                    return decl
+                else:
+                    # not actually a declaration; rewind
+                    self.pos = save_pos
+                    readonly = False
 
         # --- ASSIGNMENT OR EXPRESSION ---
         if tok.type in ("ID", "LPAREN", "LBRACKET"):
@@ -224,7 +241,6 @@ class Parser:
                 value = self.expr()
                 stmt = Assign(target, value)
             else:
-                #stmt = target  # it's just an expression
                 # Roll back and treat as expression
                 self.pos = save_pos
                 stmt = self.expr()
@@ -235,7 +251,7 @@ class Parser:
         # --- Anything else is invalid ---
         raise SyntaxError(f"Unexpected token {tok.type} at position {tok.position}")
     
-    def parse_var_decl(self, require_semi=True):
+    def parse_var_decl(self, require_semi=True, readonly=False):
         vartype = self.parse_type()
         name = self.eat("ID").value
 
@@ -244,7 +260,7 @@ class Parser:
             self.eat("ASSIGN")
             value = self.expr()
 
-        decl = VarDecl(vartype, name, value)
+        decl = VarDecl(vartype, name, value, readonly)
 
         if require_semi:
             self.eat("SEMI")
@@ -295,14 +311,11 @@ class Parser:
 
         if self.current().type != "RPAREN":
             while True:
-                # param type
-                ptype = self.eat(self.current().type).type.replace("_KW", "").lower()
-                
-                # reject void parameters
+                ptype = self.parse_type()
+
                 if ptype == "void":
                     raise SyntaxError("Parameter type cannot be void")
 
-                # param name
                 pname = self.eat("ID").value
                 params.append((ptype, pname))
 
@@ -398,15 +411,29 @@ class Parser:
         Does NOT consume a trailing semicolon.
         """
         tok = self.current()
-        # --- Variable declaration ---
-        if tok.type in ("INT_KW", "FLOAT_KW", "STRING_KW", "BOOL_KW"):
-            vartype = self.eat(tok.type).type.replace("_KW", "").lower()  # store type as lowercase string
-            name = self.eat("ID").value
-            value = None
-            if self.current().type == "ASSIGN":
-                self.eat("ASSIGN")
-                value = self.expr()
-            return VarDecl(vartype, name, value)
+        # --- Variable declaration (supports const and user types) ---
+        if tok.type in ("CONST_KW","INT_KW","FLOAT_KW","STRING_KW","BOOL_KW","ID","DICT_KW","VOID_KW"):
+            save_pos = self.pos
+            readonly = False
+            if tok.type == "CONST_KW":
+                self.eat("CONST_KW")
+                readonly = True
+            try:
+                vartype = self.parse_type()
+            except SyntaxError:
+                self.pos = save_pos
+                readonly = False
+            else:
+                if self.current().type == "ID":
+                    name = self.eat("ID").value
+                    value = None
+                    if self.current().type == "ASSIGN":
+                        self.eat("ASSIGN")
+                        value = self.expr()
+                    return VarDecl(vartype, name, value, readonly)
+                else:
+                    self.pos = save_pos
+                    readonly = False
 
 
         # --- Assignment ---
@@ -671,7 +698,7 @@ class Parser:
         if tok.type == "ID":
             node = self.parse_dotted_var()
 
-            # function call
+            # function / method / constructor call
             if self.current().type == "LPAREN":
                 self.eat("LPAREN")
                 args = []
@@ -786,3 +813,52 @@ class Parser:
                 print(f"{prefix}Unknown node type: {node}")
         if indent == 0:
             print("\n")
+    def parse_class(self):
+        self.eat("CLASS")
+        name = self.eat("ID").value
+        self.eat("LBRACE")
+
+        fields = []
+        methods = []
+        constructor = None
+
+        while self.current().type != "RBRACE":
+            is_const = False
+            if self.current().type == "CONST_KW":
+                self.eat("CONST_KW")
+                is_const = True
+
+            # Constructor shorthand: ClassName(params) without a leading return type
+            if self.current().type == "ID" and self.current().value == name and self.peek().type == "LPAREN":
+                self.eat("ID")
+                ctor = self.parse_function(name, name)
+                constructor = MethodDecl(name, name, ctor.params, ctor.body, True)
+                continue
+
+            # type
+            vartype = self.parse_type()
+            member_name = self.eat("ID").value
+
+            # constructor (name == class name and followed by LPAREN)
+            if member_name == name and self.current().type == "LPAREN":
+                # treat as constructor
+                ctor = self.parse_function(vartype, member_name)
+                ctor = MethodDecl(vartype, member_name, ctor.params, ctor.body, True)
+                constructor = ctor
+                continue
+
+            if self.current().type == "LPAREN":
+                # method
+                fn = self.parse_function(vartype, member_name)
+                methods.append(MethodDecl(vartype, member_name, fn.params, fn.body, False))
+            else:
+                # field
+                value = None
+                if self.current().type == "ASSIGN":
+                    self.eat("ASSIGN")
+                    value = self.expr()
+                self.eat("SEMI")
+                fields.append(FieldDecl(vartype, member_name, value, is_const))
+
+        self.eat("RBRACE")
+        return ClassDecl(name, fields, methods, constructor)

@@ -49,6 +49,26 @@ class VarDecl:
     value: Any
     readonly: bool = False
 
+@dataclass
+class MemberAccess:
+    obj: Any
+    attr: str
+
+@dataclass
+class FieldDecl:
+    vartype: str
+    name: str
+    value: Any
+    readonly: bool = False
+
+@dataclass
+class MethodDecl:
+    return_type: Any
+    name: str
+    params: List[Any]
+    body: Any
+    is_constructor: bool = False
+
 # used for assigning variables
 @dataclass
 class Assign:
@@ -105,6 +125,7 @@ class Block:
 class Program:
     statements: List[Any]
     components: List[Any]
+    classes: List[Any] = None
 
 @dataclass
 class ComponentDef:
@@ -114,3 +135,10 @@ class ComponentDef:
         self.subcomponents = subcomponents
         self.parameters = parameters
         self.functions = functions
+
+@dataclass
+class ClassDecl:
+    name: str
+    fields: List[FieldDecl]
+    methods: List[MethodDecl]
+    constructor: Any  # MethodDecl or None

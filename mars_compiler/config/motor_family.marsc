@@ -33,7 +33,7 @@ component brandMotor extends brushlessMotor {
     }
 }
 
-component twoWheelChassis {
+component differentialChassis {
     subcomponents{
         brandMotor leftMotor(direction = 1, port = 1);
         brandMotor rightMotor(direction = -1, port = 2);
@@ -41,6 +41,10 @@ component twoWheelChassis {
     parameters{}
     functions{
         void drive(int speed){
+            print(leftMotor.direction);
+            print(leftMotor.port);
+            print(rightMotor.direction);
+            print(rightMotor.port);
             leftMotor.spin(speed);
             rightMotor.spin(speed);
         }

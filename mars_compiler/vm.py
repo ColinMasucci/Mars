@@ -8,13 +8,15 @@ Instr = Tuple[str, ...]
 class VMError(Exception): pass
 
 class VM:
-    def __init__(self, bytecode: List[Instr]):
+    def __init__(self, bytecode: List[Instr], class_field_info=None):
         self.code = bytecode
         self.stack = []
         self.pc = 0
-        self.locals = {}  # {name: (value, vartype, readonly)}
+        self.locals = {}  # current frame locals {name: (value, vartype, readonly)}
+        self.globals = {} # global frame
         self._modules = {}  # module_name -> module object
         self.call_stack = []  # stack of (return_pc, locals_snapshot)
+        self.class_field_info = class_field_info or {}
 
 
     def run(self, max_steps=1000000, debug=False):
@@ -109,6 +111,66 @@ class VM:
                     else:
                         self.stack.append(not val)
 
+                case "NEW_CALL":
+                    n_args = int(args[0])
+                    # stack: class_ref, args...
+                    arg_values = [self.stack.pop() for _ in range(n_args)][::-1]
+                    class_ref = self.stack.pop()
+                    if not isinstance(class_ref, str):
+                        raise VMError("Constructor call requires class reference name")
+                    obj = self._new_object(class_ref)
+                    ctor_name = f"{class_ref}.__ctor"
+                    # find ctor
+                    func_pc = None
+                    func_begin_idx = None
+                    for idx, instr in enumerate(self.code):
+                        if instr[0] == "FUNC_BEGIN" and instr[1] == ctor_name:
+                            func_pc = idx + 1
+                            func_begin_idx = idx
+                            break
+                    if func_pc is None:
+                        # no ctor, just push object
+                        self.stack.append(obj)
+                        self.pc += 1
+                        continue
+                    param_count = int(self.code[func_begin_idx][2]) if len(self.code[func_begin_idx]) > 2 else 0
+                    param_names = []
+                    for i in range(param_count):
+                        decl_idx = func_pc + i
+                        decl_instr = self.code[decl_idx]
+                        if decl_instr[0] != "DECLARE":
+                            raise VMError(f"Malformed constructor '{ctor_name}'")
+                        param_names.append(decl_instr[1])
+
+                    # Save current frame
+                    self.call_stack.append((self.pc + 1, self.locals.copy()))
+                    self.locals = {}
+                    self.locals["this"] = (obj, f"class:{class_ref}", False)
+                    for name, val in zip(param_names[1:], arg_values):
+                        self.locals[name] = (val, "unknown", False)
+                    self.pc = func_pc + param_count
+                    continue
+
+                case "GET_FIELD":
+                    attr = args[0]
+                    obj = self.stack.pop()
+                    if not isinstance(obj, dict) or "__fields__" not in obj:
+                        raise VMError("GET_FIELD on non-object")
+                    fields = obj["__fields__"]
+                    if attr not in fields:
+                        raise VMError(f"Field '{attr}' not found")
+                    self.stack.append(fields[attr])
+
+                case "SET_FIELD":
+                    attr = args[0]
+                    obj = self.stack.pop()
+                    val = self.stack.pop()
+                    if not isinstance(obj, dict) or "__fields__" not in obj:
+                        raise VMError("SET_FIELD on non-object")
+                    if "__readonly__" in obj and obj["__readonly__"].get(attr):
+                        raise VMError(f"Cannot assign to const field '{attr}'")
+                    obj["__fields__"][attr] = val
+
                 case "INC":
                     name = args[0]
                     if name not in self.locals:
@@ -135,24 +197,37 @@ class VM:
                     if len(args) > 2:
                         readonly = bool(args[2])
                     val = self.stack.pop()
-                    if name in self.locals:
+                    target = self.globals if not self.call_stack else self.locals
+                    if name in target:
                         raise VMError(f"Variable '{name}' already declared")
-                    self.locals[name] = (val, vartype, readonly)
+                    target[name] = (val, vartype, readonly)
 
                 case "STORE":
                     name = args[0]
                     val = self.stack.pop()
-                    if name not in self.locals:
+                    target = self.locals if name in self.locals else self.globals if name in self.globals else None
+                    if target is None:
                         raise VMError(f"Assignment to undeclared variable '{name}'")
-                    old_val, vartype, readonly = self.locals[name]
+                    old_val, vartype, readonly = target[name]
                     if readonly:
                         raise VMError(f"Cannot assign to readonly variable '{name}'")
-                    self.locals[name] = (val, vartype, readonly)
+                    target[name] = (val, vartype, readonly)
 
                 case "LOAD":
                     name = args[0]  # could be "math.PI"
+                    if name in self.locals:
+                        val, _type, _ro = self.locals[name]
+                        self.stack.append(val)
+                        self.pc += 1
+                        continue
+                    if name in self.globals:
+                        val, _type, _ro = self.globals[name]
+                        self.stack.append(val)
+                        self.pc += 1
+                        continue
                     if name not in self.locals:
                         raise VMError(f"Undefined variable '{name}'")
+                    # fallback (should not hit)
                     val, _type, _ro = self.locals[name]
                     self.stack.append(val)
 
@@ -188,7 +263,7 @@ class VM:
                     module_path = f"builtins/{module_name}.py"
                     if not os.path.exists(module_path):
                         # Component or unknown import: skip at runtime
-                        self.locals[f"{module_name}"] = (None, "module", False)
+                        self.globals[f"{module_name}"] = (None, "module", False)
                         self.pc += 1
                         continue
                     if module_name in self._modules:
@@ -231,6 +306,10 @@ class VM:
                     func_val, typ = None, None
                     if func_name in self.locals:
                         lv = self.locals[func_name]
+                        if isinstance(lv, tuple) and len(lv) >= 2:
+                            func_val, typ = lv[0], lv[1]
+                    elif func_name in self.globals:
+                        lv = self.globals[func_name]
                         if isinstance(lv, tuple) and len(lv) >= 2:
                             func_val, typ = lv[0], lv[1]
                     if typ == "function" and callable(func_val):
@@ -276,6 +355,46 @@ class VM:
                         # Jump to the first instruction of the function body (skip the param DECLAREs)
                         self.pc = func_pc + param_count
                         continue
+
+                case "CALL_METHOD":
+                    method_name, n_args = args[0], int(args[1])
+                    # stack: ..., obj, arg1, arg2...
+                    arg_values = [self.stack.pop() for _ in range(n_args)][::-1]
+                    obj = self.stack.pop()
+                    if not isinstance(obj, dict) or "__class__" not in obj:
+                        raise VMError("Method call on non-object")
+                    class_name = obj["__class__"]
+                    func_name = f"{class_name}.{method_name}" if not method_name.startswith("__") else f"{class_name}{method_name}"
+
+                    # Find function body
+                    func_pc = None
+                    func_begin_idx = None
+                    for idx, instr in enumerate(self.code):
+                        if instr[0] == "FUNC_BEGIN" and instr[1] == func_name:
+                            func_pc = idx + 1
+                            func_begin_idx = idx
+                            break
+                    if func_pc is None:
+                        raise VMError(f"Method '{func_name}' not found")
+
+                    param_count = int(self.code[func_begin_idx][2]) if len(self.code[func_begin_idx]) > 2 else 0
+                    param_names = []
+                    for i in range(param_count):
+                        decl_idx = func_pc + i
+                        decl_instr = self.code[decl_idx]
+                        if decl_instr[0] != "DECLARE":
+                            raise VMError(f"Malformed method '{func_name}'")
+                        param_names.append(decl_instr[1])
+
+                    # Save current frame
+                    self.call_stack.append((self.pc + 1, self.locals.copy()))
+                    self.locals = {}
+                    # Bind this
+                    self.locals["this"] = (obj, f"class:{class_name}", False)
+                    for name, val in zip(param_names[1:], arg_values):
+                        self.locals[name] = (val, "unknown", False)
+                    self.pc = func_pc + param_count
+                    continue
 
 
                 case "RETURN":
@@ -396,3 +515,12 @@ class VM:
         
         if self.stack is not None and len(self.stack) > 0:
             raise VMError("VM halted prematurely. Final stack:", self.stack, "PC:", self.pc, " Code Length:", len(self.code))
+
+    def _new_object(self, class_name):
+        info = self.class_field_info.get(class_name, {})
+        fields = {}
+        readonly = {}
+        for fname, finfo in info.items():
+            fields[fname] = None
+            readonly[fname] = finfo.get("readonly", False) if isinstance(finfo, dict) else False
+        return {"__class__": class_name, "__fields__": fields, "__readonly__": readonly}

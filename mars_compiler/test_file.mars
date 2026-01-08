@@ -1,8 +1,17 @@
 import myRobot;
+import differentialFK;
 
 int mainVar = 0;
 
 print(myRobot.height);
 print(myRobot.flying);
 
+# Exercise class instantiation and methods
+DifferentialFK fk = DifferentialFK(myRobot.myChassis);
+fk.updatePosition(1.5, -0.25);
+float[] pos = fk.getPosition();
+print(pos[0]);
+print(pos[1]);
+
+# Keep the existing component call
 myRobot.myChassis.drive(3);

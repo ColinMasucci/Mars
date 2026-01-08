@@ -1,12 +1,6 @@
-component robot {
-    subcomponents{}
-    parameters{}
-    functions{}
-}
-
 component myRobot extends robot {
     subcomponents{
-        twoWheelChassis myChassis;
+        differentialChassis myChassis;
     }
     parameters{
         float height = 5;

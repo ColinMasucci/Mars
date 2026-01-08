@@ -48,6 +48,7 @@ class ComponentValidator:
             "params": dict(parent_iface["params"]),
             "funcs": dict(parent_iface["funcs"]),
             "subcomponents": dict(parent_iface["subcomponents"]),
+            "parent": comp.parent,
         }
 
         # Parameters: allow override only if type matches

@@ -6,14 +6,44 @@ import ast_nodes as ast
 
 Instr = Tuple[str, ...] # instruction is a tuple of strings and then somtimes numbers. (Ex. ("PUSH_INT", 42) or ("ADD",) )
 function_table = {}  # name -> start index
+CLASS_NAMES = set()
+COMPONENT_BASES = set()
+
+def _flatten_member_access(node):
+    """Return list of identifiers for MemberAccess chain, or None if not pure identifiers."""
+    parts = []
+    cur = node
+    while isinstance(cur, ast.MemberAccess):
+        parts.insert(0, cur.attr)
+        cur = cur.obj
+    if isinstance(cur, ast.Var):
+        parts.insert(0, cur.name)
+        return parts
+    return None
 
 #This returns a List of instructions (bytecode) from the AST, and will give them to the Stack VM.
-def compile_program(node: ast.Program, printBytecode = False, component_functions=None, component_params=None) -> List[Instr]:
+def compile_program(node: ast.Program, printBytecode = False, component_functions=None, component_params=None, class_functions=None, class_interfaces=None) -> List[Instr]:
     code = []
     function_table.clear()
+    global CLASS_NAMES, COMPONENT_BASES
+    CLASS_NAMES = set(class_interfaces.keys()) if class_interfaces else set()
+    COMPONENT_BASES = set()
+    for decl in component_params or []:
+        if isinstance(decl, ast.VarDecl) and isinstance(decl.name, str):
+            base = decl.name.split(".",1)[0]
+            COMPONENT_BASES.add(base)
+    if component_functions:
+        for fn in component_functions:
+            if isinstance(fn, ast.FuncDecl):
+                base = fn.name.split(".",1)[0]
+                COMPONENT_BASES.add(base)
 
     # Reserve space for a JUMP over all function definitions
     code.append(("JUMP", None))  # placeholder
+
+    # Compile class functions (methods/ctors)
+    for func in class_functions or []:
+        compile_node(func, code)
 
     # Compile component functions first (they are already namespaced)
     for func in component_functions or []:
@@ -102,7 +132,7 @@ def compile_node(node, code: List[Instr]):
                         case "void":
                             raise ValueError("Variables cannot be of type void")
                         case _:# For user-defined types or unsupported types
-                            raise ValueError(f"Unknown vartype '{vartype}' in VarDecl")
+                            code.append(("PUSH_NONE",))
             
             # Finally declare the variable
             code.append(("DECLARE", name, vartype, readonly))
@@ -171,6 +201,12 @@ def compile_node(node, code: List[Instr]):
                 # store expects: <value> on top, then STORE will pop it and store into name
                 code.append(("STORE", name_node.name))
                 return
+            if isinstance(name_node, ast.MemberAccess):
+                # obj.field = value
+                compile_node(value, code)
+                compile_node(name_node.obj, code)
+                code.append(("SET_FIELD", name_node.attr))
+                return
 
             # Assignment to a dotted field like a.b.c (Split like "a.b.c" → base="a", fields=["b","c"])
             if isinstance(name_node, str) and "." in name_node:
@@ -205,6 +241,14 @@ def compile_node(node, code: List[Instr]):
         case ast.Var(name):
             """Access a variable or module/component member."""
             code.append(("LOAD", name))
+        
+        case ast.MemberAccess(obj, attr):
+            parts = _flatten_member_access(ast.MemberAccess(obj, attr))
+            if parts and parts[0] in COMPONENT_BASES:
+                code.append(("LOAD", ".".join(parts)))
+            else:
+                compile_node(obj, code)
+                code.append(("GET_FIELD", attr))
         
         case ast.ArrayAccess(array_expr, index_expr):
             # compile array/dict expression
@@ -281,17 +325,44 @@ def compile_node(node, code: List[Instr]):
                 compile_node(stmt, code)
 
         case ast.Call(func, args):
-            """Compile a function call (top-level, module, or component)."""
-            # Compile arguments
+            """Compile a function call (top-level, module, component, class ctor, or method)."""
+            if isinstance(func, ast.MemberAccess):
+                parts = _flatten_member_access(func)
+                if parts and parts[0] in COMPONENT_BASES:
+                    target_name = ".".join(parts)
+                    for arg in args:
+                        compile_node(arg, code)
+                    code.append(("CALL", target_name, len(args)))
+                    return
+                # class/object method
+                compile_node(func.obj, code)
+                for arg in args:
+                    compile_node(arg, code)
+                code.append(("CALL_METHOD", func.attr, len(args)))
+                return
+
+            # constructor call if func is class name (handled at runtime)
+            if isinstance(func, ast.Var):
+                if func.name in CLASS_NAMES:
+                    code.append(("PUSH_STR", func.name))
+                    for arg in args:
+                        compile_node(arg, code)
+                    code.append(("NEW_CALL", len(args)))
+                    return
+                # regular function
+                for arg in args:
+                    compile_node(arg, code)
+                if func.name == "print":
+                    code.append(("PRINT", len(args)))
+                else:
+                    code.append(("CALL", func.name, len(args)))
+                return
+
+            # fallback
             for arg in args:
                 compile_node(arg, code)
-
-            # Emit appropriate opcode
-            if isinstance(func, ast.Var) and func.name == "print":
-                code.append(("PRINT", len(args)))       # special PRINT opcode
-            else:
-                target_name = func.name if isinstance(func, ast.Var) else "<callable>"
-                code.append(("CALL", target_name, len(args)))  # normal CALL
+            target_name = func.name if isinstance(func, ast.Var) else "<callable>"
+            code.append(("CALL", target_name, len(args)))
 
 
         case ast.Import(module_name):

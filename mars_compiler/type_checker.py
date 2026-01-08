@@ -1,16 +1,18 @@
-from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, Return, FuncDecl
+from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, Return, FuncDecl, MemberAccess, ClassDecl
 import os
 import importlib.util
 
 
 class TypeChecker:
-    def __init__(self, component_interfaces=None):
+    def __init__(self, component_interfaces=None, class_interfaces=None):
         # Scopes: list of dicts, each dict: name -> { 'type': str or 'function', 'mutable': bool, 'info': dict }
         self.scopes = [{}]
         self._loaded_modules = {}  # cache loaded builtin modules
         self.function_return_stack = [] # stack of return types
         self.user_types = set()  # placeholder for user-defined types (classes, structs, enums, etc) - not implemented yet
         self.component_interfaces = component_interfaces or {}
+        self.class_interfaces = class_interfaces or {}
+        self.component_parents = {name: info.get("parent") for name, info in (self.component_interfaces or {}).items()}
 
         # pre-load built-in functions and constants (not from library)
         self._declare_symbol(
@@ -78,11 +80,55 @@ class TypeChecker:
             return f"array<{elem_type}>"
         return typ
 
+    def _split_kind(self, typ: str):
+        """Return (kind,name) where kind in {component,class,other}."""
+        if typ.startswith("component:"):
+            return ("component", typ.split(":",1)[1])
+        if typ.startswith("class:"):
+            return ("class", typ.split(":",1)[1])
+        if typ in self.component_interfaces:
+            return ("component", typ)
+        if typ in self.class_interfaces:
+            return ("class", typ)
+        return ("other", typ)
+
+    def _component_is_a(self, child: str, parent: str):
+        """True if child is parent or inherits from parent (using component_parents)."""
+        if child == parent:
+            return True
+        cur = self.component_parents.get(child)
+        while cur:
+            if cur == parent:
+                return True
+            cur = self.component_parents.get(cur)
+        return False
+
     # Compare two types for compatibility (including structured types) Ex. dict<int,string> and dict<int,string> are compatible, but dict<int,string> and dict<string,string> are not.
     def _types_compatible(self, a, b):
         """Compare structured types like dict<K,V> and array<T>."""
         if a == b:
             return True
+        if self._normalize_type(a) == self._normalize_type(b):
+            return True
+        # component subtyping (child -> parent)
+        if isinstance(a, str) and isinstance(b, str):
+            a_kind, a_name = self._split_kind(a)
+            b_kind, b_name = self._split_kind(b)
+            if a_kind == b_kind == "component":
+                # allow child->parent substitution; prefer treating 'a' as expected, 'b' as actual
+                return self._component_is_a(b_name, a_name) or self._component_is_a(a_name, b_name)
+            if a_kind == b_kind == "class" and a_name == b_name:
+                return True
+        # class instance type strings can be "ClassName" or "class:ClassName"
+        if isinstance(a, str) and isinstance(b, str):
+            if a.startswith("class:") and a.split(":",1)[1] == b:
+                return True
+            if b.startswith("class:") and b.split(":",1)[1] == a:
+                return True
+            if a.startswith("class:") and b.startswith("class:") and a.split(":",1)[1] == b.split(":",1)[1]:
+                return True
+            if a.startswith("component:") and b.startswith("component:") and a.split(":",1)[1] == b.split(":",1)[1]:
+                return True
 
         # array<T>
         if a.startswith("array<") and a.endswith(">") and \
@@ -112,6 +158,8 @@ class TypeChecker:
 
         # Components (treated as user-defined types)
         if t in self.component_interfaces:
+            return True
+        if t in self.class_interfaces:
             return True
         
         # User-defined types (classes, structs, enums, etc) - placeholder for future implementation
@@ -265,7 +313,7 @@ class TypeChecker:
             if len(param_types) != len(arg_types):
                 raise TypeError(f"You have provided the wrong number of arguments. Provided: {len(arg_types)}, expected: {len(param_types)}")
             for expected, got in zip(param_types, arg_types):
-                if expected != got:
+                if not self._types_compatible(expected, got):
                     raise TypeError(f"Argument type mismatch in call to '{name}': expected {expected}, got {got}")
             return finfo.get("return") or "void"
 
@@ -278,12 +326,15 @@ class TypeChecker:
 
     def check(self, node):
         match node:
-            case Program(statements, components):
+            case Program(statements, components, classes):
                 self._push_scope()
                 try:
-                    # Expose components as symbols for dotted access in programs
+                    # Expose classes and components as symbols for dotted access in programs
+                    for cname in self.class_interfaces:
+                        self._declare_symbol(cname, f"class:{cname}", mutable=False)
                     for cname in self.component_interfaces:
                         self._declare_symbol(cname, f"component:{cname}", mutable=False)
+                    # also expose class names as types
                     for stmt in statements:
                         self.check(stmt)
                 finally:
@@ -306,6 +357,12 @@ class TypeChecker:
                 # Check the type exists or is valid (dict/array)
                 self._validate_declared_type(vartype)
 
+                stored_type = vartype
+                if vartype in self.component_interfaces:
+                    stored_type = f"component:{vartype}"
+                if vartype in self.class_interfaces:
+                    stored_type = f"class:{vartype}"
+
                 # Check redeclaration
                 if name in self._current_scope():
                     raise TypeError(f"Variable '{name}' already declared")
@@ -313,86 +370,109 @@ class TypeChecker:
                 # If initializer exists, ensure type compatibility
                 if value is not None:
                     value_type = self.check(value)
-                    if not self._types_compatible(vartype, value_type):
+                    if not self._types_compatible(stored_type, value_type):
                         raise TypeError(
                             f"Type mismatch in declaration of '{name}': "
                             f"expected {vartype}, got {value_type}"
                         )
                 # Add to symbol table
-                self._declare_symbol(name, vartype, mutable=True)
-                return vartype
+                self._declare_symbol(name, stored_type, mutable=not getattr(node, "readonly", False))
+                return stored_type
 
 
 
             case Assign(name_node, value):
-                # LHS can be Var or ArrayAccess (e.g., arr[i])
+                # ---------------- SIMPLE VAR ASSIGN ----------------
                 if isinstance(name_node, Var):
                     name = name_node.name
                     sym = self._lookup_symbol(name)
                     if sym is None:
                         raise TypeError(f"Assignment to undeclared variable '{name}'")
                     if sym.get("mutable") is False:
-                        raise TypeError("Cannot assign to immutable symbol")
+                        raise TypeError(f"Cannot assign to immutable symbol '{name}'")
                     value_type = self.check(value)
                     expected = sym["type"]
                     if expected != value_type:
                         raise TypeError(f"Type mismatch in assignment to '{name}': expected {expected}, got {value_type}")
                     return expected
 
-                # Assignment to array or dictionary element: ArrayAccess(container, index)
+                # ---------------- ARRAY / DICT ELEMENT ASSIGN ----------------
                 if isinstance(name_node, ArrayAccess):
-                    # base must be a variable (we require assignable lvalue)
-                    base = name_node.array
-                    if not isinstance(base, Var):
-                        raise TypeError("Left-hand side of assignment must be a variable or array element of a variable")
-                    base_sym = self._lookup_symbol(base.name)
-                    if base_sym is None:
-                        raise TypeError(f"Assignment to undeclared variable '{base.name}'")
-                    if base_sym.get("mutable") is False:
-                        raise TypeError("Cannot assign to immutable symbol")
+                    container = name_node.array
+                    container_type = self.check(container)
 
-                    base_type = base_sym["type"]
+                    # Enforce mutability on container if it is a variable or class field
+                    if isinstance(container, Var):
+                        base_sym = self._lookup_symbol(container.name)
+                        if base_sym is None:
+                            raise TypeError(f"Assignment to undeclared variable '{container.name}'")
+                        if base_sym.get("mutable") is False:
+                            raise TypeError(f"Cannot assign to immutable symbol '{container.name}'")
+                    elif isinstance(container, MemberAccess):
+                        obj_type = self.check(container.obj)
+                        if isinstance(obj_type, str) and obj_type.startswith("class:"):
+                            cname = obj_type.split(":",1)[1]
+                            iface = self.class_interfaces.get(cname, {})
+                            readonly = iface.get("readonly", {}).get(container.attr, False)
+                            if readonly:
+                                raise TypeError(f"Cannot assign to const field '{container.attr}'")
+                        else:
+                            raise TypeError("Left-hand side of assignment must be a variable, array element, or class field")
 
-                    # ---------------- ARRAY ASSIGN ----------------
-                    if base_type.startswith("array<") and base_type.endswith(">"):
-                        elem_type = base_type[len("array<"):-1]
-
+                    # array<int> or dict<K,V>
+                    if isinstance(container_type, str) and container_type.startswith("array<") and container_type.endswith(">"):
+                        elem_type = container_type[len("array<"):-1]
                         idx_type = self.check(name_node.index)
                         if idx_type != "int":
                             raise TypeError(f"Array index must be int, got {idx_type}")
-
                         value_type = self.check(value)
                         if value_type != elem_type:
                             raise TypeError(f"Type mismatch assigning to array element: expected {elem_type}, got {value_type}")
-
                         return elem_type
 
-                    # ---------------- DICT ASSIGN ----------------
-                    if base_type.startswith("dict<") and base_type.endswith(">"):
-                        inside = base_type[len("dict<"):-1]
+                    if isinstance(container_type, str) and container_type.startswith("dict<") and container_type.endswith(">"):
+                        inside = container_type[len("dict<"):-1]
                         key_type, val_type = [x.strip() for x in inside.split(",")]
-
                         idx_type = self.check(name_node.index)
                         if idx_type != key_type:
                             raise TypeError(f"Dictionary key must be {key_type}, got {idx_type}")
-
                         value_type = self.check(value)
                         if value_type != val_type:
                             raise TypeError(f"Type mismatch assigning to dictionary element: expected {val_type}, got {value_type}")
-
                         return val_type
 
-                    raise TypeError(f"Trying to index non-indexable type '{base_type}'")
+                    raise TypeError(f"Trying to index non-indexable type '{container_type}'")
+
+                # ---------------- CLASS FIELD ASSIGN ----------------
+                if isinstance(name_node, MemberAccess):
+                    obj_type = self.check(name_node.obj)
+                    if not isinstance(obj_type, str) or not obj_type.startswith("class:"):
+                        raise TypeError("Left-hand side of assignment must be a variable, array element, or class field")
+                    cname = obj_type.split(":",1)[1]
+                    iface = self.class_interfaces.get(cname, {})
+                    readonly = iface.get("readonly", {}).get(name_node.attr, False)
+                    if readonly:
+                        raise TypeError(f"Cannot assign to const field '{name_node.attr}'")
+                    ftype = self._resolve_member_access(obj_type, name_node.attr)
+                    val_type = self.check(value)
+                    if ftype != val_type:
+                        raise TypeError(f"Type mismatch assigning to field '{name_node.attr}': expected {ftype}, got {val_type}")
+                    return ftype
+
                 raise TypeError("LHS of assignment must be a variable or an array access")
 
 
             case Var(name):
-                if "." in name:
-                    return self._resolve_dotted_var(name)
                 sym = self._lookup_symbol(name)
                 if sym is None:
                     raise TypeError(f"Undefined variable or symbol '{name}'")
                 return sym["type"]
+            case MemberAccess(obj, attr):
+                obj_type = self.check(obj)
+                res = self._resolve_member_access(obj_type, attr)
+                if res is None:
+                    raise TypeError(f"Cannot access member '{attr}' on {obj_type}")
+                return res
 
 
 
@@ -550,6 +630,21 @@ class TypeChecker:
             case Call(func, args):
                 arg_types = [self.check(arg) for arg in args]
                 if isinstance(func, Var):
+                    # constructor call
+                    if func.name in self.class_interfaces:
+                        iface = self.class_interfaces[func.name]
+                        ctor = iface.get("ctor")
+                        if ctor:
+                            params = ctor.get("params", [])
+                            if len(params) != len(arg_types):
+                                raise TypeError(f"Wrong arg count for constructor {func.name}: expected {len(params)}, got {len(arg_types)}")
+                            for expected, got in zip(params, arg_types):
+                                if not self._types_compatible(expected, got):
+                                    raise TypeError(f"Constructor arg mismatch for {func.name}: expected {expected}, got {got}")
+                        else:
+                            if len(arg_types) != 0:
+                                raise TypeError(f"Constructor for {func.name} takes no arguments")
+                        return f"class:{func.name}"
                     if "." in func.name:
                         sym = self._lookup_symbol(func.name)
                         if sym:
@@ -578,10 +673,11 @@ class TypeChecker:
                         if len(param_types) != len(arg_types): 
                             raise TypeError(f"You have provided the wrong number of arguments. Provided: {len(arg_types)}, expected: {len(param_types)}")
                         for expected, arg_type in zip(param_types, arg_types):
-                            if expected != arg_type:
+                            if not self._types_compatible(expected, arg_type):
                                 raise TypeError(f"Argument type mismatch in call to '{func.name}': expected {expected}, got {arg_type}")
                     return ret_type or "void"
-                # Non-var function not supported yet
+                if isinstance(func, MemberAccess):
+                    return self._check_method_call(func, arg_types)
                 raise TypeError("Unsupported function call target")
 
 
@@ -627,6 +723,10 @@ class TypeChecker:
                     if not self._lookup_symbol(module_name):
                         self._declare_symbol(module_name, f"component:{module_name}", mutable=False)
                     return None
+                if module_name in self.class_interfaces:
+                    if not self._lookup_symbol(module_name):
+                        self._declare_symbol(module_name, f"class:{module_name}", mutable=False)
+                    return None
 
                 # Load module once and register its exported members into the symbol table
                 if module_name in self._loaded_modules:
@@ -648,3 +748,55 @@ class TypeChecker:
 
             case _:
                 raise TypeError(f"Unknown AST node type: {type(node).__name__}")
+
+    # --- Class helpers ---
+    def _check_method_call(self, member_access, arg_types):
+        # resolve object type
+        obj_type = self.check(member_access.obj)
+        if isinstance(obj_type, str) and obj_type in self.class_interfaces:
+            obj_type = f"class:{obj_type}"
+        if isinstance(obj_type, str) and obj_type.startswith("component:"):
+            comp_type = obj_type.split(":",1)[1]
+            return self._resolve_component_function(comp_type, [member_access.attr], arg_types)
+        if not isinstance(obj_type, str) or not obj_type.startswith("class:"):
+            raise TypeError(f"'{member_access.obj}' is not a class instance")
+        class_name = obj_type.split(":",1)[1]
+        iface = self.class_interfaces.get(class_name)
+        if not iface:
+            raise TypeError(f"Unknown class '{class_name}'")
+        meth = iface.get("methods", {}).get(member_access.attr)
+        if not meth:
+            raise TypeError(f"Class '{class_name}' has no method '{member_access.attr}'")
+        params = meth.get("params", [])
+        if len(params) != len(arg_types):
+            raise TypeError(f"Wrong arg count for {class_name}.{member_access.attr}: expected {len(params)}, got {len(arg_types)}")
+        for expected, got in zip(params, arg_types):
+            if not self._types_compatible(expected, got):
+                raise TypeError(f"Argument type mismatch for {class_name}.{member_access.attr}: expected {expected}, got {got}")
+        return meth.get("return") or "void"
+
+    def _resolve_member_access(self, obj_type, attr):
+        if obj_type.startswith("component:"):
+            cname = obj_type.split(":",1)[1]
+            iface = self.component_interfaces.get(cname)
+            if not iface:
+                raise TypeError(f"Unknown component '{cname}'")
+            if attr in iface.get("params", {}):
+                return iface["params"][attr]
+            if attr in iface.get("funcs", {}):
+                raise TypeError(f"'{attr}' is a function on component '{cname}' and must be called")
+            if attr in iface.get("subcomponents", {}):
+                return f"component:{iface['subcomponents'][attr]}"
+            raise TypeError(f"Component '{cname}' has no member '{attr}'")
+
+        if obj_type.startswith("class:"):
+            cname = obj_type.split(":",1)[1]
+            iface = self.class_interfaces.get(cname)
+            if not iface:
+                raise TypeError(f"Unknown class '{cname}'")
+            if attr in iface.get("fields", {}):
+                return iface["fields"][attr]
+            if attr in iface.get("methods", {}):
+                raise TypeError(f"'{attr}' is a method on class '{cname}' and must be called")
+            raise TypeError(f"Class '{cname}' has no member '{attr}'")
+        return None
