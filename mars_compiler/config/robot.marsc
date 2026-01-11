@@ -1,6 +1,17 @@
-component myRobot extends robot {
+component myRobot extends Robot {
     subcomponents{
-        differentialChassis myChassis;
+        DifferentialChassis myChassis;
+    }
+    parameters{
+        float height = 5;
+        bool flying = false;
+    }
+    functions{}
+}
+
+component myOtherRobot extends Robot {
+    subcomponents{
+        DifferentialChassis myChassis;
     }
     parameters{
         float height = 5;

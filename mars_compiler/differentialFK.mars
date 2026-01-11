@@ -1,8 +1,15 @@
+
+
 class DifferentialFK {
-    differentialChassis chassis;
+    requirements {
+        DifferentialChassis;
+        
+    }
+
+    DifferentialChassis chassis;
     float[] position = [0, 0];
 
-    DifferentialFK(differentialChassis chassis){
+    DifferentialFK(DifferentialChassis chassis){
         this.chassis = chassis;
     }
 

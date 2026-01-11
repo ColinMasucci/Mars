@@ -1,41 +1,95 @@
 from graphviz import Digraph
 
+from ast_visualizer import _pattern_tint
+
+
+def _parent_chain(comp, comp_map):
+    chain = []
+    parent = comp.parent
+    while parent:
+        chain.append(parent)
+        parent_comp = comp_map.get(parent)
+        if parent_comp is None:
+            break
+        parent = parent_comp.parent
+    return chain
+
+
+def _type_chain(type_name, comp_map):
+    chain = [type_name]
+    comp = comp_map.get(type_name)
+    parent = comp.parent if comp else None
+    while parent:
+        chain.append(parent)
+        parent_comp = comp_map.get(parent)
+        if parent_comp is None:
+            break
+        parent = parent_comp.parent
+    return chain
+
+
+def _component_label(name, type_chain):
+    parts = [f"<B>{name}</B>"]
+    parts.extend(type_chain)
+    return "<" + "<BR/>".join(parts) + ">"
+
 
 def visualize_components(components):
-    """Create a Graphviz digraph of components, showing inheritance and subcomponent links."""
+    """Create a Graphviz digraph of components, showing subcomponent links only."""
     dot = Digraph(comment="Component Tree", format="png")
+    dot.attr(fontname="Helvetica")
+    dot.attr("node", shape="box", style="rounded,filled", fontname="Helvetica")
+    dot.attr("edge", fontname="Helvetica")
 
-    # Index components by name for lookup
     comp_map = {c.name: c for c in components}
+    nodes = {}
+    edges = []
+
+    def _add_node(node_id, label, color):
+        if node_id in nodes:
+            return
+        nodes[node_id] = (label, color)
+
+    def _add_children(parent_id, type_name, type_stack):
+        comp = comp_map.get(type_name)
+        if comp is None:
+            return
+        for sub in comp.subcomponents:
+            node_id = f"{parent_id}.{sub.name}"
+            label = _component_label(sub.name, _type_chain(sub.type_name, comp_map))
+            color = _pattern_tint(sub.type_name)
+            _add_node(node_id, label, color)
+            edges.append((parent_id, node_id))
+            if sub.type_name in type_stack:
+                continue
+            _add_children(node_id, sub.type_name, type_stack + [sub.type_name])
+
+    def _is_robot_family(comp):
+        if comp.name == "Robot":
+            return True
+        return "Robot" in _parent_chain(comp, comp_map)
 
     for comp in components:
-        label_lines = [comp.name]
-        if comp.parameters:
-            params = "\\n".join(f"param: {p.vartype} {p.name}" for p in comp.parameters)
-            label_lines.append(params)
-        if comp.functions:
-            funcs = "\\n".join(
-                f"fn: {f.return_type} {f.name}({', '.join(pt for pt, _ in f.params)})"
-                for f in comp.functions
-            )
-            label_lines.append(funcs)
-        label = "\\n---\\n".join(label_lines)
-        dot.node(comp.name, label, shape="box", style="rounded,filled", fillcolor="#e8f0ff")
+        if not comp.subcomponents:
+            continue
+        if not _is_robot_family(comp):
+            continue
+        root_id = comp.name
+        label = _component_label(comp.name, _parent_chain(comp, comp_map))
+        color = _pattern_tint(comp.name)
+        _add_node(root_id, label, color)
+        _add_children(root_id, comp.name, [comp.name])
 
-        # Inheritance edge
-        if comp.parent:
-            dot.edge(comp.parent, comp.name, label="extends", style="dashed")
+    connected = set()
+    for src, dst in edges:
+        connected.add(src)
+        connected.add(dst)
 
-        # Subcomponent edges
-        for sub in comp.subcomponents:
-            binding_str = ""
-            if sub.bindings:
-                pairs = [f"{k}={getattr(v, 'value', v)}" for k, v in sub.bindings]
-                binding_str = f" ({', '.join(pairs)})"
-            label = f"{sub.name}{binding_str}"
-            if sub.type_name in comp_map:
-                dot.edge(comp.name, sub.type_name, label=label, style="solid")
-            else:
-                dot.edge(comp.name, sub.type_name, label=label, style="dotted", color="red")
+    for node_id in connected:
+        label, color = nodes[node_id]
+        dot.node(node_id, label=label, fillcolor=color)
+
+    for src, dst in edges:
+        dot.edge(src, dst)
 
     return dot

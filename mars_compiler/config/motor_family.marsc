@@ -1,4 +1,4 @@
-component motor {
+component Motor {
     subcomponents{}
     parameters{}
     functions{
@@ -6,7 +6,7 @@ component motor {
     }
 }
 
-component brushlessMotor extends motor {
+component BrushlessMotor extends Motor {
     subcomponents{}
     parameters{
         int direction;
@@ -19,7 +19,7 @@ component brushlessMotor extends motor {
     }
 }
 
-component brandMotor extends brushlessMotor {
+component BrandMotor extends BrushlessMotor {
     subcomponents{}
     parameters{}
     functions{
@@ -33,10 +33,10 @@ component brandMotor extends brushlessMotor {
     }
 }
 
-component differentialChassis {
+component DifferentialChassis {
     subcomponents{
-        brandMotor leftMotor(direction = 1, port = 1);
-        brandMotor rightMotor(direction = -1, port = 2);
+        BrandMotor leftMotor(direction = 1, port = 1);
+        BrandMotor rightMotor(direction = -1, port = 2);
     }
     parameters{}
     functions{
