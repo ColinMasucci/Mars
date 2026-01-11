@@ -43,6 +43,42 @@ class VM:
                 case "PUSH_NONE":
                     self.stack.append(None)
 
+                case "POP":
+                    if not self.stack:
+                        raise VMError("POP requires a value on the stack")
+                    self.stack.pop()
+
+                case "DUP":
+                    if not self.stack:
+                        raise VMError("DUP requires a value on the stack")
+                    self.stack.append(self.stack[-1])
+
+                case "DUP2":
+                    if len(self.stack) < 2:
+                        raise VMError("DUP2 requires two values on the stack")
+                    self.stack.extend(self.stack[-2:])
+
+                case "SWAP":
+                    if len(self.stack) < 2:
+                        raise VMError("SWAP requires two values on the stack")
+                    self.stack[-1], self.stack[-2] = self.stack[-2], self.stack[-1]
+
+                case "CAST_INT":
+                    if not self.stack:
+                        raise VMError("CAST_INT requires a value on the stack")
+                    val = self.stack.pop()
+                    if type(val) is float:
+                        val = int(val)
+                    self.stack.append(val)
+
+                case "CAST_FLOAT":
+                    if not self.stack:
+                        raise VMError("CAST_FLOAT requires a value on the stack")
+                    val = self.stack.pop()
+                    if type(val) is int:
+                        val = float(val)
+                    self.stack.append(val)
+
                 case "ADD":
                     b = self.stack.pop(); a = self.stack.pop()
                     # String concatenation if either is str
@@ -134,20 +170,24 @@ class VM:
                         self.pc += 1
                         continue
                     param_count = int(self.code[func_begin_idx][2]) if len(self.code[func_begin_idx]) > 2 else 0
-                    param_names = []
+                    param_info = []
                     for i in range(param_count):
                         decl_idx = func_pc + i
                         decl_instr = self.code[decl_idx]
                         if decl_instr[0] != "DECLARE":
                             raise VMError(f"Malformed constructor '{ctor_name}'")
-                        param_names.append(decl_instr[1])
+                        param_info.append((decl_instr[1], decl_instr[2] if len(decl_instr) > 2 else None))
 
                     # Save current frame
                     self.call_stack.append((self.pc + 1, self.locals.copy()))
                     self.locals = {}
                     self.locals["this"] = (obj, f"class:{class_ref}", False)
-                    for name, val in zip(param_names[1:], arg_values):
-                        self.locals[name] = (val, "unknown", False)
+                    for (name, ptype), val in zip(param_info[1:], arg_values):
+                        if ptype == "float" and type(val) is int:
+                            val = float(val)
+                        elif ptype == "int" and type(val) is float:
+                            val = int(val)
+                        self.locals[name] = (val, ptype or "unknown", False)
                     self.pc = func_pc + param_count
                     continue
 
@@ -169,26 +209,40 @@ class VM:
                         raise VMError("SET_FIELD on non-object")
                     if "__readonly__" in obj and obj["__readonly__"].get(attr):
                         raise VMError(f"Cannot assign to const field '{attr}'")
+                    class_name = obj.get("__class__")
+                    finfo = self.class_field_info.get(class_name, {}).get(attr, {})
+                    if isinstance(finfo, dict):
+                        ftype = finfo.get("type")
+                        if ftype == "float" and type(val) is int:
+                            val = float(val)
+                        elif ftype == "int" and type(val) is float:
+                            val = int(val)
                     obj["__fields__"][attr] = val
 
                 case "INC":
                     name = args[0]
-                    if name not in self.locals:
+                    target = self.locals if name in self.locals else self.globals if name in self.globals else None
+                    if target is None:
                         raise VMError(f"Undefined variable '{name}'")
-                    val, vartype, readonly = self.locals[name]
+                    val, vartype, readonly = target[name]
+                    if type(val) is not int:
+                        raise VMError(f"INC requires int, got {type(val).__name__}")
                     if readonly:
                         raise VMError(f"Cannot increment readonly variable '{name}'")
-                    self.locals[name] = (val + 1, vartype, readonly)
+                    target[name] = (val + 1, vartype, readonly)
                     self.stack.append(val) 
 
                 case "DEC":
                     name = args[0]
-                    if name not in self.locals:
+                    target = self.locals if name in self.locals else self.globals if name in self.globals else None
+                    if target is None:
                         raise VMError(f"Undefined variable '{name}'")
-                    val, vartype, readonly = self.locals[name]
+                    val, vartype, readonly = target[name]
+                    if type(val) is not int:
+                        raise VMError(f"DEC requires int, got {type(val).__name__}")
                     if readonly:
                         raise VMError(f"Cannot decrement readonly variable '{name}'")
-                    self.locals[name] = (val - 1, vartype, readonly)
+                    target[name] = (val - 1, vartype, readonly)
                     self.stack.append(val) 
 
                 case "DECLARE":
@@ -197,6 +251,10 @@ class VM:
                     if len(args) > 2:
                         readonly = bool(args[2])
                     val = self.stack.pop()
+                    if vartype == "float" and type(val) is int:
+                        val = float(val)
+                    elif vartype == "int" and type(val) is float:
+                        val = int(val)
                     target = self.globals if not self.call_stack else self.locals
                     if name in target:
                         raise VMError(f"Variable '{name}' already declared")
@@ -211,6 +269,10 @@ class VM:
                     old_val, vartype, readonly = target[name]
                     if readonly:
                         raise VMError(f"Cannot assign to readonly variable '{name}'")
+                    if vartype == "float" and type(val) is int:
+                        val = float(val)
+                    elif vartype == "int" and type(val) is float:
+                        val = int(val)
                     target[name] = (val, vartype, readonly)
 
                 case "LOAD":
@@ -333,7 +395,7 @@ class VM:
 
                         # Read parameter names from the next param_count instructions.
                         # Expect those to be DECLARE instructions emitted by the compiler.
-                        param_names = []
+                        param_info = []
                         for i in range(param_count):
                             decl_idx = func_pc + i
                             if decl_idx >= len(self.code):
@@ -342,15 +404,19 @@ class VM:
                             if decl_instr[0] != "DECLARE":
                                 raise VMError(f"Malformed function '{func_name}': expected DECLARE for parameter at bytecode index {decl_idx}, found {decl_instr[0]}")
                             # DECLARE format: ("DECLARE", name, vartype)
-                            param_names.append(decl_instr[1])
+                            param_info.append((decl_instr[1], decl_instr[2] if len(decl_instr) > 2 else None))
 
                         # Save current pc+1 (next instruction after CALL) and locals snapshot on call stack
                         self.call_stack.append((self.pc + 1, self.locals.copy()))
 
                         # Install fresh locals and bind parameters
                         self.locals = {}
-                        for name, val in zip(param_names, arg_values):
-                            self.locals[name] = (val, "unknown", False)  # type info optional
+                        for (name, ptype), val in zip(param_info, arg_values):
+                            if ptype == "float" and type(val) is int:
+                                val = float(val)
+                            elif ptype == "int" and type(val) is float:
+                                val = int(val)
+                            self.locals[name] = (val, ptype or "unknown", False)
 
                         # Jump to the first instruction of the function body (skip the param DECLAREs)
                         self.pc = func_pc + param_count
@@ -378,21 +444,25 @@ class VM:
                         raise VMError(f"Method '{func_name}' not found")
 
                     param_count = int(self.code[func_begin_idx][2]) if len(self.code[func_begin_idx]) > 2 else 0
-                    param_names = []
+                    param_info = []
                     for i in range(param_count):
                         decl_idx = func_pc + i
                         decl_instr = self.code[decl_idx]
                         if decl_instr[0] != "DECLARE":
                             raise VMError(f"Malformed method '{func_name}'")
-                        param_names.append(decl_instr[1])
+                        param_info.append((decl_instr[1], decl_instr[2] if len(decl_instr) > 2 else None))
 
                     # Save current frame
                     self.call_stack.append((self.pc + 1, self.locals.copy()))
                     self.locals = {}
                     # Bind this
                     self.locals["this"] = (obj, f"class:{class_name}", False)
-                    for name, val in zip(param_names[1:], arg_values):
-                        self.locals[name] = (val, "unknown", False)
+                    for (name, ptype), val in zip(param_info[1:], arg_values):
+                        if ptype == "float" and type(val) is int:
+                            val = float(val)
+                        elif ptype == "int" and type(val) is float:
+                            val = int(val)
+                        self.locals[name] = (val, ptype or "unknown", False)
                     self.pc = func_pc + param_count
                     continue
 
@@ -405,8 +475,7 @@ class VM:
                         raise VMError("Return outside function")
 
                     self.pc, self.locals = self.call_stack.pop()
-                    if ret_val is not None:
-                        self.stack.append(ret_val)
+                    self.stack.append(ret_val)
                     continue
 
                 case "BUILD_ARRAY":

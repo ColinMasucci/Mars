@@ -34,6 +34,21 @@
       "name": "function with multiple returns",
       "code": "int absval(int x) {if (x < 0) { return -x; }    return x;}  print(absval(-9));",
       "expect": "9"
+    },
+    {
+      "name": "float params accept int",
+      "code": "float add(float a, float b) { return a + b; } print(add(1, 2));",
+      "expect": "3.0"
+    },
+    {
+      "name": "int truncation on assignment",
+      "code": "int x = 0; x = 3.7; print(x); x = -1.7; print(x);",
+      "expect": "3\n-1"
+    },
+    {
+      "name": "type builtin",
+      "code": "int x = 5; float y = 2.5; print(type(x)); print(type(y)); print(type(1.2 + x));",
+      "expect": "int\nfloat\nfloat"
     }
   ]
 }

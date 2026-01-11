@@ -148,7 +148,7 @@ def build_class_runtime(classes, class_interfaces):
         defaults = []
         field_map = {}
         for f in cls.fields:
-            field_map[f.name] = {"readonly": f.readonly, "default": f.value}
+            field_map[f.name] = {"readonly": f.readonly, "default": f.value, "type": f.vartype}
             if f.value is not None:
                 defaults.append(Assign(MemberAccess(Var("this"), f.name), f.value))
         class_field_info[cls.name] = field_map

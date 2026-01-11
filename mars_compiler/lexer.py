@@ -56,6 +56,10 @@ TOKEN_SPEC = [
     ("GT", r">"),                      # greater than operator (also for dict<K,V>)
 
     # --- Operators ---
+    ("PLUS_ASSIGN", r"\+="),
+    ("MINUS_ASSIGN", r"-="),
+    ("MUL_ASSIGN", r"\*="),
+    ("DIV_ASSIGN", r"/="),
     ("INC",     r"\+\+"),              # check for increment operator
     ("DEC",     r"--"),                # check for decrement operator
     ("ASSIGN",  r"="),                 # check for operator

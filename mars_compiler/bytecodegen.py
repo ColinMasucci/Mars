@@ -6,6 +6,7 @@ import ast_nodes as ast
 
 Instr = Tuple[str, ...] # instruction is a tuple of strings and then somtimes numbers. (Ex. ("PUSH_INT", 42) or ("ADD",) )
 function_table = {}  # name -> start index
+RETURN_TYPE_STACK = []
 CLASS_NAMES = set()
 COMPONENT_BASES = set()
 
@@ -67,12 +68,32 @@ def compile_program(node: ast.Program, printBytecode = False, component_function
     # Compile all NON-function statements
     for stmt in node.statements:
         if not isinstance(stmt, ast.FuncDecl):
-            compile_node(stmt, code)
+            compile_statement(stmt, code)
 
     code.append(("HALT",))
     if printBytecode:
         print_bytecode(code)
     return code
+
+
+def compile_statement(node, code: List[Instr]):
+    """Compile a statement, discarding expression results."""
+    expr_nodes = (
+        ast.NumberLiteral,
+        ast.StringLiteral,
+        ast.BooleanLiteral,
+        ast.ArrayLiteral,
+        ast.DictLiteral,
+        ast.ArrayAccess,
+        ast.BinaryOp,
+        ast.UnaryOp,
+        ast.Var,
+        ast.MemberAccess,
+        ast.Call,
+    )
+    compile_node(node, code)
+    if isinstance(node, expr_nodes):
+        code.append(("POP",))
 
 
 def compile_node(node, code: List[Instr]):
@@ -232,11 +253,63 @@ def compile_node(node, code: List[Instr]):
                 compile_node(name_node.index, code)
                 # compile value to assign
                 compile_node(value, code)
+                target_type = getattr(name_node, "inferred_type", None)
+                if target_type == "int":
+                    code.append(("CAST_INT",))
+                elif target_type == "float":
+                    code.append(("CAST_FLOAT",))
                 # VM: pops value, index, container — sets and pushes nothing
                 code.append(("INDEX_SET",))
                 return
 
             raise NotImplementedError("Unsupported LHS in assignment")
+
+        case ast.AugAssign(name_node, op, value):
+            op_map = {
+                "PLUS": "ADD",
+                "MINUS": "SUB",
+                "MUL": "MUL",
+                "DIV": "DIV",
+            }
+            if op not in op_map:
+                raise NotImplementedError(f"Compound operator not implemented: {op}")
+            op_instr = op_map[op]
+
+            if isinstance(name_node, ast.Var):
+                code.append(("LOAD", name_node.name))
+                compile_node(value, code)
+                code.append((op_instr,))
+                code.append(("STORE", name_node.name))
+                return
+
+            if isinstance(name_node, ast.MemberAccess):
+                # obj.field += value
+                compile_node(name_node.obj, code)
+                code.append(("DUP",))
+                code.append(("GET_FIELD", name_node.attr))
+                compile_node(value, code)
+                code.append((op_instr,))
+                code.append(("SWAP",))
+                code.append(("SET_FIELD", name_node.attr))
+                return
+
+            if isinstance(name_node, ast.ArrayAccess):
+                # arr[idx] += value (array or dict)
+                compile_node(name_node.array, code)
+                compile_node(name_node.index, code)
+                code.append(("DUP2",))
+                code.append(("INDEX_GET",))
+                compile_node(value, code)
+                code.append((op_instr,))
+                target_type = getattr(name_node, "inferred_type", None)
+                if target_type == "int":
+                    code.append(("CAST_INT",))
+                elif target_type == "float":
+                    code.append(("CAST_FLOAT",))
+                code.append(("INDEX_SET",))
+                return
+
+            raise NotImplementedError("Unsupported LHS in compound assignment")
 
         case ast.Var(name):
             """Access a variable or module/component member."""
@@ -263,6 +336,7 @@ def compile_node(node, code: List[Instr]):
             # Record the function start
             func_start = len(code)
             function_table[name] = func_start
+            RETURN_TYPE_STACK.append(return_type)
 
             # Emit label for VM to know where function starts
             code.append(("FUNC_BEGIN", name, len(params)))
@@ -280,12 +354,19 @@ def compile_node(node, code: List[Instr]):
 
             # Ensure function always returns; for void functions, push None
             code.append(("FUNC_END", name))
+            RETURN_TYPE_STACK.pop()
             return
 
         case ast.Return(value):
             # Compile the return value onto the stack
             if value is not None:
                 compile_node(value, code)
+                if RETURN_TYPE_STACK:
+                    ret_type = RETURN_TYPE_STACK[-1]
+                    if ret_type == "int":
+                        code.append(("CAST_INT",))
+                    elif ret_type == "float":
+                        code.append(("CAST_FLOAT",))
             else:
                 code.append(("PUSH_NONE",))  # placeholder for void return
 
@@ -300,13 +381,13 @@ def compile_node(node, code: List[Instr]):
             jmp_false_index = len(code) # this is the index of the below placeholder bytecode instruction so we know where to go back and fill it in later
             code.append(("JUMP_IF_FALSE", None))  # placeholder to skip then_branch to go to else_branch (The placeholder is used because we dont yet know where the else_branch to jump to is)
 
-            compile_node(then_branch, code) # compile the then_branch
+            compile_statement(then_branch, code) # compile the then_branch
 
             if else_branch: # if there is an else_branch (sometimes there isnt)
                 jmp_end_index = len(code) # this is the index of the below placeholder so we know where to go back and fill it in later
                 code.append(("JUMP", None))  # placeholder to skip else_branch since the then_branch was executed
                 code[jmp_false_index] = ("JUMP_IF_FALSE", len(code)) # now we know where to jump to for the else_branch so we go back and fill it in
-                compile_node(else_branch, code) # compile the else_branch
+                compile_statement(else_branch, code) # compile the else_branch
                 code[jmp_end_index] = ("JUMP", len(code)) # now we know where to jump to after the else_branch so we go back and fill it in
             else:
                 code[jmp_false_index] = ("JUMP_IF_FALSE", len(code)) # (for if there is no else_branch) now we know where to jump to after the then_branch so we go back and fill it in
@@ -316,13 +397,13 @@ def compile_node(node, code: List[Instr]):
             compile_node(cond, code) # compile the condition
             jmp_false_index = len(code) # this is the index of the below placeholder so we know where to go back and fill it in later
             code.append(("JUMP_IF_FALSE", None))  # placeholder to exit loop if condition is false
-            compile_node(body, code) # compile the body of the loop
+            compile_statement(body, code) # compile the body of the loop
             code.append(("JUMP", loop_start)) # jump back to start of loop
             code[jmp_false_index] = ("JUMP_IF_FALSE", len(code)) # now we know where to jump to if the condition is false so we go back and fill it in
 
         case ast.Block(statements):
             for stmt in statements:
-                compile_node(stmt, code)
+                compile_statement(stmt, code)
 
         case ast.Call(func, args):
             """Compile a function call (top-level, module, component, class ctor, or method)."""
@@ -343,6 +424,14 @@ def compile_node(node, code: List[Instr]):
 
             # constructor call if func is class name (handled at runtime)
             if isinstance(func, ast.Var):
+                if func.name == "type":
+                    if len(args) != 1:
+                        raise TypeError(f"Function 'type' expects 1 argument, got {len(args)}")
+                    compile_node(args[0], code)
+                    code.append(("POP",))
+                    type_str = getattr(node, "type_str", "any")
+                    code.append(("PUSH_STR", type_str))
+                    return
                 if func.name in CLASS_NAMES:
                     code.append(("PUSH_STR", func.name))
                     for arg in args:
@@ -354,6 +443,7 @@ def compile_node(node, code: List[Instr]):
                     compile_node(arg, code)
                 if func.name == "print":
                     code.append(("PRINT", len(args)))
+                    code.append(("PUSH_NONE",))
                 else:
                     code.append(("CALL", func.name, len(args)))
                 return

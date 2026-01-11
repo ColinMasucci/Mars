@@ -1,4 +1,4 @@
-from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, Return, FuncDecl, MemberAccess, ClassDecl
+from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, Import, Return, FuncDecl, MemberAccess, ClassDecl
 import os
 import importlib.util
 
@@ -104,9 +104,13 @@ class TypeChecker:
         return False
 
     # Compare two types for compatibility (including structured types) Ex. dict<int,string> and dict<int,string> are compatible, but dict<int,string> and dict<string,string> are not.
-    def _types_compatible(self, a, b):
+    def _types_compatible(self, a, b, allow_numeric_coercion=True):
         """Compare structured types like dict<K,V> and array<T>."""
         if a == b:
+            return True
+        if allow_numeric_coercion and a == "float" and b == "int":
+            return True
+        if allow_numeric_coercion and a == "int" and b == "float":
             return True
         if self._normalize_type(a) == self._normalize_type(b):
             return True
@@ -135,7 +139,7 @@ class TypeChecker:
         b.startswith("array<") and b.endswith(">"):
             a_inner = a[len("array<"):-1]
             b_inner = b[len("array<"):-1]
-            return self._types_compatible(a_inner, b_inner)
+            return self._types_compatible(a_inner, b_inner, allow_numeric_coercion=False)
 
         # dict<K,V>
         if a.startswith("dict<") and a.endswith(">") and \
@@ -144,10 +148,56 @@ class TypeChecker:
             b_inside = b[len("dict<"):-1]
             a_key, a_val = [x.strip() for x in a_inside.split(",")]
             b_key, b_val = [x.strip() for x in b_inside.split(",")]
-            return self._types_compatible(a_key, b_key) and \
-                self._types_compatible(a_val, b_val)
+            return self._types_compatible(a_key, b_key, allow_numeric_coercion=False) and \
+                self._types_compatible(a_val, b_val, allow_numeric_coercion=False)
         
         return False
+
+    def _display_type(self, typ: str):
+        if typ.startswith("class:"):
+            return typ.split(":", 1)[1]
+        if typ.startswith("component:"):
+            return typ
+        return typ
+
+    def _binary_result_type(self, op, left_type, right_type):
+        # --- Arithmetic Operators ---
+        if op in ("PLUS", "MINUS", "MUL", "DIV", "POW"):
+            # --- Handle addition separately (since it can be string concat) ---
+            if op == "PLUS":
+                # If either operand is a string, result is string
+                if left_type == "string" or right_type == "string":
+                    return "string"
+                # Numeric addition
+                if left_type in ("int", "float") and right_type in ("int", "float"):
+                    return "float" if "float" in (left_type, right_type) else "int"
+                raise TypeError(f"Invalid operand types for '+': {left_type} and {right_type}")
+
+            # --- For -, *, / only numeric types are allowed ---
+            if left_type in ("int", "float") and right_type in ("int", "float"):
+                return "float" if "float" in (left_type, right_type) else "int"
+            raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
+
+        # --- Comparison Operators (result is always bool) ---
+        if op in ("EQ", "NEQ", "LT", "LEQ", "GT", "GEQ"):
+            # Equality (==, !=) allows any matching types
+            if op in ("EQ", "NEQ"):
+                if left_type != right_type:
+                    raise TypeError(f"Cannot compare values of different types: {left_type} and {right_type}")
+                return "bool"
+
+            # Relational (<, <=, >, >=) only numeric types allowed
+            if left_type in ("int", "float") and right_type in ("int", "float"):
+                return "bool"
+            raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
+
+        # --- Logical Operators (&&, ||) ---
+        if op in ("AND", "OR"):
+            if left_type != "bool" or right_type != "bool":
+                raise TypeError(f"Logical operator '{op}' requires boolean operands, got {left_type} and {right_type}")
+            return "bool"
+
+        raise TypeError(f"Unknown binary operator {op}")
 
     # Validate declared types, making sure dict<K,V> and array<T> are well-formed Ex. dict<int,string> is valid, but dict<int> or dict<int,string,float> is not.
     def _validate_declared_type(self, t):
@@ -392,7 +442,7 @@ class TypeChecker:
                         raise TypeError(f"Cannot assign to immutable symbol '{name}'")
                     value_type = self.check(value)
                     expected = sym["type"]
-                    if expected != value_type:
+                    if not self._types_compatible(expected, value_type):
                         raise TypeError(f"Type mismatch in assignment to '{name}': expected {expected}, got {value_type}")
                     return expected
 
@@ -426,8 +476,9 @@ class TypeChecker:
                         if idx_type != "int":
                             raise TypeError(f"Array index must be int, got {idx_type}")
                         value_type = self.check(value)
-                        if value_type != elem_type:
+                        if not self._types_compatible(elem_type, value_type):
                             raise TypeError(f"Type mismatch assigning to array element: expected {elem_type}, got {value_type}")
+                        name_node.inferred_type = elem_type
                         return elem_type
 
                     if isinstance(container_type, str) and container_type.startswith("dict<") and container_type.endswith(">"):
@@ -437,8 +488,9 @@ class TypeChecker:
                         if idx_type != key_type:
                             raise TypeError(f"Dictionary key must be {key_type}, got {idx_type}")
                         value_type = self.check(value)
-                        if value_type != val_type:
+                        if not self._types_compatible(val_type, value_type):
                             raise TypeError(f"Type mismatch assigning to dictionary element: expected {val_type}, got {value_type}")
+                        name_node.inferred_type = val_type
                         return val_type
 
                     raise TypeError(f"Trying to index non-indexable type '{container_type}'")
@@ -455,11 +507,85 @@ class TypeChecker:
                         raise TypeError(f"Cannot assign to const field '{name_node.attr}'")
                     ftype = self._resolve_member_access(obj_type, name_node.attr)
                     val_type = self.check(value)
-                    if ftype != val_type:
+                    if not self._types_compatible(ftype, val_type):
                         raise TypeError(f"Type mismatch assigning to field '{name_node.attr}': expected {ftype}, got {val_type}")
                     return ftype
 
                 raise TypeError("LHS of assignment must be a variable or an array access")
+
+            case AugAssign(name_node, op, value):
+                # ---------------- SIMPLE VAR ASSIGN ----------------
+                if isinstance(name_node, Var):
+                    name = name_node.name
+                    sym = self._lookup_symbol(name)
+                    if sym is None:
+                        raise TypeError(f"Assignment to undeclared variable '{name}'")
+                    if sym.get("mutable") is False:
+                        raise TypeError(f"Cannot assign to immutable symbol '{name}'")
+                    left_type = sym["type"]
+
+                # ---------------- ARRAY / DICT ELEMENT ASSIGN ----------------
+                elif isinstance(name_node, ArrayAccess):
+                    container = name_node.array
+                    container_type = self.check(container)
+
+                    # Enforce mutability on container if it is a variable or class field
+                    if isinstance(container, Var):
+                        base_sym = self._lookup_symbol(container.name)
+                        if base_sym is None:
+                            raise TypeError(f"Assignment to undeclared variable '{container.name}'")
+                        if base_sym.get("mutable") is False:
+                            raise TypeError(f"Cannot assign to immutable symbol '{container.name}'")
+                    elif isinstance(container, MemberAccess):
+                        obj_type = self.check(container.obj)
+                        if isinstance(obj_type, str) and obj_type.startswith("class:"):
+                            cname = obj_type.split(":",1)[1]
+                            iface = self.class_interfaces.get(cname, {})
+                            readonly = iface.get("readonly", {}).get(container.attr, False)
+                            if readonly:
+                                raise TypeError(f"Cannot assign to const field '{container.attr}'")
+                        else:
+                            raise TypeError("Left-hand side of assignment must be a variable, array element, or class field")
+
+                    # array<int> or dict<K,V>
+                    if isinstance(container_type, str) and container_type.startswith("array<") and container_type.endswith(">"):
+                        elem_type = container_type[len("array<"):-1]
+                        idx_type = self.check(name_node.index)
+                        if idx_type != "int":
+                            raise TypeError(f"Array index must be int, got {idx_type}")
+                        left_type = elem_type
+                        name_node.inferred_type = elem_type
+                    elif isinstance(container_type, str) and container_type.startswith("dict<") and container_type.endswith(">"):
+                        inside = container_type[len("dict<"):-1]
+                        key_type, val_type = [x.strip() for x in inside.split(",")]
+                        idx_type = self.check(name_node.index)
+                        if idx_type != key_type:
+                            raise TypeError(f"Dictionary key must be {key_type}, got {idx_type}")
+                        left_type = val_type
+                        name_node.inferred_type = val_type
+                    else:
+                        raise TypeError(f"Trying to index non-indexable type '{container_type}'")
+
+                # ---------------- CLASS FIELD ASSIGN ----------------
+                elif isinstance(name_node, MemberAccess):
+                    obj_type = self.check(name_node.obj)
+                    if not isinstance(obj_type, str) or not obj_type.startswith("class:"):
+                        raise TypeError("Left-hand side of assignment must be a variable, array element, or class field")
+                    cname = obj_type.split(":",1)[1]
+                    iface = self.class_interfaces.get(cname, {})
+                    readonly = iface.get("readonly", {}).get(name_node.attr, False)
+                    if readonly:
+                        raise TypeError(f"Cannot assign to const field '{name_node.attr}'")
+                    left_type = self._resolve_member_access(obj_type, name_node.attr)
+
+                else:
+                    raise TypeError("LHS of assignment must be a variable or an array access")
+
+                right_type = self.check(value)
+                result_type = self._binary_result_type(op, left_type, right_type)
+                if not self._types_compatible(left_type, result_type):
+                    raise TypeError(f"Type mismatch in compound assignment: expected {left_type}, got {result_type}")
+                return left_type
 
 
             case Var(name):
@@ -488,45 +614,7 @@ class TypeChecker:
             case BinaryOp(op, left, right):
                 left_type = self.check(left)
                 right_type = self.check(right)
-
-                # --- Arithmetic Operators ---
-                if op in ("PLUS", "MINUS", "MUL", "DIV", "POW"):
-                    # --- Handle addition separately (since it can be string concat) ---
-                    if op == "PLUS":
-                        # If either operand is a string, result is string
-                        if left_type == "string" or right_type == "string":
-                            return "string"
-                        # Numeric addition
-                        if left_type in ("int", "float") and right_type in ("int", "float"):
-                            return "float" if "float" in (left_type, right_type) else "int"
-                        raise TypeError(f"Invalid operand types for '+': {left_type} and {right_type}")
-
-                    # --- For -, *, / only numeric types are allowed ---
-                    if left_type in ("int", "float") and right_type in ("int", "float"):
-                        return "float" if "float" in (left_type, right_type) else "int"
-                    raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
-                
-                # --- Comparison Operators (result is always bool) ---
-                elif op in ("EQ", "NEQ", "LT", "LEQ", "GT", "GEQ"):
-                    # Equality (==, !=) allows any matching types
-                    if op in ("EQ", "NEQ"):
-                        if left_type != right_type:
-                            raise TypeError(f"Cannot compare values of different types: {left_type} and {right_type}")
-                        return "bool"
-
-                    # Relational (<, <=, >, >=) — only numeric types allowed
-                    if left_type in ("int", "float") and right_type in ("int", "float"):
-                        return "bool"
-                    raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
-
-                # --- Logical Operators (&&, ||) ---
-                elif op in ("AND", "OR"):
-                    if left_type != "bool" or right_type != "bool":
-                        raise TypeError(f"Logical operator '{op}' requires boolean operands, got {left_type} and {right_type}")
-                    return "bool"
-
-                else:
-                    raise TypeError(f"Unknown binary operator {op}")
+                return self._binary_result_type(op, left_type, right_type)
 
             case UnaryOp(op, operand):
                 operand_type = self.check(operand)
@@ -542,9 +630,9 @@ class TypeChecker:
                     if not isinstance(operand, Var):
                         raise TypeError(f"Unary '{op}' can only be applied to variables")
 
-                    # must be numeric
-                    if operand_type not in ("int", "float"):
-                        raise TypeError(f"Unary '{op}' requires numeric type, got {operand_type}")
+                    # must be int
+                    if operand_type != "int":
+                        raise TypeError(f"Unary '{op}' requires int type, got {operand_type}")
 
                     return operand_type
                 raise TypeError(f"Unknown unary operator {op}")
@@ -630,6 +718,11 @@ class TypeChecker:
             case Call(func, args):
                 arg_types = [self.check(arg) for arg in args]
                 if isinstance(func, Var):
+                    if func.name == "type":
+                        if len(args) != 1:
+                            raise TypeError(f"Function 'type' expects 1 argument, got {len(args)}")
+                        node.type_str = self._display_type(arg_types[0])
+                        return "string"
                     # constructor call
                     if func.name in self.class_interfaces:
                         iface = self.class_interfaces[func.name]
@@ -657,7 +750,7 @@ class TypeChecker:
                                 if len(param_types) != len(arg_types): 
                                     raise TypeError(f"You have provided the wrong number of arguments. Provided: {len(arg_types)}, expected: {len(param_types)}")
                                 for expected, arg_type in zip(param_types, arg_types):
-                                    if expected != arg_type:
+                                    if not self._types_compatible(expected, arg_type):
                                         raise TypeError(f"Argument type mismatch in call to '{func.name}': expected {expected}, got {arg_type}")
                             return ret_type or "void"
                         return self._check_component_call(func.name, arg_types)
@@ -710,7 +803,7 @@ class TypeChecker:
                     raise TypeError("Cannot return a value from a void function")
                 else:
                     value_type = self.check(value)
-                    if expected != value_type:
+                    if not self._types_compatible(expected, value_type):
                         raise TypeError("Return type mismatch")
                 return value_type or None
 

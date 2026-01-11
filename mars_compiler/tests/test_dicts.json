@@ -11,6 +11,11 @@
       "expect": "Sally\nJennifer"
     },
     {
+      "name": "dict compound assignment",
+      "code": "dict<string, int> dictionary = {\"count\" : 1}; dictionary[\"count\"] += 2; print(dictionary[\"count\"]);",
+      "expect": "3"
+    },
+    {
       "name": "dict with arrays",
       "code": "dict<string, int[]> dictionary = {\"nums\": [5,6,7]}; print(dictionary[\"nums\"][2]);",
       "expect": "7"

@@ -11,6 +11,11 @@
             "code": "int[] a = [5,5]; a[0] = 9; print(a[0]);",
             "expect": "9"
         },
+        {
+            "name": "array compound assignment",
+            "code": "int[] a = [5,5]; a[0] += 4; print(a[0]);",
+            "expect": "9"
+        },
 
         {
             "name": "type error test",

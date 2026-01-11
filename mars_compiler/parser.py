@@ -1,4 +1,4 @@
-from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess
+from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -234,17 +234,28 @@ class Parser:
         # --- ASSIGNMENT OR EXPRESSION ---
         if tok.type in ("ID", "LPAREN", "LBRACKET"):
             save_pos = self.pos
-            target = self.parse_assignable()
-
-            if self.current().type == "ASSIGN":
-                self.eat("ASSIGN")
-                value = self.expr()
-                stmt = Assign(target, value)
-            else:
+            if tok.type == "ID":
+                target = self.parse_assignable()
+                if self.current().type in ("ASSIGN", "PLUS_ASSIGN", "MINUS_ASSIGN", "MUL_ASSIGN", "DIV_ASSIGN"):
+                    op_tok = self.current().type
+                    self.eat(op_tok)
+                    value = self.expr()
+                    if op_tok == "ASSIGN":
+                        stmt = Assign(target, value)
+                    else:
+                        op_map = {
+                            "PLUS_ASSIGN": "PLUS",
+                            "MINUS_ASSIGN": "MINUS",
+                            "MUL_ASSIGN": "MUL",
+                            "DIV_ASSIGN": "DIV",
+                        }
+                        stmt = AugAssign(target, op_map[op_tok], value)
+                    self.eat("SEMI")
+                    return stmt
                 # Roll back and treat as expression
                 self.pos = save_pos
-                stmt = self.expr()
 
+            stmt = self.expr()
             self.eat("SEMI")
             return stmt
 
@@ -439,13 +450,21 @@ class Parser:
         # --- Assignment ---
         if tok.type == "ID":
             save_pos = self.pos
-            target = self.parse_dotted_var()
-            if self.current().type == "ASSIGN":
-                self.eat("ASSIGN")
+            target = self.parse_assignable()
+            if self.current().type in ("ASSIGN", "PLUS_ASSIGN", "MINUS_ASSIGN", "MUL_ASSIGN", "DIV_ASSIGN"):
+                op_tok = self.current().type
+                self.eat(op_tok)
                 value = self.expr()
-                return Assign(target, value)
-            else:
-                self.pos = save_pos
+                if op_tok == "ASSIGN":
+                    return Assign(target, value)
+                op_map = {
+                    "PLUS_ASSIGN": "PLUS",
+                    "MINUS_ASSIGN": "MINUS",
+                    "MUL_ASSIGN": "MUL",
+                    "DIV_ASSIGN": "DIV",
+                }
+                return AugAssign(target, op_map[op_tok], value)
+            self.pos = save_pos
 
         # --- Otherwise treat as an expression statement ---
         return self.expr()
@@ -786,6 +805,9 @@ class Parser:
                     self.print_ast(arg, indent + 1)
             case Assign(name, value):
                 print(f"{prefix}Assign({name})")
+                self.print_ast(value, indent + 1)
+            case AugAssign(name, op, value):
+                print(f"{prefix}AugAssign({op} {name})")
                 self.print_ast(value, indent + 1)
             case VarDecl(vartype, name, value):
                 print(f"{prefix}VarDecl({vartype} {name})")

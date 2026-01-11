@@ -76,6 +76,12 @@ class Assign:
     value: Any
 
 @dataclass
+class AugAssign:
+    name: Any
+    op: str
+    value: Any
+
+@dataclass
 class If:
     condition: Any
     then_branch: Any
