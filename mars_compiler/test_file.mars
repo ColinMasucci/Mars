@@ -1,3 +1,2 @@
 import myRobot;
 
-print(type(myRobot.myChassis));

@@ -850,6 +850,14 @@ class TypeChecker:
             obj_type = f"class:{obj_type}"
         if isinstance(obj_type, str) and obj_type.startswith("component:"):
             comp_type = obj_type.split(":",1)[1]
+            if member_access.attr == "match":
+                if len(arg_types) != 1:
+                    raise TypeError(f"match expects 1 argument, got {len(arg_types)}")
+                target = arg_types[0]
+                if not isinstance(target, str) or not target.startswith("component:"):
+                    raise TypeError("match expects a component type argument")
+                target_type = target.split(":", 1)[1]
+                return f"component:{target_type}"
             return self._resolve_component_function(comp_type, [member_access.attr], arg_types)
         if not isinstance(obj_type, str) or not obj_type.startswith("class:"):
             raise TypeError(f"'{member_access.obj}' is not a class instance")

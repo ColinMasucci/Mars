@@ -3,14 +3,19 @@
 class DifferentialFK {
     requirements {
         DifferentialChassis;
-        
+        DifferentialChassis(
+            subcomponents=BrandMotor(
+                parameters=[maxRPM>5 && maxRPM < 20, 
+                optional minRPM > 3]
+                ));
+        optional IMU;
     }
 
     DifferentialChassis chassis;
     float[] position = [0, 0];
 
-    DifferentialFK(DifferentialChassis chassis){
-        this.chassis = chassis;
+    DifferentialFK(Robot robot){
+        chassis = robot.match(DifferentialChassis);
     }
 
     void updatePosition(float x, float y) {

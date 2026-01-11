@@ -148,3 +148,25 @@ class ClassDecl:
     fields: List[FieldDecl]
     methods: List[MethodDecl]
     constructor: Any  # MethodDecl or None
+    requirements: List[Any] = None
+
+
+@dataclass
+class RequirementParam:
+    expr: Any
+    optional: bool = False
+
+
+@dataclass
+class RequirementFunction:
+    name: str
+    optional: bool = False
+
+
+@dataclass
+class RequirementSpec:
+    type_name: str
+    optional: bool = False
+    parameters: List[RequirementParam] = None
+    functions: List[RequirementFunction] = None
+    subcomponents: List[Any] = None

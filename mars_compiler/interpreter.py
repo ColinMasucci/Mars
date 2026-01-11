@@ -31,7 +31,7 @@ def interpret_code_from_string(code: str, config_dir: str = "config", debug: boo
 
 def _interpret(code: str, config_dir: str, debug: bool, capture_output: bool, source_path: str | None):
     # Precompile component configurations
-    _registry, interfaces, comp_funcs, comp_params = precompile_config(config_dir, debug=debug)
+    _registry, interfaces, comp_funcs, comp_params, component_tree, component_parents = precompile_config(config_dir, debug=debug)
 
     # Tokenize -> Parse
     tokens = tokenize(code, debug)
@@ -84,7 +84,7 @@ def _interpret(code: str, config_dir: str, debug: bool, capture_output: bool, so
 
     # Compile to bytecode and run on VM
     bytecode = compile_program(parsed_ast, debug, component_functions=comp_funcs, component_params=comp_params, class_functions=class_funcs, class_interfaces=class_interfaces)
-    vm = VM(bytecode, class_field_info=class_field_info)
+    vm = VM(bytecode, class_field_info=class_field_info, component_tree=component_tree, component_parents=component_parents)
 
     if capture_output:
         with _capture_stdout() as buf:

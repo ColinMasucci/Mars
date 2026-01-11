@@ -408,6 +408,13 @@ def compile_node(node, code: List[Instr]):
         case ast.Call(func, args):
             """Compile a function call (top-level, module, component, class ctor, or method)."""
             if isinstance(func, ast.MemberAccess):
+                if func.attr == "match":
+                    if len(args) != 1 or not isinstance(args[0], ast.Var):
+                        raise TypeError("match expects a single component type identifier")
+                    compile_node(func.obj, code)
+                    code.append(("PUSH_STR", args[0].name))
+                    code.append(("MATCH_COMPONENT",))
+                    return
                 parts = _flatten_member_access(func)
                 if parts and parts[0] in COMPONENT_BASES:
                     target_name = ".".join(parts)

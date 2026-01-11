@@ -21,7 +21,9 @@ component BrushlessMotor extends Motor {
 
 component BrandMotor extends BrushlessMotor {
     subcomponents{}
-    parameters{}
+    parameters{
+        float maxRPM = 21;
+    }
     functions{
         void spin(int speed){
             if (speed > 5) {

@@ -1,4 +1,4 @@
-from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess
+from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction
 
 class Parser:
     #We pass in the tokens which we got from the lexer
@@ -843,8 +843,13 @@ class Parser:
         fields = []
         methods = []
         constructor = None
+        requirements = []
 
         while self.current().type != "RBRACE":
+            if self.current().type == "REQUIREMENTS":
+                self.eat("REQUIREMENTS")
+                requirements = self.parse_requirements_block()
+                continue
             is_const = False
             if self.current().type == "CONST_KW":
                 self.eat("CONST_KW")
@@ -883,4 +888,119 @@ class Parser:
                 fields.append(FieldDecl(vartype, member_name, value, is_const))
 
         self.eat("RBRACE")
-        return ClassDecl(name, fields, methods, constructor)
+        return ClassDecl(name, fields, methods, constructor, requirements)
+
+    def parse_requirements_block(self):
+        self.eat("LBRACE")
+        requirements = []
+
+        while self.current().type != "RBRACE":
+            requirements.append(self.parse_requirement_item())
+
+        self.eat("RBRACE")
+        return requirements
+
+    def parse_requirement_item(self):
+        spec = self.parse_requirement_spec()
+        self.eat("SEMI")
+        return spec
+
+    def parse_requirement_spec(self):
+        optional = False
+        if self.current().type == "OPTIONAL":
+            self.eat("OPTIONAL")
+            optional = True
+
+        type_name = self.eat("ID").value
+        spec = RequirementSpec(type_name, optional, [], [], [])
+
+        if self.current().type == "LPAREN":
+            self.eat("LPAREN")
+            if self.current().type != "RPAREN":
+                while True:
+                    key_tok = self.current()
+                    if key_tok.type not in ("SUBCOMPONENTS", "PARAMETERS", "FUNCTIONS"):
+                        raise SyntaxError(f"Unexpected requirement key {key_tok.type} at {key_tok.position}")
+                    self.eat(key_tok.type)
+                    self.eat("ASSIGN")
+
+                    if key_tok.type == "SUBCOMPONENTS":
+                        spec.subcomponents.extend(self.parse_requirement_spec_list())
+                    elif key_tok.type == "PARAMETERS":
+                        spec.parameters.extend(self.parse_requirement_param_list())
+                    elif key_tok.type == "FUNCTIONS":
+                        spec.functions.extend(self.parse_requirement_func_list())
+
+                    if self.current().type == "COMMA":
+                        self.eat("COMMA")
+                        continue
+                    break
+            self.eat("RPAREN")
+
+        return spec
+
+    def parse_requirement_spec_list(self):
+        specs = []
+        if self.current().type == "LBRACKET":
+            self.eat("LBRACKET")
+            while self.current().type != "RBRACKET":
+                specs.append(self.parse_requirement_spec())
+                if self.current().type == "COMMA":
+                    self.eat("COMMA")
+                    continue
+                break
+            self.eat("RBRACKET")
+            return specs
+
+        specs.append(self.parse_requirement_spec())
+        return specs
+
+    def parse_requirement_param_list(self):
+        params = []
+        if self.current().type == "LBRACKET":
+            self.eat("LBRACKET")
+            while self.current().type != "RBRACKET":
+                params.append(self.parse_requirement_param())
+                if self.current().type == "COMMA":
+                    self.eat("COMMA")
+                    continue
+                break
+            self.eat("RBRACKET")
+            return params
+
+        params.append(self.parse_requirement_param())
+        return params
+
+    def parse_requirement_param(self):
+        optional = False
+        if self.current().type == "OPTIONAL":
+            self.eat("OPTIONAL")
+            optional = True
+        expr = self.parse_expression(stop_tokens={"COMMA", "RPAREN", "RBRACKET"})
+        return RequirementParam(expr, optional)
+
+    def parse_requirement_func_list(self):
+        funcs = []
+        if self.current().type == "LBRACKET":
+            self.eat("LBRACKET")
+            while self.current().type != "RBRACKET":
+                funcs.append(self.parse_requirement_func())
+                if self.current().type == "COMMA":
+                    self.eat("COMMA")
+                    continue
+                break
+            self.eat("RBRACKET")
+            return funcs
+
+        funcs.append(self.parse_requirement_func())
+        return funcs
+
+    def parse_requirement_func(self):
+        optional = False
+        if self.current().type == "OPTIONAL":
+            self.eat("OPTIONAL")
+            optional = True
+        name = self.eat("ID").value
+        self.eat("LPAREN")
+        self.eat("RPAREN")
+        return RequirementFunction(name, optional)

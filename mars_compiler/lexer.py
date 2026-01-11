@@ -24,6 +24,8 @@ TOKEN_SPEC = [
     # --- Class/Const Keywords ---
     ("CLASS", r"\bclass\b"),
     ("CONST_KW", r"\bconst\b"),
+    ("REQUIREMENTS", r"\brequirements\b"),
+    ("OPTIONAL", r"\boptional\b"),
 
     #--- Config Keywords ---
     ("COMPONENT", r"\bcomponent\b"),

@@ -8,7 +8,7 @@ Instr = Tuple[str, ...]
 class VMError(Exception): pass
 
 class VM:
-    def __init__(self, bytecode: List[Instr], class_field_info=None):
+    def __init__(self, bytecode: List[Instr], class_field_info=None, component_tree=None, component_parents=None):
         self.code = bytecode
         self.stack = []
         self.pc = 0
@@ -17,6 +17,95 @@ class VM:
         self._modules = {}  # module_name -> module object
         self.call_stack = []  # stack of (return_pc, locals_snapshot)
         self.class_field_info = class_field_info or {}
+        self.component_tree = component_tree or {"nodes": {}, "roots": []}
+        self.component_parents = component_parents or {}
+
+    def _component_is_a(self, child_type, parent_type):
+        if child_type == parent_type:
+            return True
+        cur = self.component_parents.get(child_type)
+        while cur:
+            if cur == parent_type:
+                return True
+            cur = self.component_parents.get(cur)
+        return False
+
+    def _match_component(self, start_path, target_type):
+        nodes = self.component_tree.get("nodes", {})
+        if start_path not in nodes:
+            raise VMError(f"Unknown component '{start_path}'")
+
+        queue = [(start_path, 0)]
+        matches = []
+        current_depth = 0
+
+        while queue:
+            path, depth = queue.pop(0)
+            if depth > current_depth and matches:
+                break
+            if depth > current_depth:
+                current_depth = depth
+            node = nodes.get(path)
+            if node is None:
+                continue
+            if self._component_is_a(node["type"], target_type):
+                matches.append(path)
+            for child in node.get("children", []):
+                queue.append((child, depth + 1))
+
+        if not matches:
+            raise VMError(f"match could not find '{target_type}' under '{start_path}'")
+        if len(matches) > 1:
+            raise VMError(f"match found multiple '{target_type}' under '{start_path}' at depth {current_depth}")
+        return matches[0]
+
+    def _resolve_component_function(self, func_name):
+        if "." not in func_name:
+            return None
+        parts = func_name.split(".")
+        path = ".".join(parts[:-1])
+        method = parts[-1]
+        node = self.component_tree.get("nodes", {}).get(path)
+        if node and method in node.get("functions", set()):
+            return f"{node['type']}.{method}"
+        return None
+
+    def _call_user_function(self, func_name, arg_values):
+        func_pc = None
+        func_begin_idx = None
+        for idx, instr in enumerate(self.code):
+            if instr[0] == "FUNC_BEGIN" and instr[1] == func_name:
+                func_pc = idx + 1
+                func_begin_idx = idx
+                break
+        if func_pc is None:
+            resolved = self._resolve_component_function(func_name)
+            if resolved and resolved != func_name:
+                self._call_user_function(resolved, arg_values)
+                return
+            raise VMError(f"User function '{func_name}' not found")
+
+        param_count = int(self.code[func_begin_idx][2]) if len(self.code[func_begin_idx]) > 2 else 0
+        param_info = []
+        for i in range(param_count):
+            decl_idx = func_pc + i
+            if decl_idx >= len(self.code):
+                raise VMError(f"Malformed function '{func_name}': missing parameter DECLAREs")
+            decl_instr = self.code[decl_idx]
+            if decl_instr[0] != "DECLARE":
+                raise VMError(f"Malformed function '{func_name}': expected DECLARE for parameter at bytecode index {decl_idx}, found {decl_instr[0]}")
+            param_info.append((decl_instr[1], decl_instr[2] if len(decl_instr) > 2 else None))
+
+        self.call_stack.append((self.pc + 1, self.locals.copy()))
+        self.locals = {}
+        for (name, ptype), val in zip(param_info, arg_values):
+            if ptype == "float" and type(val) is int:
+                val = float(val)
+            elif ptype == "int" and type(val) is float:
+                val = int(val)
+            self.locals[name] = (val, ptype or "unknown", False)
+
+        self.pc = func_pc + param_count
 
 
     def run(self, max_steps=1000000, debug=False):
@@ -194,17 +283,28 @@ class VM:
                 case "GET_FIELD":
                     attr = args[0]
                     obj = self.stack.pop()
-                    if not isinstance(obj, dict) or "__fields__" not in obj:
-                        raise VMError("GET_FIELD on non-object")
-                    fields = obj["__fields__"]
-                    if attr not in fields:
-                        raise VMError(f"Field '{attr}' not found")
-                    self.stack.append(fields[attr])
+                    if isinstance(obj, str) and obj in self.component_tree.get("nodes", {}):
+                        node = self.component_tree["nodes"][obj]
+                        if attr in node.get("subcomponents", {}):
+                            self.stack.append(node["subcomponents"][attr])
+                        elif attr in node.get("params", {}):
+                            self.stack.append(node["params"][attr])
+                        else:
+                            raise VMError(f"Component '{obj}' has no member '{attr}'")
+                    else:
+                        if not isinstance(obj, dict) or "__fields__" not in obj:
+                            raise VMError("GET_FIELD on non-object")
+                        fields = obj["__fields__"]
+                        if attr not in fields:
+                            raise VMError(f"Field '{attr}' not found")
+                        self.stack.append(fields[attr])
 
                 case "SET_FIELD":
                     attr = args[0]
                     obj = self.stack.pop()
                     val = self.stack.pop()
+                    if isinstance(obj, str) and obj in self.component_tree.get("nodes", {}):
+                        raise VMError(f"Cannot assign to component member '{attr}' on '{obj}'")
                     if not isinstance(obj, dict) or "__fields__" not in obj:
                         raise VMError("SET_FIELD on non-object")
                     if "__readonly__" in obj and obj["__readonly__"].get(attr):
@@ -285,6 +385,10 @@ class VM:
                     if name in self.globals:
                         val, _type, _ro = self.globals[name]
                         self.stack.append(val)
+                        self.pc += 1
+                        continue
+                    if name in self.component_tree.get("nodes", {}):
+                        self.stack.append(name)
                         self.pc += 1
                         continue
                     if name not in self.locals:
@@ -379,47 +483,7 @@ class VM:
                         result = func_val(*arg_values)
                         self.stack.append(result)
                     else:
-                        # User-defined function: find FUNC_BEGIN index
-                        func_pc = None
-                        for idx, instr in enumerate(self.code):
-                            if instr[0] == "FUNC_BEGIN" and instr[1] == func_name:
-                                # idx points at FUNC_BEGIN; function body first instr is idx+1
-                                func_pc = idx + 1
-                                func_begin_idx = idx
-                                break
-                        if func_pc is None:
-                            raise VMError(f"User function '{func_name}' not found")
-
-                        # Read parameter count from FUNC_BEGIN tuple (third element)
-                        param_count = int(self.code[func_begin_idx][2]) if len(self.code[func_begin_idx]) > 2 else 0
-
-                        # Read parameter names from the next param_count instructions.
-                        # Expect those to be DECLARE instructions emitted by the compiler.
-                        param_info = []
-                        for i in range(param_count):
-                            decl_idx = func_pc + i
-                            if decl_idx >= len(self.code):
-                                raise VMError(f"Malformed function '{func_name}': missing parameter DECLAREs")
-                            decl_instr = self.code[decl_idx]
-                            if decl_instr[0] != "DECLARE":
-                                raise VMError(f"Malformed function '{func_name}': expected DECLARE for parameter at bytecode index {decl_idx}, found {decl_instr[0]}")
-                            # DECLARE format: ("DECLARE", name, vartype)
-                            param_info.append((decl_instr[1], decl_instr[2] if len(decl_instr) > 2 else None))
-
-                        # Save current pc+1 (next instruction after CALL) and locals snapshot on call stack
-                        self.call_stack.append((self.pc + 1, self.locals.copy()))
-
-                        # Install fresh locals and bind parameters
-                        self.locals = {}
-                        for (name, ptype), val in zip(param_info, arg_values):
-                            if ptype == "float" and type(val) is int:
-                                val = float(val)
-                            elif ptype == "int" and type(val) is float:
-                                val = int(val)
-                            self.locals[name] = (val, ptype or "unknown", False)
-
-                        # Jump to the first instruction of the function body (skip the param DECLAREs)
-                        self.pc = func_pc + param_count
+                        self._call_user_function(func_name, arg_values)
                         continue
 
                 case "CALL_METHOD":
@@ -427,6 +491,11 @@ class VM:
                     # stack: ..., obj, arg1, arg2...
                     arg_values = [self.stack.pop() for _ in range(n_args)][::-1]
                     obj = self.stack.pop()
+                    if isinstance(obj, str) and obj in self.component_tree.get("nodes", {}):
+                        node = self.component_tree["nodes"][obj]
+                        func_name = f"{node['type']}.{method_name}"
+                        self._call_user_function(func_name, arg_values)
+                        continue
                     if not isinstance(obj, dict) or "__class__" not in obj:
                         raise VMError("Method call on non-object")
                     class_name = obj["__class__"]
@@ -465,6 +534,15 @@ class VM:
                         self.locals[name] = (val, ptype or "unknown", False)
                     self.pc = func_pc + param_count
                     continue
+
+
+                case "MATCH_COMPONENT":
+                    target_type = self.stack.pop()
+                    start_path = self.stack.pop()
+                    if not isinstance(start_path, str) or not isinstance(target_type, str):
+                        raise VMError("match expects a component reference and type name")
+                    match_path = self._match_component(start_path, target_type)
+                    self.stack.append(match_path)
 
 
                 case "RETURN":
