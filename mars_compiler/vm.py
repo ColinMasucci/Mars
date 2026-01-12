@@ -108,11 +108,11 @@ class VM:
         self.pc = func_pc + param_count
 
 
-    def run(self, max_steps=1000000, debug=False):
+    def run(self, max_steps=None, debug=False):
         steps = 0
         while self.pc < len(self.code):
             steps += 1
-            if steps > max_steps:
+            if max_steps is not None and steps > max_steps:
                 raise VMError("Exceeded maximum VM steps; possible infinite loop")
             instr = self.code[self.pc]
             op, *args = instr  # unpack opcode and any arguments

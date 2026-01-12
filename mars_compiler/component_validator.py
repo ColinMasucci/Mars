@@ -67,6 +67,10 @@ class ComponentValidator:
                 raise ComponentValidationError(
                     f"Subcomponent '{sub.name}' in '{comp.name}' references unknown component '{sub.type_name}'"
                 )
+            if self._is_robot_family(sub.type_name):
+                raise ComponentValidationError(
+                    f"Subcomponent '{sub.name}' in '{comp.name}' cannot be a Robot-derived component ('{sub.type_name}')"
+                )
             iface["subcomponents"][sub.name] = sub.type_name
             # Enforce mandatory params on subcomponent are bound or have defaults
             required = self._required_params(self.components[sub.type_name])
@@ -112,6 +116,16 @@ class ComponentValidator:
         if typ.endswith("[]"):
             return f"array<{self._normalize_type(typ[:-2])}>"
         return typ
+
+    def _is_robot_family(self, type_name: str) -> bool:
+        if type_name == "Robot":
+            return True
+        cur = self.components.get(type_name)
+        while cur and cur.parent:
+            if cur.parent == "Robot":
+                return True
+            cur = self.components.get(cur.parent)
+        return False
 
     def _required_params(self, comp_def):
         """Return params without defaults (value is None)."""

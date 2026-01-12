@@ -17,5 +17,9 @@ component myOtherRobot extends Robot {
         float height = 5;
         bool flying = false;
     }
-    functions{}
+    functions{
+    }
 }
+
+
+
