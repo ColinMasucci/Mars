@@ -40,8 +40,9 @@ def load_marsc_files(directory, registry, debug: bool = False):
         if filename.endswith(".marsc"):
             with open(os.path.join(directory, filename)) as f:
                 code = f.read()
-            tokens = tokenize(code)
-            parser = Parser(tokens)
+            file_path = os.path.join(directory, filename)
+            tokens = tokenize(code, source_path=file_path)
+            parser = Parser(tokens, source_text=code, source_path=file_path)
             ast = parser.parse()
             for comp in ast.components:
                 if comp.name == "Robot":
@@ -382,8 +383,8 @@ def validate_requirements(component_tree, component_parents, base_dir):
         file_path = os.path.join(base_dir, filename)
         with open(file_path, "r", encoding="utf-8") as f:
             code = f.read()
-        tokens = tokenize(code)
-        parser = Parser(tokens)
+        tokens = tokenize(code, source_path=file_path)
+        parser = Parser(tokens, source_text=code, source_path=file_path)
         ast = parser.parse()
         for cls in ast.classes or []:
             for req in cls.requirements or []:

@@ -1,2 +1,5 @@
-import myRobot;
+import DifferentialFK;
 
+DifferentialFK fk = DifferentialFK(myRobot);
+
+print(fk.getPosition());

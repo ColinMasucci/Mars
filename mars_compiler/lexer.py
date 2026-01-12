@@ -1,6 +1,8 @@
 import re
 from dataclasses import dataclass
 
+from source_errors import format_source_error
+
 @dataclass
 class Token:
     type: str
@@ -101,13 +103,14 @@ TOKEN_SPEC = [
 #combines all of the regexs into one big regular expression seperated by (|) "or"
 MASTER_REGEX = re.compile("|".join(f"(?P<{name}>{pattern})" for name, pattern in TOKEN_SPEC))
 
-def tokenize(text, printTokens=False) -> list[Token]:
+def tokenize(text, printTokens=False, source_path=None) -> list[Token]:
     tokens = []
     pos = 0
     while pos < len(text):
         m = MASTER_REGEX.match(text, pos) #trys to match the text to one of our reg exs starting at "pos"
         if not m: #if none found then print debug displaying where we couldnt find one.
-            raise SyntaxError(f"Unexpected character {text[pos]!r} at {pos}")
+            msg = f"Unexpected character {text[pos]!r}."
+            raise SyntaxError(format_source_error(msg, text, pos, source_path, "tokenize"))
         kind = m.lastgroup #.lastgroup: Returns the name of the last matched capturing group, or None if the group had no name or if no group was matched at all.
         val = m.group(kind)#.group(): Returns the string matched by the specified group.
         if kind not in ("SKIP", "COMMENT", "BLOCK_COMMENT"): #Dont tokenize blank spaces or comments

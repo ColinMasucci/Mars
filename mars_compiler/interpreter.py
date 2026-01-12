@@ -34,8 +34,8 @@ def _interpret(code: str, config_dir: str, debug: bool, capture_output: bool, so
     _registry, interfaces, comp_funcs, comp_params, component_tree, component_parents = precompile_config(config_dir, debug=debug)
 
     # Tokenize -> Parse
-    tokens = tokenize(code, debug)
-    parser = Parser(tokens)
+    tokens = tokenize(code, printTokens=debug, source_path=source_path)
+    parser = Parser(tokens, source_text=code, source_path=source_path)
     parsed_ast = parser.parse(debug)
 
     # Load classes from imported .mars files (single-class modules)
@@ -49,8 +49,8 @@ def _interpret(code: str, config_dir: str, debug: bool, capture_output: bool, so
             if os.path.exists(candidate):
                 with open(candidate, "r", encoding="utf-8") as f:
                     mod_code = f.read()
-                mod_tokens = tokenize(mod_code, debug)
-                mod_parser = Parser(mod_tokens)
+                mod_tokens = tokenize(mod_code, printTokens=debug, source_path=candidate)
+                mod_parser = Parser(mod_tokens, source_text=mod_code, source_path=candidate)
                 mod_ast = mod_parser.parse(debug)
                 if not mod_ast.classes:
                     raise Exception(f"Imported module '{module}' contains no class definition")

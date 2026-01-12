@@ -15,7 +15,7 @@ class DifferentialFK {
     float[] position = [0, 0];
 
     DifferentialFK(Robot robot){
-        chassis = robot.match(DifferentialChassis);
+        DifferentialChassis chassis = robot.match(DifferentialChassis);
     }
 
     void updatePosition(float x, float y) {

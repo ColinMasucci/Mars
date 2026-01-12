@@ -1,10 +1,68 @@
+from contextlib import contextmanager
+
 from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction
+from source_errors import format_source_error
 
 class Parser:
     #We pass in the tokens which we got from the lexer
-    def __init__(self, tokens):
+    def __init__(self, tokens, source_text=None, source_path=None):
         self.tokens = tokens
         self.pos = 0
+        self.source_text = source_text
+        self.source_path = source_path
+        self._context_stack = []
+
+    _TOKEN_DISPLAY = {
+        "ID": "identifier",
+        "ASSIGN": "=",
+        "PLUS": "+",
+        "MINUS": "-",
+        "MUL": "*",
+        "DIV": "/",
+        "POW": "^",
+        "LT": "<",
+        "GT": ">",
+        "LEQ": "<=",
+        "GEQ": ">=",
+        "EQ": "==",
+        "NEQ": "!=",
+        "AND": "&&",
+        "OR": "||",
+        "BANG": "!",
+        "LPAREN": "(",
+        "RPAREN": ")",
+        "LBRACE": "{",
+        "RBRACE": "}",
+        "LBRACKET": "[",
+        "RBRACKET": "]",
+        "SEMI": ";",
+        "COMMA": ",",
+        "COLON": ":",
+        "DOT": ".",
+        "EOF": "end of file",
+    }
+
+    @contextmanager
+    def _context(self, name):
+        self._context_stack.append(name)
+        try:
+            yield
+        finally:
+            self._context_stack.pop()
+
+    def _token_desc(self, token_type):
+        return self._TOKEN_DISPLAY.get(token_type, token_type)
+
+    def _format_error(self, message, tok=None):
+        if self.source_text is None:
+            return message
+        if tok is None:
+            tok = self.current()
+        context = self._context_stack[-1] if self._context_stack else None
+        return format_source_error(message, self.source_text, tok.position, self.source_path, context)
+
+    def _raise(self, message, tok=None):
+        raise SyntaxError(self._format_error(message, tok))
 
     # Get the current token we are parsing
     def current(self):
@@ -16,58 +74,62 @@ class Parser:
         if tok.type == type_:
             self.pos += 1
             return tok
-        raise SyntaxError(f"Expected {type_} at position {tok.position}, got {tok.type}")
+        expected = self._token_desc(type_)
+        found = self._token_desc(tok.type)
+        self._raise(f"Expected {expected}, got {found}.", tok)
 
     # parse an entire given program as a Program, using ; as the delimeter
     def parse(self, printAST=False):
-        statements = []
-        components = []
-        classes = []
-        while self.current().type != "EOF":
-                if self.current().type == "COMPONENT":
-                    components.append(self.parse_component())
-                elif self.current().type == "CLASS":
-                    classes.append(self.parse_class())
-                else:
-                    statements.append(self.parse_statement())
-        if printAST:
-            for stmt in statements:
-                self.print_ast(stmt)
-        return Program(statements, components, classes)
+        with self._context("parse"):
+            statements = []
+            components = []
+            classes = []
+            while self.current().type != "EOF":
+                    if self.current().type == "COMPONENT":
+                        components.append(self.parse_component())
+                    elif self.current().type == "CLASS":
+                        classes.append(self.parse_class())
+                    else:
+                        statements.append(self.parse_statement())
+            if printAST:
+                for stmt in statements:
+                    self.print_ast(stmt)
+            return Program(statements, components, classes)
     
 
     def parse_component(self):
-        self.eat("COMPONENT")
-        name = self.eat("ID").value
+        with self._context("parse_component"):
+            self.eat("COMPONENT")
+            name = self.eat("ID").value
 
-        parent = None
-        if self.current().type == "EXTENDS":
-            self.eat("EXTENDS")
-            parent = self.eat("ID").value
+            parent = None
+            if self.current().type == "EXTENDS":
+                self.eat("EXTENDS")
+                parent = self.eat("ID").value
 
-        self.eat("LBRACE")
+            self.eat("LBRACE")
 
-        subcomponents = []
-        parameters = []
-        functions = []
+            subcomponents = []
+            parameters = []
+            functions = []
 
-        while not self.current().type == "RBRACE":
-            if self.current().type == "SUBCOMPONENTS":
-                self.eat("SUBCOMPONENTS")
-                subcomponents = self.parse_subcomponents_block()
-            elif self.current().type == "PARAMETERS":
-                self.eat("PARAMETERS")
-                parameters = self.parse_parameters_block()
-            elif self.current().type == "FUNCTIONS":
-                self.eat("FUNCTIONS")
-                functions = self.parse_functions_block()
-            else:
-                raise SyntaxError(self.peek(), "Unexpected token in component body")
+            while not self.current().type == "RBRACE":
+                if self.current().type == "SUBCOMPONENTS":
+                    self.eat("SUBCOMPONENTS")
+                    subcomponents = self.parse_subcomponents_block()
+                elif self.current().type == "PARAMETERS":
+                    self.eat("PARAMETERS")
+                    parameters = self.parse_parameters_block()
+                elif self.current().type == "FUNCTIONS":
+                    self.eat("FUNCTIONS")
+                    functions = self.parse_functions_block()
+                else:
+                    self._raise("Unexpected token in component body.", self.current())
 
-        self.eat("RBRACE")
+            self.eat("RBRACE")
 
 
-        return ComponentDef(name, parent, subcomponents, parameters, functions)
+            return ComponentDef(name, parent, subcomponents, parameters, functions)
 
     def parse_subcomponents_block(self):
         self.eat("LBRACE")
@@ -217,7 +279,7 @@ class Parser:
                     name = self.eat("ID").value
                     if self.current().type == "LPAREN":
                         if readonly:
-                            raise SyntaxError("Functions cannot be declared const")
+                            self._raise("Functions cannot be declared const.", self.current())
                         return self.parse_function(vartype, name)
                     value = None
                     if self.current().type == "ASSIGN":
@@ -260,10 +322,12 @@ class Parser:
             return stmt
 
         # --- Anything else is invalid ---
-        raise SyntaxError(f"Unexpected token {tok.type} at position {tok.position}")
+        self._raise(f"Unexpected token {tok.type}.", tok)
     
     def parse_var_decl(self, require_semi=True, readonly=False):
         vartype = self.parse_type()
+        if self.current().type != "ID":
+            self._raise("Expected `type name` in declaration (declarations must include a type).", self.current())
         name = self.eat("ID").value
 
         value = None
@@ -311,7 +375,7 @@ class Parser:
             return self.eat("ID").value
 
         else:
-            raise SyntaxError(f"Unexpected type token: {tok.type}")
+            self._raise(f"Expected a type name, got {self._token_desc(tok.type)}.", tok)
 
 
         
@@ -325,7 +389,7 @@ class Parser:
                 ptype = self.parse_type()
 
                 if ptype == "void":
-                    raise SyntaxError("Parameter type cannot be void")
+                    self._raise("Parameter type cannot be void.", self.current())
 
                 pname = self.eat("ID").value
                 params.append((ptype, pname))
@@ -375,7 +439,7 @@ class Parser:
     def parse_condition(self):
         self.eat("LPAREN")
         if self.current().type == "RPAREN":
-            raise SyntaxError("Empty condition in if/while statement")
+            self._raise("Empty condition in if/while statement.", self.current())
         condition = self.expr() # parse the condition expression
         self.eat("RPAREN")
         return condition
@@ -477,7 +541,7 @@ class Parser:
         while self.current().type != "RBRACE":
             stmts.append(self.parse_statement())
             if self.current().type == "EOF":
-                raise SyntaxError("Expected '}' before end of file")
+                self._raise("Expected '}' before end of file.", self.current())
         self.eat("RBRACE")
         return Block(stmts)
     
@@ -572,7 +636,8 @@ class Parser:
             # Otherwise, push the current operator onto the ops stack
             ops.append(key)
             if self.current().type in stop_tokens or self.current().type == "EOF":
-                raise SyntaxError(f"Missing operand after {key} at {op_tok.position}")
+                op_desc = self._token_desc(key)
+                self._raise(f"Missing operand after {op_desc}.", op_tok)
             output.append(self.parse_prefix())
 
         # After we reach the end of the expression, pop and apply all remaining operators to finish shunting-yard
@@ -580,11 +645,12 @@ class Parser:
             self._apply_op(output, ops.pop())
 
         if not output:
-            raise SyntaxError(f"Expected expression but found {self.current().type} at {self.current().position}")
+            found = self._token_desc(self.current().type)
+            self._raise(f"Expected expression, got {found}.", self.current())
         
         if len(output) != 1:
             # should reduce to single AST node; if not, it's an error
-            raise SyntaxError("Expression parsing error: output stack did not convert to AST correctly. Possible causes: incorrect syntax, recieved an empty expression, missed operators during process")
+            self._raise("Expression parsing error: output stack did not convert to AST correctly.", self.current())
 
         return output[0]
     
@@ -619,7 +685,7 @@ class Parser:
                 self.eat("LBRACKET")
                 index = self.parse_expression({"RBRACKET"})
                 if self.current().type != "RBRACKET":
-                    raise SyntaxError(f"Expected ']' at {self.current().position}")
+                    self._raise("Expected ']'.", self.current())
                 self.eat("RBRACKET")
                 node = ArrayAccess(node, index)
                 continue
@@ -647,7 +713,7 @@ class Parser:
                     key = self.parse_expression({"COLON"})
 
                     if self.current().type != "COLON":
-                        raise SyntaxError(f"Expected ':' in dictionary at {self.current().position}")
+                        self._raise("Expected ':' in dictionary.", self.current())
 
                     self.eat("COLON")
 
@@ -685,10 +751,10 @@ class Parser:
         if tok.type == "LPAREN":
             self.eat("LPAREN")
             if self.current().type == "RPAREN":
-                raise SyntaxError(f"Empty parentheses at {self.current().position}")
+                self._raise("Empty parentheses.", self.current())
             node = self.parse_expression({"RPAREN"})
             if self.current().type != "RPAREN":
-                raise SyntaxError(f"Expected ')' at {self.current().position}")
+                self._raise("Expected ')'.", self.current())
             self.eat("RPAREN")
             return node
 
@@ -735,7 +801,7 @@ class Parser:
 
             return node
 
-        raise SyntaxError(f"Unexpected token {tok.type} in expression")
+        self._raise(f"Unexpected token {tok.type} in expression.", tok)
 
 
     def _apply_op(self, output_stack, op_key):
@@ -743,13 +809,13 @@ class Parser:
         \nMutates output_stack (list)."""
 
         if op_key not in OP_INFO:
-            raise SyntaxError(f"Internal error: unknown operator {op_key}")
+            self._raise(f"Internal error: unknown operator {op_key}.", self.current())
         prec, assoc, arity, role = OP_INFO[op_key]
 
         if arity == 2:
             # binary operator
             if len(output_stack) < 2:
-                raise SyntaxError("Not enough operands for binary operator")
+                self._raise("Not enough operands for binary operator.", self.current())
             right = output_stack.pop()
             left = output_stack.pop()
             # use op_key as operator name for BinaryOp (keep original token names like "PLUS")
@@ -758,7 +824,7 @@ class Parser:
 
         if arity == 1:
             if len(output_stack) < 1:
-                raise SyntaxError("Not enough operands for unary operator")
+                self._raise("Not enough operands for unary operator.", self.current())
             operand = output_stack.pop()
             # Handle postfix INC/DEC specially if needed (they act on variables)
             if op_key == "INC":
@@ -773,7 +839,7 @@ class Parser:
             if op_key == "BANG":
                 output_stack.append(UnaryOp("BANG", operand))
                 return
-            raise SyntaxError(f"Unhandled unary op {op_key}")
+            self._raise(f"Unhandled unary op {op_key}.", self.current())
 
     def peek(self, offset=1):
         if self.pos + offset < len(self.tokens):
@@ -836,59 +902,60 @@ class Parser:
         if indent == 0:
             print("\n")
     def parse_class(self):
-        self.eat("CLASS")
-        name = self.eat("ID").value
-        self.eat("LBRACE")
+        with self._context("parse_class"):
+            self.eat("CLASS")
+            name = self.eat("ID").value
+            self.eat("LBRACE")
 
-        fields = []
-        methods = []
-        constructor = None
-        requirements = []
+            fields = []
+            methods = []
+            constructor = None
+            requirements = []
 
-        while self.current().type != "RBRACE":
-            if self.current().type == "REQUIREMENTS":
-                self.eat("REQUIREMENTS")
-                requirements = self.parse_requirements_block()
-                continue
-            is_const = False
-            if self.current().type == "CONST_KW":
-                self.eat("CONST_KW")
-                is_const = True
+            while self.current().type != "RBRACE":
+                if self.current().type == "REQUIREMENTS":
+                    self.eat("REQUIREMENTS")
+                    requirements = self.parse_requirements_block()
+                    continue
+                is_const = False
+                if self.current().type == "CONST_KW":
+                    self.eat("CONST_KW")
+                    is_const = True
 
-            # Constructor shorthand: ClassName(params) without a leading return type
-            if self.current().type == "ID" and self.current().value == name and self.peek().type == "LPAREN":
-                self.eat("ID")
-                ctor = self.parse_function(name, name)
-                constructor = MethodDecl(name, name, ctor.params, ctor.body, True)
-                continue
+                # Constructor shorthand: ClassName(params) without a leading return type
+                if self.current().type == "ID" and self.current().value == name and self.peek().type == "LPAREN":
+                    self.eat("ID")
+                    ctor = self.parse_function(name, name)
+                    constructor = MethodDecl(name, name, ctor.params, ctor.body, True)
+                    continue
 
-            # type
-            vartype = self.parse_type()
-            member_name = self.eat("ID").value
+                # type
+                vartype = self.parse_type()
+                member_name = self.eat("ID").value
 
-            # constructor (name == class name and followed by LPAREN)
-            if member_name == name and self.current().type == "LPAREN":
-                # treat as constructor
-                ctor = self.parse_function(vartype, member_name)
-                ctor = MethodDecl(vartype, member_name, ctor.params, ctor.body, True)
-                constructor = ctor
-                continue
+                # constructor (name == class name and followed by LPAREN)
+                if member_name == name and self.current().type == "LPAREN":
+                    # treat as constructor
+                    ctor = self.parse_function(vartype, member_name)
+                    ctor = MethodDecl(vartype, member_name, ctor.params, ctor.body, True)
+                    constructor = ctor
+                    continue
 
-            if self.current().type == "LPAREN":
-                # method
-                fn = self.parse_function(vartype, member_name)
-                methods.append(MethodDecl(vartype, member_name, fn.params, fn.body, False))
-            else:
-                # field
-                value = None
-                if self.current().type == "ASSIGN":
-                    self.eat("ASSIGN")
-                    value = self.expr()
-                self.eat("SEMI")
-                fields.append(FieldDecl(vartype, member_name, value, is_const))
+                if self.current().type == "LPAREN":
+                    # method
+                    fn = self.parse_function(vartype, member_name)
+                    methods.append(MethodDecl(vartype, member_name, fn.params, fn.body, False))
+                else:
+                    # field
+                    value = None
+                    if self.current().type == "ASSIGN":
+                        self.eat("ASSIGN")
+                        value = self.expr()
+                    self.eat("SEMI")
+                    fields.append(FieldDecl(vartype, member_name, value, is_const))
 
-        self.eat("RBRACE")
-        return ClassDecl(name, fields, methods, constructor, requirements)
+            self.eat("RBRACE")
+            return ClassDecl(name, fields, methods, constructor, requirements)
 
     def parse_requirements_block(self):
         self.eat("LBRACE")
@@ -920,7 +987,7 @@ class Parser:
                 while True:
                     key_tok = self.current()
                     if key_tok.type not in ("SUBCOMPONENTS", "PARAMETERS", "FUNCTIONS"):
-                        raise SyntaxError(f"Unexpected requirement key {key_tok.type} at {key_tok.position}")
+                        self._raise(f"Unexpected requirement key {self._token_desc(key_tok.type)}.", key_tok)
                     self.eat(key_tok.type)
                     self.eat("ASSIGN")
 
