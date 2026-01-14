@@ -2,4 +2,6 @@ import DifferentialFK;
 
 DifferentialFK fk = DifferentialFK(myRobot);
 
-fk.fuckComponents();
+print(type(myOtherRobot));
+
+myRobot.myChassis.drive(5);

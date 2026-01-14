@@ -1,17 +1,17 @@
 #scope is done with a stack of dictionaries done after the AST generation
 
 TODO:
-    methods
-    arrays
+    #methods
+    #arrays
     hashmaps
-    classes
+    #classes
     scope
-    multifile support
+    #multifile support
     better error handling
     external packages
     change colors of our language (Text Mate, LSP Language Server Protocol)
 
-    use constants instead of strings for the role in shunting yard
+    #use constants instead of strings for the role in shunting yard
     templates and generics for array
 
 

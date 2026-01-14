@@ -61,16 +61,35 @@ class VM:
 
     def _resolve_component_function(self, func_name):
         if "." not in func_name:
-            return None
+            return None, None
         parts = func_name.split(".")
         path = ".".join(parts[:-1])
         method = parts[-1]
         node = self.component_tree.get("nodes", {}).get(path)
         if node and method in node.get("functions", set()):
-            return f"{node['type']}.{method}"
-        return None
+            return f"{node['type']}.{method}", path
+        return None, None
 
-    def _call_user_function(self, func_name, arg_values):
+    def _bind_component_locals(self, component_path):
+        node = self.component_tree.get("nodes", {}).get(component_path)
+        if not node:
+            return
+        # Bind component params into locals (readonly).
+        param_types = node.get("param_types", {})
+        param_values = node.get("params", {})
+        for pname, ptype in param_types.items():
+            if pname not in self.locals:
+                self.locals[pname] = (param_values.get(pname), ptype, True)
+        # Bind direct subcomponents into locals (readonly).
+        for sname, spath in node.get("subcomponents", {}).items():
+            if sname in self.locals:
+                continue
+            child = self.component_tree.get("nodes", {}).get(spath)
+            stype = child.get("type") if child else None
+            vtype = f"component:{stype}" if stype else "component"
+            self.locals[sname] = (spath, vtype, True)
+
+    def _call_user_function(self, func_name, arg_values, component_path=None):
         func_pc = None
         func_begin_idx = None
         for idx, instr in enumerate(self.code):
@@ -79,9 +98,9 @@ class VM:
                 func_begin_idx = idx
                 break
         if func_pc is None:
-            resolved = self._resolve_component_function(func_name)
+            resolved, resolved_path = self._resolve_component_function(func_name)
             if resolved and resolved != func_name:
-                self._call_user_function(resolved, arg_values)
+                self._call_user_function(resolved, arg_values, component_path=resolved_path)
                 return
             raise VMError(f"User function '{func_name}' not found")
 
@@ -98,6 +117,8 @@ class VM:
 
         self.call_stack.append((self.pc + 1, self.locals.copy()))
         self.locals = {}
+        if component_path:
+            self._bind_component_locals(component_path)
         for (name, ptype), val in zip(param_info, arg_values):
             if ptype == "float" and type(val) is int:
                 val = float(val)
@@ -494,7 +515,7 @@ class VM:
                     if isinstance(obj, str) and obj in self.component_tree.get("nodes", {}):
                         node = self.component_tree["nodes"][obj]
                         func_name = f"{node['type']}.{method_name}"
-                        self._call_user_function(func_name, arg_values)
+                        self._call_user_function(func_name, arg_values, component_path=obj)
                         continue
                     if not isinstance(obj, dict) or "__class__" not in obj:
                         raise VMError("Method call on non-object")

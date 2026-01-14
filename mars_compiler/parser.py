@@ -3,6 +3,10 @@ from contextlib import contextmanager
 from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction
 from source_errors import format_source_error
 
+ROLE_PREFIX = "prefix"
+ROLE_POSTFIX = "postfix"
+ROLE_BINARY = "binary"
+
 class Parser:
     #We pass in the tokens which we got from the lexer
     def __init__(self, tokens, source_text=None, source_path=None):
@@ -562,37 +566,37 @@ class Parser:
     global OP_INFO
     OP_INFO = {
         # postfix unary
-        "INC":  (7, "left", 1, "postfix"),
-        "DEC":  (7, "left", 1, "postfix"),
+        "INC":  (7, "left", 1, ROLE_POSTFIX),
+        "DEC":  (7, "left", 1, ROLE_POSTFIX),
 
         # prefix unary
-        "NEGATE": (6, "right", 1, "prefix"),  # unary negation
-        "BANG":  (6, "right", 1, "prefix"),  # logical not
+        "NEGATE": (6, "right", 1, ROLE_PREFIX),  # unary negation
+        "BANG":  (6, "right", 1, ROLE_PREFIX),  # logical not
 
         # multiplicative
-        "MUL":       (5, "left", 2, "binary"),
-        "DIV":       (5, "left", 2, "binary"),
+        "MUL":       (5, "left", 2, ROLE_BINARY),
+        "DIV":       (5, "left", 2, ROLE_BINARY),
 
         # additive
-        "PLUS":      (4, "left", 2, "binary"),
-        "MINUS":     (4, "left", 2, "binary"),  # binary minus
+        "PLUS":      (4, "left", 2, ROLE_BINARY),
+        "MINUS":     (4, "left", 2, ROLE_BINARY),  # binary minus
 
         # comparison
-        "LT":   (3, "left", 2, "binary"),
-        "GT":   (3, "left", 2, "binary"),
-        "LEQ":  (3, "left", 2, "binary"),
-        "GEQ":  (3, "left", 2, "binary"),
+        "LT":   (3, "left", 2, ROLE_BINARY),
+        "GT":   (3, "left", 2, ROLE_BINARY),
+        "LEQ":  (3, "left", 2, ROLE_BINARY),
+        "GEQ":  (3, "left", 2, ROLE_BINARY),
 
         # equality
-        "EQ":   (2, "left", 2, "binary"),
-        "NEQ":  (2, "left", 2, "binary"),
+        "EQ":   (2, "left", 2, ROLE_BINARY),
+        "NEQ":  (2, "left", 2, ROLE_BINARY),
 
         # logical
-        "AND":  (1, "left", 2, "binary"),
-        "OR":   (0, "left", 2, "binary"),
+        "AND":  (1, "left", 2, ROLE_BINARY),
+        "OR":   (0, "left", 2, ROLE_BINARY),
 
         # exponentiation
-        "POW": (6, "right", 2, "binary"),
+        "POW": (6, "right", 2, ROLE_BINARY),
 
     }
 

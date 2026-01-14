@@ -9,6 +9,7 @@ function_table = {}  # name -> start index
 RETURN_TYPE_STACK = []
 CLASS_NAMES = set()
 COMPONENT_BASES = set()
+COMPONENT_INSTANCE_PATHS = set()
 
 def _flatten_member_access(node):
     """Return list of identifiers for MemberAccess chain, or None if not pure identifiers."""
@@ -26,13 +27,16 @@ def _flatten_member_access(node):
 def compile_program(node: ast.Program, printBytecode = False, component_functions=None, component_params=None, class_functions=None, class_interfaces=None) -> List[Instr]:
     code = []
     function_table.clear()
-    global CLASS_NAMES, COMPONENT_BASES
+    global CLASS_NAMES, COMPONENT_BASES, COMPONENT_INSTANCE_PATHS
     CLASS_NAMES = set(class_interfaces.keys()) if class_interfaces else set()
     COMPONENT_BASES = set()
+    COMPONENT_INSTANCE_PATHS = set()
     for decl in component_params or []:
         if isinstance(decl, ast.VarDecl) and isinstance(decl.name, str):
             base = decl.name.split(".",1)[0]
             COMPONENT_BASES.add(base)
+            if isinstance(decl.value, ast.StringLiteral) and decl.value.value == decl.name:
+                COMPONENT_INSTANCE_PATHS.add(decl.name)
     if component_functions:
         for fn in component_functions:
             if isinstance(fn, ast.FuncDecl):
@@ -418,9 +422,16 @@ def compile_node(node, code: List[Instr]):
                 parts = _flatten_member_access(func)
                 if parts and parts[0] in COMPONENT_BASES:
                     target_name = ".".join(parts)
-                    for arg in args:
-                        compile_node(arg, code)
-                    code.append(("CALL", target_name, len(args)))
+                    component_path = ".".join(parts[:-1])
+                    if component_path in COMPONENT_INSTANCE_PATHS:
+                        compile_node(func.obj, code)
+                        for arg in args:
+                            compile_node(arg, code)
+                        code.append(("CALL_METHOD", func.attr, len(args)))
+                    else:
+                        for arg in args:
+                            compile_node(arg, code)
+                        code.append(("CALL", target_name, len(args)))
                     return
                 # class/object method
                 compile_node(func.obj, code)
