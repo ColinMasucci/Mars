@@ -71,6 +71,10 @@ class TypeChecker:
                 return scope[name]
         return None
 
+    def _set_type(self, node, typ):
+        setattr(node, "inferred_type", typ)
+        return typ
+
     def _normalize_type(self, typ: str):
         # Convert parser array syntax -> type checker array syntax (e.g., int[] -> array<int>)
         # This is because parser uses int[] syntax for easier parsing, but type checker uses array<int> internally
@@ -427,7 +431,7 @@ class TypeChecker:
                         )
                 # Add to symbol table
                 self._declare_symbol(name, stored_type, mutable=not getattr(node, "readonly", False))
-                return stored_type
+                return self._set_type(node, stored_type)
 
 
 
@@ -444,7 +448,7 @@ class TypeChecker:
                     expected = sym["type"]
                     if not self._types_compatible(expected, value_type):
                         raise TypeError(f"Type mismatch in assignment to '{name}': expected {expected}, got {value_type}")
-                    return expected
+                    return self._set_type(node, expected)
 
                 # ---------------- ARRAY / DICT ELEMENT ASSIGN ----------------
                 if isinstance(name_node, ArrayAccess):
@@ -479,7 +483,7 @@ class TypeChecker:
                         if not self._types_compatible(elem_type, value_type):
                             raise TypeError(f"Type mismatch assigning to array element: expected {elem_type}, got {value_type}")
                         name_node.inferred_type = elem_type
-                        return elem_type
+                        return self._set_type(node, elem_type)
 
                     if isinstance(container_type, str) and container_type.startswith("dict<") and container_type.endswith(">"):
                         inside = container_type[len("dict<"):-1]
@@ -491,7 +495,7 @@ class TypeChecker:
                         if not self._types_compatible(val_type, value_type):
                             raise TypeError(f"Type mismatch assigning to dictionary element: expected {val_type}, got {value_type}")
                         name_node.inferred_type = val_type
-                        return val_type
+                        return self._set_type(node, val_type)
 
                     raise TypeError(f"Trying to index non-indexable type '{container_type}'")
 
@@ -509,7 +513,7 @@ class TypeChecker:
                     val_type = self.check(value)
                     if not self._types_compatible(ftype, val_type):
                         raise TypeError(f"Type mismatch assigning to field '{name_node.attr}': expected {ftype}, got {val_type}")
-                    return ftype
+                    return self._set_type(node, ftype)
 
                 raise TypeError("LHS of assignment must be a variable or an array access")
 
@@ -585,47 +589,47 @@ class TypeChecker:
                 result_type = self._binary_result_type(op, left_type, right_type)
                 if not self._types_compatible(left_type, result_type):
                     raise TypeError(f"Type mismatch in compound assignment: expected {left_type}, got {result_type}")
-                return left_type
+                return self._set_type(node, left_type)
 
 
             case Var(name):
                 sym = self._lookup_symbol(name)
                 if sym is None:
                     raise TypeError(f"Undefined variable or symbol '{name}'")
-                return sym["type"]
+                return self._set_type(node, sym["type"])
             case MemberAccess(obj, attr):
                 obj_type = self.check(obj)
                 res = self._resolve_member_access(obj_type, attr)
                 if res is None:
                     raise TypeError(f"Cannot access member '{attr}' on {obj_type}")
-                return res
+                return self._set_type(node, res)
 
 
 
             case NumberLiteral(value):
-                return "float" if isinstance(value, float) else "int"
+                return self._set_type(node, "float" if isinstance(value, float) else "int")
 
             case StringLiteral(value):
-                return "string"
+                return self._set_type(node, "string")
 
             case BooleanLiteral(value):
-                return "bool"
+                return self._set_type(node, "bool")
 
             case BinaryOp(op, left, right):
                 left_type = self.check(left)
                 right_type = self.check(right)
-                return self._binary_result_type(op, left_type, right_type)
+                return self._set_type(node, self._binary_result_type(op, left_type, right_type))
 
             case UnaryOp(op, operand):
                 operand_type = self.check(operand)
                 if op == "NEGATE":  # prefix numeric negation
                     if operand_type not in ("int", "float"):
                         raise TypeError(f"Unary '-' requires numeric type, got {operand_type}")
-                    return operand_type
+                    return self._set_type(node, operand_type)
                 if op == "BANG":   # logical NOT
                     if operand_type != "bool":
                         raise TypeError(f"Unary '!' requires boolean type, got {operand_type}")
-                    return "bool"
+                    return self._set_type(node, "bool")
                 if op in ("INC", "DEC"):
                     if not isinstance(operand, Var):
                         raise TypeError(f"Unary '{op}' can only be applied to variables")
@@ -634,7 +638,7 @@ class TypeChecker:
                     if operand_type != "int":
                         raise TypeError(f"Unary '{op}' requires int type, got {operand_type}")
 
-                    return operand_type
+                    return self._set_type(node, operand_type)
                 raise TypeError(f"Unknown unary operator {op}")
 
             case If(condition, then_branch, else_branch):
@@ -654,18 +658,18 @@ class TypeChecker:
             case ArrayLiteral(elements):
                 # empty array -> array<any>
                 if not elements:
-                    return "array<any>"
+                    return self._set_type(node, "array<any>")
                 # check types of all elements (must match)
                 elem_types = [self.check(e) for e in elements]
                 first = elem_types[0]
                 for t in elem_types[1:]:
                     if t != first:
                         raise TypeError(f"Array literal contains mixed element types: {first} and {t}")
-                return f"array<{first}>"
+                return self._set_type(node, f"array<{first}>")
             
             case DictLiteral(pairs):
                 if not pairs:
-                    return "dict<any, any>"
+                    return self._set_type(node, "dict<any, any>")
 
                 key_types = []
                 value_types = []
@@ -688,7 +692,7 @@ class TypeChecker:
                     if v != first_val:
                         raise TypeError(f"Dictionary contains mixed value types: {first_val} and {v}")
 
-                return f"dict<{first_key}, {first_val}>"
+                return self._set_type(node, f"dict<{first_key}, {first_val}>")
 
             #Used for both Arrays and Dictionaries
             case ArrayAccess(container_expr, index_expr):
@@ -700,7 +704,7 @@ class TypeChecker:
                 if isinstance(cont_t, str) and cont_t.startswith("array<") and cont_t.endswith(">"):
                     if idx_t != "int":
                         raise TypeError(f"Array index must be an int, got {idx_t}")
-                    return cont_t[len("array<"):-1]
+                    return self._set_type(node, cont_t[len("array<"):-1])
                 
 
                 # DICT ACCESS
@@ -711,7 +715,7 @@ class TypeChecker:
                     if idx_t != key_t:
                         raise TypeError(f"Dictionary key must be {key_t}, got {idx_t}")
 
-                    return val_t
+                    return self._set_type(node, val_t)
 
                 raise TypeError(f"Trying to index non-indexable type '{cont_t}'")
 
@@ -722,7 +726,7 @@ class TypeChecker:
                         if len(args) != 1:
                             raise TypeError(f"Function 'type' expects 1 argument, got {len(args)}")
                         node.type_str = self._display_type(arg_types[0])
-                        return "string"
+                        return self._set_type(node, "string")
                     # constructor call
                     if func.name in self.class_interfaces:
                         iface = self.class_interfaces[func.name]
@@ -737,7 +741,7 @@ class TypeChecker:
                         else:
                             if len(arg_types) != 0:
                                 raise TypeError(f"Constructor for {func.name} takes no arguments")
-                        return f"class:{func.name}"
+                        return self._set_type(node, f"class:{func.name}")
                     if "." in func.name:
                         sym = self._lookup_symbol(func.name)
                         if sym:
@@ -752,8 +756,8 @@ class TypeChecker:
                                 for expected, arg_type in zip(param_types, arg_types):
                                     if not self._types_compatible(expected, arg_type):
                                         raise TypeError(f"Argument type mismatch in call to '{func.name}': expected {expected}, got {arg_type}")
-                            return ret_type or "void"
-                        return self._check_component_call(func.name, arg_types)
+                            return self._set_type(node, ret_type or "void")
+                        return self._set_type(node, self._check_component_call(func.name, arg_types))
 
                     sym = self._lookup_symbol(func.name)
                     if not sym: 
@@ -768,9 +772,9 @@ class TypeChecker:
                         for expected, arg_type in zip(param_types, arg_types):
                             if not self._types_compatible(expected, arg_type):
                                 raise TypeError(f"Argument type mismatch in call to '{func.name}': expected {expected}, got {arg_type}")
-                    return ret_type or "void"
+                    return self._set_type(node, ret_type or "void")
                 if isinstance(func, MemberAccess):
-                    return self._check_method_call(func, arg_types)
+                    return self._set_type(node, self._check_method_call(func, arg_types))
                 raise TypeError("Unsupported function call target")
 
 

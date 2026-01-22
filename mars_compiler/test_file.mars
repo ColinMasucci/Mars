@@ -1,7 +1,5 @@
 import DifferentialFK;
 
-DifferentialFK fk = DifferentialFK(myRobot);
+DifferentialFK fk1 = DifferentialFK(myRobot);
 
-print(type(myOtherRobot));
-
-myRobot.myChassis.drive(10);
+DifferentialFK fk2 = DifferentialFK(myOtherRobot);

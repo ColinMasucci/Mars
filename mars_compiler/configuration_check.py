@@ -6,7 +6,7 @@ from type_checker import TypeChecker
 from component_registry import ComponentRegistry
 from component_validator import ComponentValidator, ComponentValidationError
 from component_visualizer import visualize_components
-from ast_nodes import ComponentDef, FuncDecl, VarDecl, Call, Return, Block, Var, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, UnaryOp, RequirementSpec, RequirementParam, RequirementFunction, RequirementExpr
+from ast_nodes import ArrayAccess, ArrayLiteral, Assign, AugAssign, BinaryOp, Block, BooleanLiteral, Call, ComponentDef, DictLiteral, FuncDecl, If, MemberAccess, NumberLiteral, Program, RequirementExpr, RequirementFunction, RequirementParam, RequirementSpec, Return, StringLiteral, UnaryOp, Var, VarDecl, While
 
 
 def precompile_config(config_dir: str, debug: bool = False):
@@ -17,18 +17,6 @@ def precompile_config(config_dir: str, debug: bool = False):
     registry = ComponentRegistry()
     interfaces = load_marsc_files(config_dir, registry, debug=debug)
     component_tree, component_parents = build_component_tree(registry, interfaces)
-    errors, flags = validate_requirements(component_tree, component_parents, os.path.dirname(__file__))
-    if errors:
-        msg = ["Requirements check failed:"]
-        msg.extend(f"  - {err}" for err in errors)
-        if flags:
-            msg.append("Flags:")
-            msg.extend(f"  - {flag}" for flag in flags)
-        raise SystemExit("\n".join(msg))
-    if flags:
-        print("[requirements] Flags:")
-        for flag in flags:
-            print(f"  - {flag}")
     comp_funcs, comp_params = build_component_runtime(registry, interfaces, component_tree)
     return registry, interfaces, comp_funcs, comp_params, component_tree, component_parents
 
@@ -491,6 +479,589 @@ def validate_requirements(component_tree, component_parents, base_dir):
                 else:
                     for flag in req_flags:
                         flags.append(f"{filename}:{cls.name} {flag}")
+
+    return errors, flags
+
+
+def validate_instantiated_requirements(program, component_tree, component_parents, class_interfaces):
+    errors = []
+    flags = []
+
+    if not isinstance(program, Program):
+        return errors, flags
+
+    class_requirements = {}
+    class_map = {}
+    for cls in program.classes or []:
+        class_requirements[cls.name] = cls.requirements or []
+        class_map[cls.name] = cls
+
+    if not any(class_requirements.values()):
+        return errors, flags
+
+    def _format_requirement_spec(req):
+        args = []
+        if req.subcomponents:
+            args.append("subcomponents=...")
+        if req.parameters:
+            args.append("parameters=...")
+        if req.functions:
+            args.append("functions=...")
+        if args:
+            return f"{req.type_name}({', '.join(args)})"
+        return req.type_name
+
+    def _format_requirement_expr(req):
+        if isinstance(req, RequirementSpec):
+            return _format_requirement_spec(req)
+        if isinstance(req, RequirementExpr):
+            op = "&&" if req.op == "AND" else "||"
+            prec = 2 if req.op == "AND" else 1
+            left = _format_requirement_expr(req.left)
+            right = _format_requirement_expr(req.right)
+            if isinstance(req.left, RequirementExpr):
+                left_prec = 2 if req.left.op == "AND" else 1
+                if left_prec < prec:
+                    left = f"({left})"
+            if isinstance(req.right, RequirementExpr):
+                right_prec = 2 if req.right.op == "AND" else 1
+                if right_prec < prec:
+                    right = f"({right})"
+            return f"{left} {op} {right}"
+        return "<requirement>"
+
+    def _prefix_errors(label, items):
+        if not items:
+            return [f"{label} failed"]
+        if len(items) == 1:
+            return [f"{label} failed: {items[0]}"]
+        return [f"{label} failed: {item}" for item in items]
+
+    def _expr_to_str(expr):
+        if isinstance(expr, Var):
+            return expr.name
+        if isinstance(expr, NumberLiteral):
+            return str(expr.value)
+        if isinstance(expr, StringLiteral):
+            return repr(expr.value)
+        if isinstance(expr, BooleanLiteral):
+            return "true" if expr.value else "false"
+        if isinstance(expr, UnaryOp):
+            op = "!" if expr.op == "BANG" else "-"
+            return f"{op}{_expr_to_str(expr.operand)}"
+        if isinstance(expr, BinaryOp):
+            op_map = {
+                "AND": "&&",
+                "OR": "||",
+                "EQ": "==",
+                "NEQ": "!=",
+                "LT": "<",
+                "GT": ">",
+                "LEQ": "<=",
+                "GEQ": ">=",
+                "PLUS": "+",
+                "MINUS": "-",
+                "MUL": "*",
+                "DIV": "/",
+            }
+            op = op_map.get(expr.op, expr.op)
+            return f"{_expr_to_str(expr.left)} {op} {_expr_to_str(expr.right)}"
+        return "<expr>"
+
+    def _is_type_or_child(type_name, target_type):
+        if type_name == target_type:
+            return True
+        cur = component_parents.get(type_name)
+        while cur:
+            if cur == target_type:
+                return True
+            cur = component_parents.get(cur)
+        return False
+
+    def _collect_vars(expr, out):
+        if isinstance(expr, Var):
+            out.add(expr.name)
+        elif isinstance(expr, UnaryOp):
+            _collect_vars(expr.operand, out)
+        elif isinstance(expr, BinaryOp):
+            _collect_vars(expr.left, out)
+            _collect_vars(expr.right, out)
+
+    def _eval_condition(expr, param_values):
+        if isinstance(expr, Var):
+            return param_values.get(expr.name)
+        if isinstance(expr, NumberLiteral):
+            return expr.value
+        if isinstance(expr, StringLiteral):
+            return expr.value
+        if isinstance(expr, BooleanLiteral):
+            return expr.value
+        if isinstance(expr, UnaryOp):
+            val = _eval_condition(expr.operand, param_values)
+            if val is None:
+                return None
+            if expr.op == "NEGATE" and isinstance(val, (int, float)):
+                return -val
+            if expr.op == "BANG":
+                return not bool(val)
+            return None
+        if isinstance(expr, BinaryOp):
+            left = _eval_condition(expr.left, param_values)
+            right = _eval_condition(expr.right, param_values)
+            if left is None or right is None:
+                return None
+            if expr.op == "AND":
+                return bool(left) and bool(right)
+            if expr.op == "OR":
+                return bool(left) or bool(right)
+            if expr.op == "EQ":
+                return left == right
+            if expr.op == "NEQ":
+                return left != right
+            if expr.op == "LT":
+                try:
+                    return left < right
+                except TypeError:
+                    return None
+            if expr.op == "GT":
+                try:
+                    return left > right
+                except TypeError:
+                    return None
+            if expr.op == "LEQ":
+                try:
+                    return left <= right
+                except TypeError:
+                    return None
+            if expr.op == "GEQ":
+                try:
+                    return left >= right
+                except TypeError:
+                    return None
+        return None
+
+    def _param_failure_reason(expr, node):
+        names = set()
+        _collect_vars(expr, names)
+        missing = [name for name in sorted(names) if name not in node["params"] or node["params"][name] is None]
+        if missing:
+            return f"parameter(s) {', '.join(missing)} missing on {node['type']}"
+        result = _eval_condition(expr, node["params"])
+        if result:
+            return None
+        values = ", ".join(f"{name}={node['params'].get(name)!r}" for name in sorted(names))
+        return f"parameter check '{_expr_to_str(expr)}' failed on {node['type']}{f' ({values})' if values else ''}"
+
+    def _find_matches(root_path, target_type):
+        matches = []
+        stack = [root_path]
+        nodes = component_tree["nodes"]
+        while stack:
+            path = stack.pop()
+            node = nodes.get(path)
+            if node is None:
+                continue
+            if _is_type_or_child(node["type"], target_type):
+                matches.append(path)
+            stack.extend(node["children"])
+        return matches
+
+    def _check_constraints(node, req):
+        local_flags = []
+        local_errors = []
+
+        for param_req in req.parameters or []:
+            reason = _param_failure_reason(param_req.expr, node)
+            if reason:
+                msg = f"optional {reason}" if param_req.optional else reason
+                if param_req.optional:
+                    local_flags.append(msg)
+                else:
+                    local_errors.append(msg)
+
+        for func_req in req.functions or []:
+            if func_req.name not in node["functions"]:
+                msg = f"function '{func_req.name}()' missing on {node['type']}"
+                if func_req.optional:
+                    local_flags.append(f"optional {msg}")
+                else:
+                    local_errors.append(msg)
+
+        for sub_req in req.subcomponents or []:
+            status, sub_flags, sub_errors = _check_requirement_expr(node["path"], sub_req)
+            if status == "hard":
+                label = _format_requirement_expr(sub_req)
+                sub_detail = "; ".join(sub_errors) if sub_errors else f"missing component '{label}'"
+                msg = f"subcomponent '{label}' requirement failed under {node['type']}: {sub_detail}"
+                local_errors.append(msg)
+            else:
+                local_flags.extend(sub_flags)
+
+        return len(local_errors) == 0, local_flags, local_errors
+
+    def _check_requirement_on_subtree(root_path, req):
+        matches = _find_matches(root_path, req.type_name)
+        if not matches:
+            return False, [], [f"missing component '{req.type_name}'"]
+        best_flags = None
+        best_errors = None
+        nodes = component_tree["nodes"]
+        for path in matches:
+            node = nodes.get(path)
+            if node is None:
+                continue
+            ok, local_flags, local_errors = _check_constraints(node, req)
+            if ok and not local_flags:
+                return True, [], []
+            if ok and best_flags is None:
+                best_flags = local_flags
+            if not ok and best_errors is None and local_errors:
+                best_errors = local_errors
+        if best_flags is not None:
+            return True, best_flags, []
+        if best_errors is None:
+            best_errors = [f"no '{req.type_name}' instance satisfied constraints"]
+        return False, [], best_errors
+
+    def _check_requirement_expr(root_path, req):
+        if isinstance(req, RequirementSpec):
+            ok, local_flags, local_errors = _check_requirement_on_subtree(root_path, req)
+            if ok:
+                return "ok", local_flags, []
+            if req.optional:
+                return "soft", local_flags + local_errors, []
+            return "hard", local_flags, local_errors
+        if isinstance(req, RequirementExpr):
+            left_status, left_flags, left_errors = _check_requirement_expr(root_path, req.left)
+            right_status, right_flags, right_errors = _check_requirement_expr(root_path, req.right)
+            if req.op == "OR":
+                if left_status == "ok" and right_status == "ok":
+                    return ("ok", left_flags if len(left_flags) <= len(right_flags) else right_flags, [])
+                if left_status == "ok":
+                    return "ok", left_flags, []
+                if right_status == "ok":
+                    return "ok", right_flags, []
+                flags = []
+                if left_status == "soft":
+                    flags.extend(left_flags)
+                if right_status == "soft":
+                    flags.extend(right_flags)
+                if left_status == "soft" and right_status == "soft":
+                    return "soft", flags, []
+                errors = []
+                if left_status == "hard":
+                    errors.extend(_prefix_errors(_format_requirement_expr(req.left), left_errors))
+                if right_status == "hard":
+                    errors.extend(_prefix_errors(_format_requirement_expr(req.right), right_errors))
+                return "hard", flags, errors
+            if req.op == "AND":
+                flags = []
+                flags.extend(left_flags)
+                flags.extend(right_flags)
+                errors = []
+                status = "ok"
+                if left_status == "hard":
+                    status = "hard"
+                    errors.extend(_prefix_errors(_format_requirement_expr(req.left), left_errors))
+                if right_status == "hard":
+                    status = "hard"
+                    errors.extend(_prefix_errors(_format_requirement_expr(req.right), right_errors))
+                if status != "hard" and (left_status == "soft" or right_status == "soft"):
+                    status = "soft"
+                return status, flags, errors
+        return "hard", [], ["invalid requirement expression"]
+
+    def _evaluate_requirements(requirements, root_path):
+        req_errors = []
+        req_flags = []
+        for req in requirements or []:
+            status, local_flags, local_errors = _check_requirement_expr(root_path, req)
+            if status == "hard":
+                if local_errors:
+                    if len(local_errors) == 1 and local_errors[0].startswith("missing component "):
+                        detail = f": {local_errors[0]}"
+                    else:
+                        detail_lines = "\n".join(f"      - {detail}" for detail in local_errors)
+                        detail = f":\n{detail_lines}"
+                else:
+                    detail = ""
+                req_errors.append(f"requirement {_format_requirement_expr(req)} failed{detail}")
+            elif status == "soft":
+                if local_flags:
+                    if len(local_flags) == 1 and local_flags[0].startswith("missing component "):
+                        detail = f": {local_flags[0]}"
+                    else:
+                        detail_lines = "\n".join(f"      - {detail}" for detail in local_flags)
+                        detail = f":\n{detail_lines}"
+                else:
+                    detail = ""
+                req_flags.append(f"requirement {_format_requirement_expr(req)} failed{detail}")
+            else:
+                for flag in local_flags:
+                    req_flags.append(flag)
+        return req_errors, req_flags
+
+    def _match_component(start_path, target_type):
+        nodes = component_tree["nodes"]
+        if start_path not in nodes:
+            return None, f"component '{start_path}' not found in config"
+        queue = [(start_path, 0)]
+        matches = []
+        current_depth = 0
+        while queue:
+            path, depth = queue.pop(0)
+            if depth > current_depth and matches:
+                break
+            node = nodes.get(path)
+            if node is None:
+                continue
+            if _is_type_or_child(node["type"], target_type):
+                matches.append(path)
+                current_depth = depth
+            for child in node["children"]:
+                queue.append((child, depth + 1))
+        if not matches:
+            return None, f"match could not find '{target_type}' under '{start_path}'"
+        if len(matches) > 1:
+            return None, f"match found multiple '{target_type}' under '{start_path}' at depth {current_depth}"
+        return matches[0], None
+
+    def _component_expr_str(expr):
+        if isinstance(expr, Var):
+            return expr.name
+        if isinstance(expr, MemberAccess):
+            return f"{_component_expr_str(expr.obj)}.{expr.attr}"
+        if isinstance(expr, Call) and isinstance(expr.func, MemberAccess) and expr.func.attr == "match":
+            if len(expr.args) == 1 and isinstance(expr.args[0], Var):
+                return f"{_component_expr_str(expr.func.obj)}.match({expr.args[0].name})"
+            return f"{_component_expr_str(expr.func.obj)}.match(...)"
+        return "<component>"
+
+    def _resolve_component_path(expr, path_scopes):
+        if isinstance(expr, Var):
+            for scope in reversed(path_scopes):
+                if expr.name in scope:
+                    return scope[expr.name], None
+            if expr.name in component_tree["nodes"]:
+                return expr.name, None
+            return None, f"component '{expr.name}' not found in config"
+        if isinstance(expr, MemberAccess):
+            base_path, err = _resolve_component_path(expr.obj, path_scopes)
+            if err or base_path is None:
+                return None, err
+            node = component_tree["nodes"].get(base_path)
+            if node is None:
+                return None, f"component '{base_path}' not found in config"
+            if expr.attr in node.get("subcomponents", {}):
+                return node["subcomponents"][expr.attr], None
+            return None, f"component '{base_path}' has no subcomponent '{expr.attr}'"
+        if isinstance(expr, Call) and isinstance(expr.func, MemberAccess) and expr.func.attr == "match":
+            base_path, err = _resolve_component_path(expr.func.obj, path_scopes)
+            if err or base_path is None:
+                return None, err
+            if len(expr.args) != 1 or not isinstance(expr.args[0], Var):
+                return None, "match requires a component type identifier"
+            return _match_component(base_path, expr.args[0].name)
+        return None, None
+
+    def _is_component_type(type_str):
+        return isinstance(type_str, str) and type_str.startswith("component:")
+
+    def _prefix_message(prefix, msg):
+        lines = msg.splitlines()
+        lines[0] = f"{prefix} {lines[0]}"
+        return "\n".join(lines)
+
+    type_scopes = [{}]
+    path_scopes = [{}]
+
+    def _lookup_type(name):
+        for scope in reversed(type_scopes):
+            if name in scope:
+                return scope[name]
+        return None
+
+    def _declare(name, typ, path=None):
+        type_scopes[-1][name] = typ
+        if _is_component_type(typ):
+            path_scopes[-1][name] = path
+
+    def _set_path(name, path):
+        for scope in reversed(path_scopes):
+            if name in scope:
+                scope[name] = path
+                return
+        if name in type_scopes[-1]:
+            path_scopes[-1][name] = path
+
+    def _normalize_decl_type(vartype):
+        if isinstance(vartype, str) and vartype in component_parents:
+            return f"component:{vartype}"
+        if isinstance(vartype, str) and vartype in class_interfaces:
+            return f"class:{vartype}"
+        return vartype
+
+    def _handle_constructor_call(call_node, instance_name=None):
+        if not isinstance(call_node.func, Var):
+            return
+        class_name = call_node.func.name
+        requirements = class_requirements.get(class_name) or []
+        if not requirements:
+            return
+
+        component_args = []
+        for idx, arg in enumerate(call_node.args or []):
+            arg_type = getattr(arg, "inferred_type", None)
+            if _is_component_type(arg_type):
+                component_args.append((idx, arg))
+
+        if not component_args:
+            label = f"{class_name}"
+            if instance_name:
+                label = f"{label} (instance={instance_name})"
+            errors.append(f"{label} requires a component argument for requirements validation")
+            return
+
+        for idx, arg in component_args:
+            path, err = _resolve_component_path(arg, path_scopes)
+            label_parts = [class_name]
+            detail_parts = []
+            if instance_name:
+                detail_parts.append(f"instance={instance_name}")
+            detail_parts.append(f"component={_component_expr_str(arg) if path is None else path}")
+            detail_parts.append(f"arg={idx + 1}")
+            label = f"{label_parts[0]} ({', '.join(detail_parts)})"
+
+            if err or path is None:
+                reason = err or "component path could not be resolved"
+                errors.append(f"{label} component argument could not be resolved: {reason}")
+                continue
+
+            req_errors, req_flags = _evaluate_requirements(requirements, path)
+            for item in req_errors:
+                errors.append(_prefix_message(label, item))
+            for item in req_flags:
+                flags.append(_prefix_message(label, item))
+
+    def _walk_expr(expr):
+        if isinstance(expr, Call):
+            _handle_constructor_call(expr, None)
+            if isinstance(expr.func, MemberAccess):
+                _walk_expr(expr.func.obj)
+            for arg in expr.args or []:
+                _walk_expr(arg)
+            return
+        if isinstance(expr, MemberAccess):
+            _walk_expr(expr.obj)
+            return
+        if isinstance(expr, BinaryOp):
+            _walk_expr(expr.left)
+            _walk_expr(expr.right)
+            return
+        if isinstance(expr, UnaryOp):
+            _walk_expr(expr.operand)
+            return
+        if isinstance(expr, ArrayAccess):
+            _walk_expr(expr.array)
+            _walk_expr(expr.index)
+            return
+        if isinstance(expr, ArrayLiteral):
+            for item in expr.elements or []:
+                _walk_expr(item)
+            return
+        if isinstance(expr, DictLiteral):
+            for k, v in expr.pairs or []:
+                _walk_expr(k)
+                _walk_expr(v)
+            return
+
+    def _walk_statement(stmt):
+        if isinstance(stmt, Block):
+            type_scopes.append({})
+            path_scopes.append({})
+            for inner in stmt.statements:
+                _walk_statement(inner)
+            type_scopes.pop()
+            path_scopes.pop()
+            return
+        if isinstance(stmt, If):
+            _walk_expr(stmt.condition)
+            type_scopes.append({})
+            path_scopes.append({})
+            _walk_statement(stmt.then_branch)
+            type_scopes.pop()
+            path_scopes.pop()
+            if stmt.else_branch:
+                type_scopes.append({})
+                path_scopes.append({})
+                _walk_statement(stmt.else_branch)
+                type_scopes.pop()
+                path_scopes.pop()
+            return
+        if isinstance(stmt, While):
+            _walk_expr(stmt.condition)
+            type_scopes.append({})
+            path_scopes.append({})
+            _walk_statement(stmt.body)
+            type_scopes.pop()
+            path_scopes.pop()
+            return
+        if isinstance(stmt, FuncDecl):
+            type_scopes.append({})
+            path_scopes.append({})
+            for ptype, pname in stmt.params or []:
+                decl_type = _normalize_decl_type(ptype)
+                _declare(pname, decl_type, None if _is_component_type(decl_type) else None)
+            if stmt.body is not None:
+                _walk_statement(stmt.body)
+            type_scopes.pop()
+            path_scopes.pop()
+            return
+        if isinstance(stmt, Return):
+            if stmt.value is not None:
+                _walk_expr(stmt.value)
+            return
+        if isinstance(stmt, VarDecl):
+            if stmt.value is not None:
+                if isinstance(stmt.value, Call):
+                    _handle_constructor_call(stmt.value, stmt.name)
+                    if isinstance(stmt.value.func, MemberAccess):
+                        _walk_expr(stmt.value.func.obj)
+                    for arg in stmt.value.args or []:
+                        _walk_expr(arg)
+                else:
+                    _walk_expr(stmt.value)
+            decl_type = getattr(stmt, "inferred_type", None) or _normalize_decl_type(stmt.vartype)
+            path = None
+            if _is_component_type(decl_type) and stmt.value is not None:
+                path, _ = _resolve_component_path(stmt.value, path_scopes)
+            _declare(stmt.name, decl_type, path)
+            return
+        if isinstance(stmt, Assign):
+            if stmt.value is not None:
+                if isinstance(stmt.value, Call):
+                    _handle_constructor_call(stmt.value, stmt.name if isinstance(stmt.name, Var) else None)
+                    if isinstance(stmt.value.func, MemberAccess):
+                        _walk_expr(stmt.value.func.obj)
+                    for arg in stmt.value.args or []:
+                        _walk_expr(arg)
+                else:
+                    _walk_expr(stmt.value)
+            if isinstance(stmt.name, Var):
+                var_type = _lookup_type(stmt.name.name)
+                if _is_component_type(var_type):
+                    path, _ = _resolve_component_path(stmt.value, path_scopes)
+                    _set_path(stmt.name.name, path)
+            return
+        if isinstance(stmt, AugAssign):
+            if stmt.value is not None:
+                _walk_expr(stmt.value)
+            return
+
+        _walk_expr(stmt)
+
+    for stmt in program.statements or []:
+        _walk_statement(stmt)
 
     return errors, flags
 

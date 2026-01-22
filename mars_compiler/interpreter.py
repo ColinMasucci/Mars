@@ -8,7 +8,7 @@ from parser import Parser  # parser from parser.py
 from type_checker import TypeChecker  # type checker from type_checker.py
 from bytecodegen import compile_program  # bytecode generator from bytecodegen.py
 from vm import VM  # the stack-based virtual machine from vm.py
-from configuration_check import precompile_config
+from configuration_check import precompile_config, validate_instantiated_requirements
 from class_validator import ClassValidator
 from ast_nodes import FuncDecl, Return, Block, Var, Assign, MemberAccess, Import
 from ast_visualizer import visualize  # for visualizing the AST
@@ -74,6 +74,20 @@ def _interpret(code: str, config_dir: str, debug: bool, capture_output: bool, so
     # Type check
     type_checker = TypeChecker(component_interfaces=interfaces, class_interfaces=class_interfaces)
     type_checker.check(parsed_ast)
+
+    # Validate requirements for instantiated classes against component args
+    req_errors, req_flags = validate_instantiated_requirements(parsed_ast, component_tree, component_parents, class_interfaces)
+    if req_errors:
+        msg = ["Requirements check failed:"]
+        msg.extend(f"  - {err}" for err in req_errors)
+        if req_flags:
+            msg.append("Flags:")
+            msg.extend(f"  - {flag}" for flag in req_flags)
+        raise SystemExit("\n".join(msg))
+    if req_flags:
+        print("[requirements] Flags:")
+        for flag in req_flags:
+            print(f"  - {flag}")
 
     # Visualize AST if requested
     if debug:
