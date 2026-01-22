@@ -170,3 +170,10 @@ class RequirementSpec:
     parameters: List[RequirementParam] = None
     functions: List[RequirementFunction] = None
     subcomponents: List[Any] = None
+
+
+@dataclass
+class RequirementExpr:
+    op: str
+    left: Any
+    right: Any

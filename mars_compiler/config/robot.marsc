@@ -21,5 +21,6 @@ component myOtherRobot extends Robot {
     }
 }
 
+component Chassis {}
 
 

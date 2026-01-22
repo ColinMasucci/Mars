@@ -35,7 +35,7 @@ component BrandMotor extends BrushlessMotor {
     }
 }
 
-component DifferentialChassis {
+component DifferentialChassis extends Chassis {
     subcomponents{
         BrandMotor leftMotor(direction = 1, port = 1);
         BrandMotor rightMotor(direction = -1, port = 2);

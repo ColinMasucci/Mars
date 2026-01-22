@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 
-from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction
+from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction, RequirementExpr
 from source_errors import format_source_error
 
 ROLE_PREFIX = "prefix"
@@ -972,9 +972,33 @@ class Parser:
         return requirements
 
     def parse_requirement_item(self):
-        spec = self.parse_requirement_spec()
+        spec = self.parse_requirement_expr()
         self.eat("SEMI")
         return spec
+
+    def parse_requirement_expr(self):
+        left = self.parse_requirement_and()
+        while self.current().type == "OR":
+            self.eat("OR")
+            right = self.parse_requirement_and()
+            left = RequirementExpr("OR", left, right)
+        return left
+
+    def parse_requirement_and(self):
+        left = self.parse_requirement_atom()
+        while self.current().type == "AND":
+            self.eat("AND")
+            right = self.parse_requirement_atom()
+            left = RequirementExpr("AND", left, right)
+        return left
+
+    def parse_requirement_atom(self):
+        if self.current().type == "LPAREN":
+            self.eat("LPAREN")
+            expr = self.parse_requirement_expr()
+            self.eat("RPAREN")
+            return expr
+        return self.parse_requirement_spec()
 
     def parse_requirement_spec(self):
         optional = False
@@ -1015,7 +1039,7 @@ class Parser:
         if self.current().type == "LBRACKET":
             self.eat("LBRACKET")
             while self.current().type != "RBRACKET":
-                specs.append(self.parse_requirement_spec())
+                specs.append(self.parse_requirement_expr())
                 if self.current().type == "COMMA":
                     self.eat("COMMA")
                     continue
@@ -1023,7 +1047,7 @@ class Parser:
             self.eat("RBRACKET")
             return specs
 
-        specs.append(self.parse_requirement_spec())
+        specs.append(self.parse_requirement_expr())
         return specs
 
     def parse_requirement_param_list(self):

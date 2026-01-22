@@ -3,10 +3,11 @@ class DifferentialFK{
     requirements {
         DifferentialChassis(
             subcomponents=BrandMotor(
-                parameters=[maxRPM < 20, 
+                parameters=[maxRPM < 20 && maxRPM > 10, 
                 optional minRPM > 3]
                 ));
         optional IMU;
+        IMU;
     }
 
     DifferentialChassis chassis;

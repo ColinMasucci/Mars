@@ -6,7 +6,7 @@ from type_checker import TypeChecker
 from component_registry import ComponentRegistry
 from component_validator import ComponentValidator, ComponentValidationError
 from component_visualizer import visualize_components
-from ast_nodes import ComponentDef, FuncDecl, VarDecl, Call, Return, Block, Var, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, UnaryOp, RequirementSpec, RequirementParam, RequirementFunction
+from ast_nodes import ComponentDef, FuncDecl, VarDecl, Call, Return, Block, Var, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, UnaryOp, RequirementSpec, RequirementParam, RequirementFunction, RequirementExpr
 
 
 def precompile_config(config_dir: str, debug: bool = False):
@@ -207,8 +207,7 @@ def validate_requirements(component_tree, component_parents, base_dir):
             return f"{_expr_to_str(expr.left)} {op} {_expr_to_str(expr.right)}"
         return "<expr>"
 
-    def _format_requirement(req):
-        parts = [req.type_name]
+    def _format_requirement_spec(req):
         args = []
         if req.subcomponents:
             args.append("subcomponents=...")
@@ -219,6 +218,32 @@ def validate_requirements(component_tree, component_parents, base_dir):
         if args:
             return f"{req.type_name}({', '.join(args)})"
         return req.type_name
+
+    def _format_requirement_expr(req):
+        if isinstance(req, RequirementSpec):
+            return _format_requirement_spec(req)
+        if isinstance(req, RequirementExpr):
+            op = "&&" if req.op == "AND" else "||"
+            prec = 2 if req.op == "AND" else 1
+            left = _format_requirement_expr(req.left)
+            right = _format_requirement_expr(req.right)
+            if isinstance(req.left, RequirementExpr):
+                left_prec = 2 if req.left.op == "AND" else 1
+                if left_prec < prec:
+                    left = f"({left})"
+            if isinstance(req.right, RequirementExpr):
+                right_prec = 2 if req.right.op == "AND" else 1
+                if right_prec < prec:
+                    right = f"({right})"
+            return f"{left} {op} {right}"
+        return "<requirement>"
+
+    def _prefix_errors(label, errors):
+        if not errors:
+            return [f"{label} failed"]
+        if len(errors) == 1:
+            return [f"{label} failed: {errors[0]}"]
+        return [f"{label} failed: {err}" for err in errors]
 
     def _is_type_or_child(type_name, target_type):
         if type_name == target_type:
@@ -340,14 +365,12 @@ def validate_requirements(component_tree, component_parents, base_dir):
                     local_errors.append(msg)
 
         for sub_req in req.subcomponents or []:
-            ok, sub_flags, sub_errors = _check_requirement_on_subtree(node["path"], sub_req)
-            if not ok:
-                sub_detail = "; ".join(sub_errors) if sub_errors else f"missing component '{sub_req.type_name}'"
-                msg = f"subcomponent '{sub_req.type_name}' requirement failed under {node['type']}: {sub_detail}"
-                if sub_req.optional:
-                    local_flags.append(f"optional {msg}")
-                else:
-                    local_errors.append(msg)
+            status, sub_flags, sub_errors = _check_requirement_expr(node["path"], sub_req)
+            if status == "hard":
+                label = _format_requirement_expr(sub_req)
+                sub_detail = "; ".join(sub_errors) if sub_errors else f"missing component '{label}'"
+                msg = f"subcomponent '{label}' requirement failed under {node['type']}: {sub_detail}"
+                local_errors.append(msg)
             else:
                 local_flags.extend(sub_flags)
 
@@ -377,6 +400,54 @@ def validate_requirements(component_tree, component_parents, base_dir):
             best_errors = [f"no '{req.type_name}' instance satisfied constraints"]
         return False, [], best_errors
 
+    def _check_requirement_expr(root_path, req):
+        if isinstance(req, RequirementSpec):
+            ok, local_flags, local_errors = _check_requirement_on_subtree(root_path, req)
+            if ok:
+                return "ok", local_flags, []
+            if req.optional:
+                return "soft", local_flags + local_errors, []
+            return "hard", local_flags, local_errors
+        if isinstance(req, RequirementExpr):
+            left_status, left_flags, left_errors = _check_requirement_expr(root_path, req.left)
+            right_status, right_flags, right_errors = _check_requirement_expr(root_path, req.right)
+            if req.op == "OR":
+                if left_status == "ok" and right_status == "ok":
+                    return ("ok", left_flags if len(left_flags) <= len(right_flags) else right_flags, [])
+                if left_status == "ok":
+                    return "ok", left_flags, []
+                if right_status == "ok":
+                    return "ok", right_flags, []
+                flags = []
+                if left_status == "soft":
+                    flags.extend(left_flags)
+                if right_status == "soft":
+                    flags.extend(right_flags)
+                if left_status == "soft" and right_status == "soft":
+                    return "soft", flags, []
+                errors = []
+                if left_status == "hard":
+                    errors.extend(_prefix_errors(_format_requirement_expr(req.left), left_errors))
+                if right_status == "hard":
+                    errors.extend(_prefix_errors(_format_requirement_expr(req.right), right_errors))
+                return "hard", flags, errors
+            if req.op == "AND":
+                flags = []
+                flags.extend(left_flags)
+                flags.extend(right_flags)
+                errors = []
+                status = "ok"
+                if left_status == "hard":
+                    status = "hard"
+                    errors.extend(_prefix_errors(_format_requirement_expr(req.left), left_errors))
+                if right_status == "hard":
+                    status = "hard"
+                    errors.extend(_prefix_errors(_format_requirement_expr(req.right), right_errors))
+                if status != "hard" and (left_status == "soft" or right_status == "soft"):
+                    status = "soft"
+                return status, flags, errors
+        return "hard", [], ["invalid requirement expression"]
+
     for filename in os.listdir(base_dir):
         if not filename.endswith(".mars"):
             continue
@@ -388,14 +459,14 @@ def validate_requirements(component_tree, component_parents, base_dir):
         ast = parser.parse()
         for cls in ast.classes or []:
             for req in cls.requirements or []:
-                ok = False
+                status = "hard"
                 req_flags = []
                 req_errors = []
                 for root in component_tree["roots"]:
-                    ok, req_flags, req_errors = _check_requirement_on_subtree(root, req)
-                    if ok:
+                    status, req_flags, req_errors = _check_requirement_expr(root, req)
+                    if status != "hard":
                         break
-                if not ok:
+                if status == "hard":
                     if req_errors:
                         if len(req_errors) == 1 and req_errors[0].startswith("missing component "):
                             detail = f": {req_errors[0]}"
@@ -404,11 +475,19 @@ def validate_requirements(component_tree, component_parents, base_dir):
                             detail = f":\n{detail_lines}"
                     else:
                         detail = ""
-                    msg = f"{filename}:{cls.name} requirement {_format_requirement(req)} failed{detail}"
-                    if req.optional:
-                        flags.append(msg)
+                    msg = f"{filename}:{cls.name} requirement {_format_requirement_expr(req)} failed{detail}"
+                    errors.append(msg)
+                elif status == "soft":
+                    if req_flags:
+                        if len(req_flags) == 1 and req_flags[0].startswith("missing component "):
+                            detail = f": {req_flags[0]}"
+                        else:
+                            detail_lines = "\n".join(f"      - {detail}" for detail in req_flags)
+                            detail = f":\n{detail_lines}"
                     else:
-                        errors.append(msg)
+                        detail = ""
+                    msg = f"{filename}:{cls.name} requirement {_format_requirement_expr(req)} failed{detail}"
+                    flags.append(msg)
                 else:
                     for flag in req_flags:
                         flags.append(f"{filename}:{cls.name} {flag}")
