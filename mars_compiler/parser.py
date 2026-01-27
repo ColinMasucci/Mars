@@ -972,11 +972,21 @@ class Parser:
         return requirements
 
     def parse_requirement_item(self):
+        optional = False
+        if self.current().type == "OPTIONAL":
+            self.eat("OPTIONAL")
+            optional = True
         spec = self.parse_requirement_expr()
+        if optional:
+            setattr(spec, "optional", True)
         self.eat("SEMI")
         return spec
 
     def parse_requirement_expr(self):
+        left = self.parse_requirement_or()
+        return left
+
+    def parse_requirement_or(self):
         left = self.parse_requirement_and()
         while self.current().type == "OR":
             self.eat("OR")
@@ -985,12 +995,19 @@ class Parser:
         return left
 
     def parse_requirement_and(self):
-        left = self.parse_requirement_atom()
+        left = self.parse_requirement_not()
         while self.current().type == "AND":
             self.eat("AND")
-            right = self.parse_requirement_atom()
+            right = self.parse_requirement_not()
             left = RequirementExpr("AND", left, right)
         return left
+
+    def parse_requirement_not(self):
+        if self.current().type == "BANG":
+            self.eat("BANG")
+            operand = self.parse_requirement_not()
+            return RequirementExpr("NOT", operand)
+        return self.parse_requirement_atom()
 
     def parse_requirement_atom(self):
         if self.current().type == "LPAREN":

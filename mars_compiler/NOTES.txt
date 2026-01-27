@@ -14,6 +14,7 @@ TODO:
     #use constants instead of strings for the role in shunting yard
     templates and generics for array
 
+    # add ! to requirements
 
 
     if expect_operand:  #Error in parser. 2 repeated if statements that say the same thing. (around line 438)

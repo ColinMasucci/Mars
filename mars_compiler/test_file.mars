@@ -1,5 +1,3 @@
 import DifferentialFK;
 
 DifferentialFK fk1 = DifferentialFK(myRobot);
-
-DifferentialFK fk2 = DifferentialFK(myOtherRobot);

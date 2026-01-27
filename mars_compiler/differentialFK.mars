@@ -1,3 +1,4 @@
+import math;
 class DifferentialFK{
 
     requirements {
@@ -6,7 +7,7 @@ class DifferentialFK{
                 parameters=[maxRPM < 20 && maxRPM > 10, 
                 optional minRPM > 3]
                 ));
-        optional IMU;
+        optional !IMU;
     }
 
     DifferentialChassis chassis;

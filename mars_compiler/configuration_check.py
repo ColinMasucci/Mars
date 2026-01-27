@@ -211,6 +211,11 @@ def validate_requirements(component_tree, component_parents, base_dir):
         if isinstance(req, RequirementSpec):
             return _format_requirement_spec(req)
         if isinstance(req, RequirementExpr):
+            if req.op == "NOT":
+                inner = _format_requirement_expr(req.left)
+                if isinstance(req.left, RequirementExpr):
+                    inner = f"({inner})"
+                return f"!{inner}"
             op = "&&" if req.op == "AND" else "||"
             prec = 2 if req.op == "AND" else 1
             left = _format_requirement_expr(req.left)
@@ -232,6 +237,11 @@ def validate_requirements(component_tree, component_parents, base_dir):
         if len(errors) == 1:
             return [f"{label} failed: {errors[0]}"]
         return [f"{label} failed: {err}" for err in errors]
+
+    def _apply_optional(req, status, local_flags, local_errors):
+        if getattr(req, "optional", False) and status == "hard":
+            return "soft", local_flags + local_errors, []
+        return status, local_flags, local_errors
 
     def _is_type_or_child(type_name, target_type):
         if type_name == target_type:
@@ -392,33 +402,36 @@ def validate_requirements(component_tree, component_parents, base_dir):
         if isinstance(req, RequirementSpec):
             ok, local_flags, local_errors = _check_requirement_on_subtree(root_path, req)
             if ok:
-                return "ok", local_flags, []
-            if req.optional:
-                return "soft", local_flags + local_errors, []
-            return "hard", local_flags, local_errors
+                return _apply_optional(req, "ok", local_flags, [])
+            return _apply_optional(req, "hard", local_flags, local_errors)
         if isinstance(req, RequirementExpr):
+            if req.op == "NOT":
+                status, _, _ = _check_requirement_expr(root_path, req.left)
+                if status == "ok":
+                    return _apply_optional(req, "hard", [], ["negated requirement matched"])
+                return _apply_optional(req, "ok", [], [])
             left_status, left_flags, left_errors = _check_requirement_expr(root_path, req.left)
             right_status, right_flags, right_errors = _check_requirement_expr(root_path, req.right)
             if req.op == "OR":
                 if left_status == "ok" and right_status == "ok":
-                    return ("ok", left_flags if len(left_flags) <= len(right_flags) else right_flags, [])
+                    return _apply_optional(req, "ok", left_flags if len(left_flags) <= len(right_flags) else right_flags, [])
                 if left_status == "ok":
-                    return "ok", left_flags, []
+                    return _apply_optional(req, "ok", left_flags, [])
                 if right_status == "ok":
-                    return "ok", right_flags, []
+                    return _apply_optional(req, "ok", right_flags, [])
                 flags = []
                 if left_status == "soft":
                     flags.extend(left_flags)
                 if right_status == "soft":
                     flags.extend(right_flags)
                 if left_status == "soft" and right_status == "soft":
-                    return "soft", flags, []
+                    return _apply_optional(req, "soft", flags, [])
                 errors = []
                 if left_status == "hard":
                     errors.extend(_prefix_errors(_format_requirement_expr(req.left), left_errors))
                 if right_status == "hard":
                     errors.extend(_prefix_errors(_format_requirement_expr(req.right), right_errors))
-                return "hard", flags, errors
+                return _apply_optional(req, "hard", flags, errors)
             if req.op == "AND":
                 flags = []
                 flags.extend(left_flags)
@@ -433,7 +446,7 @@ def validate_requirements(component_tree, component_parents, base_dir):
                     errors.extend(_prefix_errors(_format_requirement_expr(req.right), right_errors))
                 if status != "hard" and (left_status == "soft" or right_status == "soft"):
                     status = "soft"
-                return status, flags, errors
+                return _apply_optional(req, status, flags, errors)
         return "hard", [], ["invalid requirement expression"]
 
     for filename in os.listdir(base_dir):
@@ -515,6 +528,11 @@ def validate_instantiated_requirements(program, component_tree, component_parent
         if isinstance(req, RequirementSpec):
             return _format_requirement_spec(req)
         if isinstance(req, RequirementExpr):
+            if req.op == "NOT":
+                inner = _format_requirement_expr(req.left)
+                if isinstance(req.left, RequirementExpr):
+                    inner = f"({inner})"
+                return f"!{inner}"
             op = "&&" if req.op == "AND" else "||"
             prec = 2 if req.op == "AND" else 1
             left = _format_requirement_expr(req.left)
@@ -536,6 +554,11 @@ def validate_instantiated_requirements(program, component_tree, component_parent
         if len(items) == 1:
             return [f"{label} failed: {items[0]}"]
         return [f"{label} failed: {item}" for item in items]
+
+    def _apply_optional(req, status, local_flags, local_errors):
+        if getattr(req, "optional", False) and status == "hard":
+            return "soft", local_flags + local_errors, []
+        return status, local_flags, local_errors
 
     def _expr_to_str(expr):
         if isinstance(expr, Var):
@@ -727,33 +750,36 @@ def validate_instantiated_requirements(program, component_tree, component_parent
         if isinstance(req, RequirementSpec):
             ok, local_flags, local_errors = _check_requirement_on_subtree(root_path, req)
             if ok:
-                return "ok", local_flags, []
-            if req.optional:
-                return "soft", local_flags + local_errors, []
-            return "hard", local_flags, local_errors
+                return _apply_optional(req, "ok", local_flags, [])
+            return _apply_optional(req, "hard", local_flags, local_errors)
         if isinstance(req, RequirementExpr):
+            if req.op == "NOT":
+                status, _, _ = _check_requirement_expr(root_path, req.left)
+                if status == "ok":
+                    return _apply_optional(req, "hard", [], ["negated requirement matched"])
+                return _apply_optional(req, "ok", [], [])
             left_status, left_flags, left_errors = _check_requirement_expr(root_path, req.left)
             right_status, right_flags, right_errors = _check_requirement_expr(root_path, req.right)
             if req.op == "OR":
                 if left_status == "ok" and right_status == "ok":
-                    return ("ok", left_flags if len(left_flags) <= len(right_flags) else right_flags, [])
+                    return _apply_optional(req, "ok", left_flags if len(left_flags) <= len(right_flags) else right_flags, [])
                 if left_status == "ok":
-                    return "ok", left_flags, []
+                    return _apply_optional(req, "ok", left_flags, [])
                 if right_status == "ok":
-                    return "ok", right_flags, []
+                    return _apply_optional(req, "ok", right_flags, [])
                 flags = []
                 if left_status == "soft":
                     flags.extend(left_flags)
                 if right_status == "soft":
                     flags.extend(right_flags)
                 if left_status == "soft" and right_status == "soft":
-                    return "soft", flags, []
+                    return _apply_optional(req, "soft", flags, [])
                 errors = []
                 if left_status == "hard":
                     errors.extend(_prefix_errors(_format_requirement_expr(req.left), left_errors))
                 if right_status == "hard":
                     errors.extend(_prefix_errors(_format_requirement_expr(req.right), right_errors))
-                return "hard", flags, errors
+                return _apply_optional(req, "hard", flags, errors)
             if req.op == "AND":
                 flags = []
                 flags.extend(left_flags)
@@ -768,7 +794,7 @@ def validate_instantiated_requirements(program, component_tree, component_parent
                     errors.extend(_prefix_errors(_format_requirement_expr(req.right), right_errors))
                 if status != "hard" and (left_status == "soft" or right_status == "soft"):
                     status = "soft"
-                return status, flags, errors
+                return _apply_optional(req, status, flags, errors)
         return "hard", [], ["invalid requirement expression"]
 
     def _evaluate_requirements(requirements, root_path):

@@ -176,4 +176,4 @@ class RequirementSpec:
 class RequirementExpr:
     op: str
     left: Any
-    right: Any
+    right: Any = None
