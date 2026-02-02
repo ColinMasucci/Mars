@@ -1092,6 +1092,31 @@ def validate_instantiated_requirements(program, component_tree, component_parent
     return errors, flags
 
 
+def validate_instantiated_component_functions(component_tree, interfaces):
+    """
+    Ensure that every component instance in the Robot tree has concrete function bodies.
+    """
+    errors = []
+
+    if not component_tree:
+        return errors
+
+    for path, node in component_tree["nodes"].items():
+        comp_type = node.get("type")
+        iface = interfaces.get(comp_type)
+        if not iface:
+            continue
+        missing = [fname for fname, finfo in iface.get("funcs", {}).items() if not finfo.get("has_body")]
+        if missing:
+            missing.sort()
+            missing_list = ", ".join(missing)
+            errors.append(
+                f"component instance '{path}' of type '{comp_type}' is missing implementations for: {missing_list}"
+            )
+
+    return errors
+
+
 def build_component_runtime(registry, interfaces, component_tree=None):
     """
     Build lists of FuncDecl and VarDecl for component runtime exposure.

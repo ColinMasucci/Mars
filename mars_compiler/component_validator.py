@@ -81,7 +81,7 @@ class ComponentValidator:
                         f"Subcomponent '{sub.name}' of type '{sub.type_name}' in '{comp.name}' is missing required parameter '{rname}'"
                     )
 
-        # Functions: allow override only if signature matches
+        # Functions: allow override with different params; return type must match
         for func in comp.functions:
             sig_params = [self._normalize_type(ptype) for ptype, _ in func.params]
             finfo = {
@@ -92,20 +92,11 @@ class ComponentValidator:
 
             if func.name in iface["funcs"]:
                 parent_info = iface["funcs"][func.name]
-                if parent_info["return"] != finfo["return"] or parent_info["params"] != finfo["params"]:
+                if parent_info["return"] != finfo["return"]:
                     raise ComponentValidationError(
-                        f"Function '{func.name}' in '{comp.name}' must match inherited signature"
+                        f"Function '{func.name}' in '{comp.name}' must match inherited return type"
                     )
             iface["funcs"][func.name] = finfo
-
-        # Enforce implementation of required parent functions (no-body in parent)
-        for fname, finfo in parent_iface["funcs"].items():
-            if not finfo.get("has_body"):
-                child_info = iface["funcs"].get(fname)
-                if child_info is None or not child_info.get("has_body"):
-                    raise ComponentValidationError(
-                        f"Function '{fname}' required by parent '{comp.parent}' must be implemented in '{comp.name}'"
-                    )
 
         self._building.remove(name)
         self.interfaces[name] = iface

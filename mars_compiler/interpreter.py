@@ -8,7 +8,7 @@ from parser import Parser  # parser from parser.py
 from type_checker import TypeChecker  # type checker from type_checker.py
 from bytecodegen import compile_program  # bytecode generator from bytecodegen.py
 from vm import VM  # the stack-based virtual machine from vm.py
-from configuration_check import precompile_config, validate_instantiated_requirements
+from configuration_check import precompile_config, validate_instantiated_component_functions, validate_instantiated_requirements
 from class_validator import ClassValidator
 from ast_nodes import FuncDecl, Return, Block, Var, Assign, MemberAccess, Import
 from ast_visualizer import visualize  # for visualizing the AST
@@ -74,6 +74,13 @@ def _interpret(code: str, config_dir: str, debug: bool, capture_output: bool, so
     # Type check
     type_checker = TypeChecker(component_interfaces=interfaces, class_interfaces=class_interfaces)
     type_checker.check(parsed_ast)
+
+    # Validate component implementations for instantiated Robot trees
+    impl_errors = validate_instantiated_component_functions(component_tree, interfaces)
+    if impl_errors:
+        msg = ["Component implementation check failed:"]
+        msg.extend(f"  - {err}" for err in impl_errors)
+        raise SystemExit("\n".join(msg))
 
     # Validate requirements for instantiated classes against component args
     req_errors, req_flags = validate_instantiated_requirements(parsed_ast, component_tree, component_parents, class_interfaces)

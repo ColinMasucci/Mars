@@ -1,0 +1,92 @@
+import math;
+
+class IK{
+
+    requirements {
+        DifferentialChassis || AckermannChassis;
+    }
+
+    Chassis chassis;
+    float[] commanded = [0, 0, 0];
+    float linearGain = 1.0;
+    float angularGain = 2.0;
+
+    IK(Robot robot){
+        chassis = robot.match(Chassis);
+    }
+
+    # Normalize an angle to [-pi, pi] for shortest-turn error.
+    float normalizeAngle(float angle) {
+        float two_pi = math.PI * 2;
+        while (angle > math.PI) {
+            angle = angle - two_pi;
+        }
+        while (angle <= -math.PI) {
+            angle = angle + two_pi;
+        }
+        return angle;
+    }
+
+    # Clamp a value to [min_val, max_val].
+    float clamp(float val, float min_val, float max_val) {
+        if (val < min_val) {
+            return min_val;
+        }
+        if (val > max_val) {
+            return max_val;
+        }
+        return val;
+    }
+
+    # Compute a non-holonomic twist toward the target pose and forward to the chassis.
+    # Control law: v = k_r * distance * cos(heading_error), omega = k_theta * heading_error,
+    # with a final heading-only correction when inside position tolerance.
+    void step(float[] currentPose, float[] targetPose) {
+        float cx = currentPose[0];
+        float cy = currentPose[1];
+        float ctheta = currentPose[2];
+
+        float tx = targetPose[0];
+        float ty = targetPose[1];
+        float ttheta = targetPose[2];
+
+        float dx = tx - cx;
+        float dy = ty - cy;
+        float distance = math.sqrt(dx * dx + dy * dy);
+
+        float desired_heading = math.atan2(dy, dx);
+        float heading_error = normalizeAngle(desired_heading - ctheta);
+        float final_heading_error = normalizeAngle(ttheta - ctheta);
+
+        float vx = 0.0;
+        float vy = 0.0;
+        float omega = 0.0;
+
+        if (distance <= chassis.positionTolerance) {
+            if (math.abs(final_heading_error) <= chassis.angleTolerance) {
+                vx = 0.0;
+                omega = 0.0;
+            } else {
+                vx = 0.0;
+                omega = angularGain * final_heading_error;
+            }
+        } else {
+            vx = linearGain * distance * math.cos(heading_error);
+            omega = angularGain * heading_error;
+        }
+
+        vx = clamp(vx, -chassis.maxLinearSpeed, chassis.maxLinearSpeed);
+        omega = clamp(omega, -chassis.maxAngularSpeed, chassis.maxAngularSpeed);
+
+        commanded[0] = vx;
+        commanded[1] = vy;
+        commanded[2] = omega;
+        chassis.drive(vx, vy, omega);
+    }
+
+    # Read last commanded robot-frame velocity.
+    float[] getCommandedVelocities() {
+        return commanded;
+    }
+    
+}

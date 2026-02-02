@@ -1,26 +1,23 @@
-component myRobot extends Robot {
+### KHEPERA ###
+component Khepera extends Robot {
     subcomponents{
-        DifferentialChassis myChassis;
+        #KheperaChassis chassis;
     }
-    parameters{
-        float height = 5;
-        bool flying = false;
-    }
+    parameters{}
     functions{}
 }
 
-component myOtherRobot extends Robot {
-    subcomponents{
+component KheperaChassis extends DifferentialChassis {
 
-    }
-    parameters{
-        float height = 5;
-        bool flying = false;
-    }
-    functions{
-    }
 }
 
-component Chassis {}
 
+### AWSRACER ###
+component AWSRacer extends Robot {
 
+    subcomponents{
+        #DifferentialChassis chassis;
+    }
+    parameters{}
+    functions{}
+}

@@ -1,20 +1,132 @@
-component chassis {
+component Chassis {
     subcomponents{}
     parameters{
-        string type = "tank";
+        float maxLinearSpeed;
+        float maxAngularSpeed;
+        float positionTolerance;
+        float angleTolerance;
     }
     functions{
-        void drive(int dist){
-            int location = 0;
-            for (int i = 0; i < dist + 1; i++) {
-                location++;
-            }
-            print(location);
-        }
-        string get_type(){
-            print(type);
-            return type;
-        }
+        void drive(float vx, float vy, float omega);
+        float[] getVelocities();
+    }
+}
 
+component WheeledChassis extends Chassis {
+    subcomponents{}
+    parameters{
+        float wheelRadius;
+        float gearRatio;
+        int encoderTicksPerRev;
+    }
+    functions{}
+}
+
+component DifferentialChassis extends WheeledChassis {
+    subcomponents{
+        Motor leftMotor;
+        Motor rightMotor;
+    }
+    parameters{
+        float trackWidth;
+        float scrubFactor;
+    }
+    functions{}
+}
+
+component SkidSteerChassis extends WheeledChassis {
+    subcomponents{
+        Motor leftMotor;
+        Motor rightMotor;
+    }
+    parameters{
+        float trackWidth;
+        float scrubFactor;
+    }
+    functions{
+    }
+}
+
+component AckermannChassis extends WheeledChassis {
+    subcomponents{
+        Motor driveMotor;
+        Motor steerMotor;
+    }
+    parameters{
+        float wheelbase;
+        float trackWidth;
+        float steeringRatio;
+        float steeringOffset;
+        float maxSteerAngle;
+    }
+    functions{
+    }
+}
+
+component TrackedChassis extends Chassis {
+    subcomponents{
+        Motor leftMotor;
+        Motor rightMotor;
+    }
+    parameters{
+        float trackWidth;
+        float sprocketRadius;
+        float gearRatio;
+        int encoderTicksPerRev;
+        float scrubFactor;
+    }
+    functions{
+    }
+}
+
+component MecanumChassis extends WheeledChassis {
+    subcomponents{
+        Motor frontLeftMotor;
+        Motor frontRightMotor;
+        Motor rearLeftMotor;
+        Motor rearRightMotor;
+    }
+    parameters{
+        float wheelbase;
+        float trackWidth;
+        float rollerAngle;
+    }
+    functions{
+    }
+}
+
+component OmniChassis extends WheeledChassis {
+    subcomponents{
+        Motor wheel1Motor;
+        Motor wheel2Motor;
+        Motor wheel3Motor;
+    }
+    parameters{
+        float baseRadius;
+        int wheelCount;
+        float wheelAngleOffset;
+    }
+    functions{
+    }
+}
+
+component SwerveChassis extends WheeledChassis {
+    subcomponents{
+        Motor frontLeftDriveMotor;
+        Motor frontLeftSteerMotor;
+        Motor frontRightDriveMotor;
+        Motor frontRightSteerMotor;
+        Motor rearLeftDriveMotor;
+        Motor rearLeftSteerMotor;
+        Motor rearRightDriveMotor;
+        Motor rearRightSteerMotor;
+    }
+    parameters{
+        float wheelbase;
+        float trackWidth;
+        int moduleCount;
+        float maxSteerAngle;
+    }
+    functions{
     }
 }
