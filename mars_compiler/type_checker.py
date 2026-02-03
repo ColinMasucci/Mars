@@ -119,6 +119,8 @@ class TypeChecker:
         return tuple(sorted((k, v) for k, v in dims.items() if v != 0))
 
     def _combine_units(self, left_spec: UnitSpec, right_spec: UnitSpec, op: str):
+        if left_spec.affine or right_spec.affine:
+            raise TypeError("Affine temperature units cannot be multiplied or divided")
         dims = {k: v for k, v in left_spec.dims}
         scale = left_spec.scale
         sign = 1 if op == "MUL" else -1
@@ -127,28 +129,40 @@ class TypeChecker:
         scale *= right_spec.scale ** sign
         expr = f"{left_spec.expr}{'*' if op == 'MUL' else '/'}{right_spec.expr}"
         dims_tuple = self._dims_tuple(dims)
-        cname = canonical_name(dims_tuple, scale)
+        cname = canonical_name(dims_tuple, scale, 0.0, False)
         display = cname if cname is not None else expr
-        return UnitSpec(dims=dims_tuple, scale=scale, expr=display)
+        return UnitSpec(dims=dims_tuple, scale=scale, offset=0.0, expr=display, affine=False)
 
     def _pow_unit(self, base_spec: UnitSpec, exponent: int):
+        if base_spec.affine:
+            raise TypeError("Affine temperature units cannot be exponentiated")
         dims = {k: v * exponent for k, v in base_spec.dims}
         scale = base_spec.scale ** exponent
         expr = f"{base_spec.expr}^{exponent}"
         dims_tuple = self._dims_tuple(dims)
-        cname = canonical_name(dims_tuple, scale)
+        cname = canonical_name(dims_tuple, scale, 0.0, False)
         display = cname if cname is not None else expr
-        return UnitSpec(dims=dims_tuple, scale=scale, expr=display)
+        return UnitSpec(dims=dims_tuple, scale=scale, offset=0.0, expr=display, affine=False)
 
     def _convert_unit_node(self, expr_node, from_spec: UnitSpec, to_spec: UnitSpec):
         if from_spec.expr == to_spec.expr and from_spec.dims == to_spec.dims:
             return expr_node
         if from_spec.dims != to_spec.dims:
             raise TypeError(f"Unit mismatch: cannot convert '{from_spec.expr}' to '{to_spec.expr}'")
+        if from_spec.affine != to_spec.affine:
+            raise TypeError(f"Unit mismatch: cannot convert '{from_spec.expr}' to '{to_spec.expr}'")
         factor = from_spec.scale / to_spec.scale
-        if abs(factor - 1.0) <= 1e-12:
+        offset = (from_spec.offset - to_spec.offset) / to_spec.scale
+        if abs(factor - 1.0) <= 1e-12 and abs(offset) <= 1e-12:
             return expr_node
-        return BinaryOp("MUL", expr_node, NumberLiteral(float(factor)))
+        mul = expr_node if abs(factor - 1.0) <= 1e-12 else BinaryOp("MUL", expr_node, NumberLiteral(float(factor)))
+        if abs(offset) <= 1e-12:
+            return mul
+        return BinaryOp("PLUS", mul, NumberLiteral(float(offset)))
+
+    def _delta_unit(self, base_spec: UnitSpec):
+        expr = f"d{base_spec.expr}"
+        return UnitSpec(dims=base_spec.dims, scale=base_spec.scale, offset=0.0, expr=expr, affine=False)
 
     def _coerce_value_to_expected(self, expected_type, value_node, value_type, context):
         expected_info = self._numeric_type_info(expected_type)
@@ -162,7 +176,7 @@ class TypeChecker:
                 if expected_info["base"] != "float":
                     raise TypeError("Units are only allowed on float types")
                 if expected_unit and value_unit:
-                    if expected_unit.dims != value_unit.dims:
+                    if expected_unit.dims != value_unit.dims or expected_unit.affine != value_unit.affine:
                         raise TypeError(f"{context}: unit mismatch '{expected_unit.expr}' vs '{value_unit.expr}'")
                     value_node = self._convert_unit_node(value_node, value_unit, expected_unit)
                 # unitless -> unitful or unitful -> unitless is allowed
@@ -233,7 +247,8 @@ class TypeChecker:
             if not allow_numeric_coercion and a_info["base"] != b_info["base"]:
                 return False
             if a_info["unit_spec"] and b_info["unit_spec"]:
-                return a_info["unit_spec"].dims == b_info["unit_spec"].dims
+                return a_info["unit_spec"].dims == b_info["unit_spec"].dims and \
+                    a_info["unit_spec"].affine == b_info["unit_spec"].affine
             # unitless numeric is compatible with unitful numeric
             return True
         if allow_numeric_coercion and a == "float" and b == "int":
@@ -555,6 +570,12 @@ class TypeChecker:
                 # If initializer exists, ensure type compatibility
                 if value is not None:
                     value_type = self.check(value)
+                    decl_info = self._numeric_type_info(stored_type)
+                    value_info = self._numeric_type_info(value_type)
+                    if decl_info and value_info:
+                        if decl_info["base"] == "float" and decl_info["unit_spec"] is None and value_info["unit_spec"] is not None:
+                            stored_type = self._unit_type_string(value_info["unit_spec"])
+                            node.vartype = stored_type
                     value = self._coerce_value_to_expected(
                         stored_type,
                         value,
@@ -835,7 +856,7 @@ class TypeChecker:
                     # Comparisons
                     if op in ("EQ", "NEQ", "LT", "LEQ", "GT", "GEQ"):
                         if left_unit and right_unit:
-                            if left_unit.dims != right_unit.dims:
+                            if left_unit.dims != right_unit.dims or left_unit.affine != right_unit.affine:
                                 raise TypeError(f"Unit mismatch in comparison: '{left_unit.expr}' vs '{right_unit.expr}'")
                             node.right = self._convert_unit_node(right, right_unit, left_unit)
                         return self._set_type(node, "bool")
@@ -845,8 +866,16 @@ class TypeChecker:
                         if left_unit and right_unit:
                             if left_unit.dims != right_unit.dims:
                                 raise TypeError(f"Unit mismatch for {op}: '{left_unit.expr}' vs '{right_unit.expr}'")
-                            node.right = self._convert_unit_node(right, right_unit, left_unit)
-                            result_unit = left_unit
+                            if left_unit.affine or right_unit.affine:
+                                if left_unit.affine != right_unit.affine:
+                                    raise TypeError(f"Cannot mix absolute temperature with delta in {op.lower()}")
+                                if op == "PLUS":
+                                    raise TypeError("Cannot add absolute temperatures")
+                                node.right = self._convert_unit_node(right, right_unit, left_unit)
+                                result_unit = self._delta_unit(left_unit)
+                            else:
+                                node.right = self._convert_unit_node(right, right_unit, left_unit)
+                                result_unit = left_unit
                         else:
                             result_unit = left_unit or right_unit
                         if result_unit:
@@ -856,6 +885,8 @@ class TypeChecker:
 
                     # Multiplication / division
                     if op in ("MUL", "DIV"):
+                        if (left_unit and left_unit.affine) or (right_unit and right_unit.affine):
+                            raise TypeError("Cannot multiply or divide absolute temperatures")
                         if left_unit and right_unit:
                             result_unit = self._combine_units(left_unit, right_unit, op)
                         else:
@@ -870,6 +901,8 @@ class TypeChecker:
                         if right_unit:
                             raise TypeError("Exponent cannot have units")
                         if left_unit:
+                            if left_unit.affine:
+                                raise TypeError("Cannot exponentiate absolute temperatures")
                             if not isinstance(right, NumberLiteral) or not isinstance(right.value, int):
                                 raise TypeError("Unit exponent must be an integer literal")
                             result_unit = self._pow_unit(left_unit, int(right.value))

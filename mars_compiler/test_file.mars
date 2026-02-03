@@ -34,7 +34,7 @@ print(unit(speed)); # expected "m/s"
 # unit algebra (multiplication) with canonical derived unit
 float::kg mass = 2.0::kg;
 float::m/s^2 accel = 3.0::m/s^2;
-float::N force = mass * accel;
+float force = mass * accel;
 print(force);       # expected 6.0
 print(unit(force)); # expected "N"
 
@@ -47,3 +47,18 @@ print(unit(area));  # expected "m^2"
 # unit() on unitless
 float plain = 7.0;
 print(unit(plain)); # expected "unitless"
+
+# temperature conversions (affine units)
+float::C t_c = 0.0::C;
+float::K t_k = t_c;
+print(t_k); # expected 273.15
+
+float::F t_f = 32.0::F;
+float::C t_c2 = t_f;
+print(t_c2); # expected 0.0
+
+float::C t1 = 30.0::C;
+float::C t2 = 20.0::C;
+float t_delta = t1 - t2; # inferred float::dC
+print(t_delta); # expected 10.0
+print(unit(t_delta)); # expected "dC"
