@@ -37,6 +37,11 @@ class UnaryOp:  # (Ex. NEGATE, INC, DEC, BANG)
     op: str
     operand: Any
 
+@dataclass
+class UnitTag:
+    expr: Any
+    unit: str
+
 #used for referencing variables (grabbing their value)
 @dataclass
 class Var:

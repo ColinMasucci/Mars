@@ -1,4 +1,5 @@
-from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, Import, Return, FuncDecl, MemberAccess, ClassDecl
+from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, UnitTag, Import, Return, FuncDecl, MemberAccess, ClassDecl
+from units import parse_unit_expr, canonical_name, UnitSpec
 import os
 import importlib.util
 
@@ -84,6 +85,117 @@ class TypeChecker:
             return f"array<{elem_type}>"
         return typ
 
+    def _split_unit_type(self, typ: str):
+        if not isinstance(typ, str):
+            return typ, None
+        if typ.startswith(("array<", "dict<", "component:", "class:")):
+            return typ, None
+        if "::" in typ:
+            base, unit_expr = typ.split("::", 1)
+            return base, unit_expr
+        return typ, None
+
+    def _parse_unit_expr(self, expr: str) -> UnitSpec:
+        try:
+            return parse_unit_expr(expr)
+        except ValueError as exc:
+            raise TypeError(str(exc))
+
+    def _numeric_type_info(self, typ: str):
+        if not isinstance(typ, str):
+            return None
+        if typ.startswith(("array<", "dict<", "component:", "class:")):
+            return None
+        base, unit_expr = self._split_unit_type(typ)
+        if base not in ("int", "float"):
+            return None
+        unit_spec = self._parse_unit_expr(unit_expr) if unit_expr else None
+        return {"base": base, "unit_expr": unit_expr, "unit_spec": unit_spec}
+
+    def _unit_type_string(self, unit_spec: UnitSpec):
+        return f"float::{unit_spec.expr}"
+
+    def _dims_tuple(self, dims):
+        return tuple(sorted((k, v) for k, v in dims.items() if v != 0))
+
+    def _combine_units(self, left_spec: UnitSpec, right_spec: UnitSpec, op: str):
+        dims = {k: v for k, v in left_spec.dims}
+        scale = left_spec.scale
+        sign = 1 if op == "MUL" else -1
+        for dim, exp in right_spec.dims:
+            dims[dim] = dims.get(dim, 0) + exp * sign
+        scale *= right_spec.scale ** sign
+        expr = f"{left_spec.expr}{'*' if op == 'MUL' else '/'}{right_spec.expr}"
+        dims_tuple = self._dims_tuple(dims)
+        cname = canonical_name(dims_tuple, scale)
+        display = cname if cname is not None else expr
+        return UnitSpec(dims=dims_tuple, scale=scale, expr=display)
+
+    def _pow_unit(self, base_spec: UnitSpec, exponent: int):
+        dims = {k: v * exponent for k, v in base_spec.dims}
+        scale = base_spec.scale ** exponent
+        expr = f"{base_spec.expr}^{exponent}"
+        dims_tuple = self._dims_tuple(dims)
+        cname = canonical_name(dims_tuple, scale)
+        display = cname if cname is not None else expr
+        return UnitSpec(dims=dims_tuple, scale=scale, expr=display)
+
+    def _convert_unit_node(self, expr_node, from_spec: UnitSpec, to_spec: UnitSpec):
+        if from_spec.expr == to_spec.expr and from_spec.dims == to_spec.dims:
+            return expr_node
+        if from_spec.dims != to_spec.dims:
+            raise TypeError(f"Unit mismatch: cannot convert '{from_spec.expr}' to '{to_spec.expr}'")
+        factor = from_spec.scale / to_spec.scale
+        if abs(factor - 1.0) <= 1e-12:
+            return expr_node
+        return BinaryOp("MUL", expr_node, NumberLiteral(float(factor)))
+
+    def _coerce_value_to_expected(self, expected_type, value_node, value_type, context):
+        expected_info = self._numeric_type_info(expected_type)
+        value_info = self._numeric_type_info(value_type)
+
+        if expected_info and value_info:
+            expected_unit = expected_info["unit_spec"]
+            value_unit = value_info["unit_spec"]
+
+            if expected_unit or value_unit:
+                if expected_info["base"] != "float":
+                    raise TypeError("Units are only allowed on float types")
+                if expected_unit and value_unit:
+                    if expected_unit.dims != value_unit.dims:
+                        raise TypeError(f"{context}: unit mismatch '{expected_unit.expr}' vs '{value_unit.expr}'")
+                    value_node = self._convert_unit_node(value_node, value_unit, expected_unit)
+                # unitless -> unitful or unitful -> unitless is allowed
+                return value_node
+
+            # numeric without units: allow coercion int<->float
+            if expected_info["base"] == value_info["base"]:
+                return value_node
+            # allow numeric coercion by default
+            return value_node
+
+        if expected_info or value_info:
+            raise TypeError(f"{context}: incompatible types {expected_type} and {value_type}")
+
+        if not self._types_compatible(expected_type, value_type):
+            raise TypeError(f"{context}: expected {expected_type}, got {value_type}")
+        return value_node
+
+    def _coerce_call_args(self, param_types, args, arg_types, context):
+        if param_types is None:
+            return
+        if len(param_types) != len(arg_types):
+            raise TypeError(f"{context}: expected {len(param_types)} args, got {len(arg_types)}")
+        for i, (expected, arg, arg_type) in enumerate(zip(param_types, args, arg_types)):
+            new_arg = self._coerce_value_to_expected(
+                expected,
+                arg,
+                arg_type,
+                f"{context} (arg {i + 1})"
+            )
+            args[i] = new_arg
+            arg_types[i] = expected
+
     def _split_kind(self, typ: str):
         """Return (kind,name) where kind in {component,class,other}."""
         if typ.startswith("component:"):
@@ -111,6 +223,18 @@ class TypeChecker:
     def _types_compatible(self, a, b, allow_numeric_coercion=True):
         """Compare structured types like dict<K,V> and array<T>."""
         if a == b:
+            return True
+        a_info = self._numeric_type_info(a)
+        b_info = self._numeric_type_info(b)
+        if a_info or b_info:
+            if not a_info or not b_info:
+                # unitful or numeric vs non-numeric
+                return False
+            if not allow_numeric_coercion and a_info["base"] != b_info["base"]:
+                return False
+            if a_info["unit_spec"] and b_info["unit_spec"]:
+                return a_info["unit_spec"].dims == b_info["unit_spec"].dims
+            # unitless numeric is compatible with unitful numeric
             return True
         if allow_numeric_coercion and a == "float" and b == "int":
             return True
@@ -206,6 +330,12 @@ class TypeChecker:
     # Validate declared types, making sure dict<K,V> and array<T> are well-formed Ex. dict<int,string> is valid, but dict<int> or dict<int,string,float> is not.
     def _validate_declared_type(self, t):
         """Ensure declared types like dict<int,string> or array<string> are legal."""
+        base, unit_expr = self._split_unit_type(t)
+        if unit_expr is not None:
+            if base != "float":
+                raise TypeError("Units are only allowed on float types")
+            self._parse_unit_expr(unit_expr)
+            return True
         # primitive
         if t in ("int", "float", "bool", "string", "void", "any"):
             return True
@@ -341,7 +471,7 @@ class TypeChecker:
             raise TypeError(f"Component '{comp_type}' has no subcomponent '{name}'")
         return self._resolve_component_member(sub_map[name], member_parts[1:])
 
-    def _check_component_call(self, dotted_name, arg_types):
+    def _check_component_call(self, dotted_name, args, arg_types):
         parts = dotted_name.split(".")
         base = parts[0]
         sym = self._lookup_symbol(base)
@@ -351,9 +481,9 @@ class TypeChecker:
         if not isinstance(sym_type, str) or not sym_type.startswith("component:"):
             raise TypeError(f"'{base}' is not a component and has no callable members")
         comp_type = sym_type.split(":", 1)[1]
-        return self._resolve_component_function(comp_type, parts[1:], arg_types)
+        return self._resolve_component_function(comp_type, parts[1:], args, arg_types)
 
-    def _resolve_component_function(self, comp_type, member_parts, arg_types):
+    def _resolve_component_function(self, comp_type, member_parts, args, arg_types):
         iface = self.component_interfaces.get(comp_type)
         if not iface:
             raise TypeError(f"Unknown component type '{comp_type}'")
@@ -364,18 +494,19 @@ class TypeChecker:
             if not finfo:
                 raise TypeError(f"Component '{comp_type}' has no function '{name}'")
             param_types = finfo.get("params", [])
-            if len(param_types) != len(arg_types):
-                raise TypeError(f"You have provided the wrong number of arguments. Provided: {len(arg_types)}, expected: {len(param_types)}")
-            for expected, got in zip(param_types, arg_types):
-                if not self._types_compatible(expected, got):
-                    raise TypeError(f"Argument type mismatch in call to '{name}': expected {expected}, got {got}")
+            self._coerce_call_args(
+                param_types,
+                args,
+                arg_types,
+                f"Argument type mismatch in call to '{name}'"
+            )
             return finfo.get("return") or "void"
 
         # Nested: traverse subcomponents
         sub_map = iface.get("subcomponents", {})
         if name not in sub_map:
             raise TypeError(f"Component '{comp_type}' has no subcomponent '{name}'")
-        return self._resolve_component_function(sub_map[name], member_parts[1:], arg_types)
+        return self._resolve_component_function(sub_map[name], member_parts[1:], args, arg_types)
 
 
     def check(self, node):
@@ -424,11 +555,13 @@ class TypeChecker:
                 # If initializer exists, ensure type compatibility
                 if value is not None:
                     value_type = self.check(value)
-                    if not self._types_compatible(stored_type, value_type):
-                        raise TypeError(
-                            f"Type mismatch in declaration of '{name}': "
-                            f"expected {vartype}, got {value_type}"
-                        )
+                    value = self._coerce_value_to_expected(
+                        stored_type,
+                        value,
+                        value_type,
+                        f"Type mismatch in declaration of '{name}'"
+                    )
+                    node.value = value
                 # Add to symbol table
                 self._declare_symbol(name, stored_type, mutable=not getattr(node, "readonly", False))
                 return self._set_type(node, stored_type)
@@ -446,8 +579,13 @@ class TypeChecker:
                         raise TypeError(f"Cannot assign to immutable symbol '{name}'")
                     value_type = self.check(value)
                     expected = sym["type"]
-                    if not self._types_compatible(expected, value_type):
-                        raise TypeError(f"Type mismatch in assignment to '{name}': expected {expected}, got {value_type}")
+                    value = self._coerce_value_to_expected(
+                        expected,
+                        value,
+                        value_type,
+                        f"Type mismatch in assignment to '{name}'"
+                    )
+                    node.value = value
                     return self._set_type(node, expected)
 
                 # ---------------- ARRAY / DICT ELEMENT ASSIGN ----------------
@@ -480,8 +618,13 @@ class TypeChecker:
                         if idx_type != "int":
                             raise TypeError(f"Array index must be int, got {idx_type}")
                         value_type = self.check(value)
-                        if not self._types_compatible(elem_type, value_type):
-                            raise TypeError(f"Type mismatch assigning to array element: expected {elem_type}, got {value_type}")
+                        value = self._coerce_value_to_expected(
+                            elem_type,
+                            value,
+                            value_type,
+                            "Type mismatch assigning to array element"
+                        )
+                        node.value = value
                         name_node.inferred_type = elem_type
                         return self._set_type(node, elem_type)
 
@@ -492,8 +635,13 @@ class TypeChecker:
                         if idx_type != key_type:
                             raise TypeError(f"Dictionary key must be {key_type}, got {idx_type}")
                         value_type = self.check(value)
-                        if not self._types_compatible(val_type, value_type):
-                            raise TypeError(f"Type mismatch assigning to dictionary element: expected {val_type}, got {value_type}")
+                        value = self._coerce_value_to_expected(
+                            val_type,
+                            value,
+                            value_type,
+                            "Type mismatch assigning to dictionary element"
+                        )
+                        node.value = value
                         name_node.inferred_type = val_type
                         return self._set_type(node, val_type)
 
@@ -511,8 +659,13 @@ class TypeChecker:
                         raise TypeError(f"Cannot assign to const field '{name_node.attr}'")
                     ftype = self._resolve_member_access(obj_type, name_node.attr)
                     val_type = self.check(value)
-                    if not self._types_compatible(ftype, val_type):
-                        raise TypeError(f"Type mismatch assigning to field '{name_node.attr}': expected {ftype}, got {val_type}")
+                    value = self._coerce_value_to_expected(
+                        ftype,
+                        value,
+                        val_type,
+                        f"Type mismatch assigning to field '{name_node.attr}'"
+                    )
+                    node.value = value
                     return self._set_type(node, ftype)
 
                 raise TypeError("LHS of assignment must be a variable or an array access")
@@ -586,7 +739,39 @@ class TypeChecker:
                     raise TypeError("LHS of assignment must be a variable or an array access")
 
                 right_type = self.check(value)
-                result_type = self._binary_result_type(op, left_type, right_type)
+                left_info = self._numeric_type_info(left_type)
+                right_info = self._numeric_type_info(right_type)
+                if left_info or right_info:
+                    if not left_info or not right_info:
+                        raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
+                    left_unit = left_info["unit_spec"]
+                    right_unit = right_info["unit_spec"]
+                    left_base = left_info["base"]
+                    right_base = right_info["base"]
+
+                    if op in ("PLUS", "MINUS"):
+                        if left_unit and right_unit:
+                            if left_unit.dims != right_unit.dims:
+                                raise TypeError(f"Unit mismatch for {op}: '{left_unit.expr}' vs '{right_unit.expr}'")
+                            value = self._convert_unit_node(value, right_unit, left_unit)
+                            node.value = value
+                            result_unit = left_unit
+                        else:
+                            result_unit = left_unit or right_unit
+                    elif op in ("MUL", "DIV"):
+                        if left_unit and right_unit:
+                            result_unit = self._combine_units(left_unit, right_unit, op)
+                        else:
+                            result_unit = left_unit or right_unit
+                    else:
+                        result_unit = None
+
+                    if result_unit:
+                        result_type = self._unit_type_string(result_unit)
+                    else:
+                        result_type = "float" if "float" in (left_base, right_base) else "int"
+                else:
+                    result_type = self._binary_result_type(op, left_type, right_type)
                 if not self._types_compatible(left_type, result_type):
                     raise TypeError(f"Type mismatch in compound assignment: expected {left_type}, got {result_type}")
                 return self._set_type(node, left_type)
@@ -606,6 +791,18 @@ class TypeChecker:
 
 
 
+            case UnitTag(expr, unit):
+                expr_type = self.check(expr)
+                expr_info = self._numeric_type_info(expr_type)
+                if not expr_info:
+                    raise TypeError("Unit tags can only be applied to numeric expressions")
+                target_unit = self._parse_unit_expr(unit)
+                if expr_info["unit_spec"]:
+                    if expr_info["unit_spec"].dims != target_unit.dims:
+                        raise TypeError(f"Unit mismatch: '{expr_info['unit_spec'].expr}' vs '{target_unit.expr}'")
+                    node.expr = self._convert_unit_node(expr, expr_info["unit_spec"], target_unit)
+                return self._set_type(node, self._unit_type_string(target_unit))
+
             case NumberLiteral(value):
                 return self._set_type(node, "float" if isinstance(value, float) else "int")
 
@@ -618,12 +815,73 @@ class TypeChecker:
             case BinaryOp(op, left, right):
                 left_type = self.check(left)
                 right_type = self.check(right)
+
+                # string concat falls back to base behavior
+                if op == "PLUS" and (left_type == "string" or right_type == "string"):
+                    return self._set_type(node, self._binary_result_type(op, left_type, right_type))
+
+                left_info = self._numeric_type_info(left_type)
+                right_info = self._numeric_type_info(right_type)
+
+                if left_info or right_info:
+                    if not left_info or not right_info:
+                        raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
+
+                    left_unit = left_info["unit_spec"]
+                    right_unit = right_info["unit_spec"]
+                    left_base = left_info["base"]
+                    right_base = right_info["base"]
+
+                    # Comparisons
+                    if op in ("EQ", "NEQ", "LT", "LEQ", "GT", "GEQ"):
+                        if left_unit and right_unit:
+                            if left_unit.dims != right_unit.dims:
+                                raise TypeError(f"Unit mismatch in comparison: '{left_unit.expr}' vs '{right_unit.expr}'")
+                            node.right = self._convert_unit_node(right, right_unit, left_unit)
+                        return self._set_type(node, "bool")
+
+                    # Addition / subtraction
+                    if op in ("PLUS", "MINUS"):
+                        if left_unit and right_unit:
+                            if left_unit.dims != right_unit.dims:
+                                raise TypeError(f"Unit mismatch for {op}: '{left_unit.expr}' vs '{right_unit.expr}'")
+                            node.right = self._convert_unit_node(right, right_unit, left_unit)
+                            result_unit = left_unit
+                        else:
+                            result_unit = left_unit or right_unit
+                        if result_unit:
+                            return self._set_type(node, self._unit_type_string(result_unit))
+                        base_result = "float" if "float" in (left_base, right_base) else "int"
+                        return self._set_type(node, base_result)
+
+                    # Multiplication / division
+                    if op in ("MUL", "DIV"):
+                        if left_unit and right_unit:
+                            result_unit = self._combine_units(left_unit, right_unit, op)
+                        else:
+                            result_unit = left_unit or right_unit
+                        if result_unit:
+                            return self._set_type(node, self._unit_type_string(result_unit))
+                        base_result = "float" if "float" in (left_base, right_base) else "int"
+                        return self._set_type(node, base_result)
+
+                    # Exponentiation
+                    if op == "POW":
+                        if right_unit:
+                            raise TypeError("Exponent cannot have units")
+                        if left_unit:
+                            if not isinstance(right, NumberLiteral) or not isinstance(right.value, int):
+                                raise TypeError("Unit exponent must be an integer literal")
+                            result_unit = self._pow_unit(left_unit, int(right.value))
+                            return self._set_type(node, self._unit_type_string(result_unit))
+                        return self._set_type(node, self._binary_result_type(op, left_type, right_type))
+
                 return self._set_type(node, self._binary_result_type(op, left_type, right_type))
 
             case UnaryOp(op, operand):
                 operand_type = self.check(operand)
                 if op == "NEGATE":  # prefix numeric negation
-                    if operand_type not in ("int", "float"):
+                    if not self._numeric_type_info(operand_type):
                         raise TypeError(f"Unary '-' requires numeric type, got {operand_type}")
                     return self._set_type(node, operand_type)
                 if op == "BANG":   # logical NOT
@@ -727,17 +985,28 @@ class TypeChecker:
                             raise TypeError(f"Function 'type' expects 1 argument, got {len(args)}")
                         node.type_str = self._display_type(arg_types[0])
                         return self._set_type(node, "string")
+                    if func.name == "unit":
+                        if len(args) != 1:
+                            raise TypeError(f"Function 'unit' expects 1 argument, got {len(args)}")
+                        unit_info = self._numeric_type_info(arg_types[0])
+                        if unit_info and unit_info["unit_expr"]:
+                            spec = self._parse_unit_expr(unit_info["unit_expr"])
+                            node.unit_str = spec.expr
+                        else:
+                            node.unit_str = "unitless"
+                        return self._set_type(node, "string")
                     # constructor call
                     if func.name in self.class_interfaces:
                         iface = self.class_interfaces[func.name]
                         ctor = iface.get("ctor")
                         if ctor:
                             params = ctor.get("params", [])
-                            if len(params) != len(arg_types):
-                                raise TypeError(f"Wrong arg count for constructor {func.name}: expected {len(params)}, got {len(arg_types)}")
-                            for expected, got in zip(params, arg_types):
-                                if not self._types_compatible(expected, got):
-                                    raise TypeError(f"Constructor arg mismatch for {func.name}: expected {expected}, got {got}")
+                            self._coerce_call_args(
+                                params,
+                                args,
+                                arg_types,
+                                f"Constructor arg mismatch for {func.name}"
+                            )
                         else:
                             if len(arg_types) != 0:
                                 raise TypeError(f"Constructor for {func.name} takes no arguments")
@@ -751,13 +1020,14 @@ class TypeChecker:
                             ret_type = sym["info"].get("return")
                             param_types = sym["info"].get("params")
                             if param_types is not None:
-                                if len(param_types) != len(arg_types): 
-                                    raise TypeError(f"You have provided the wrong number of arguments. Provided: {len(arg_types)}, expected: {len(param_types)}")
-                                for expected, arg_type in zip(param_types, arg_types):
-                                    if not self._types_compatible(expected, arg_type):
-                                        raise TypeError(f"Argument type mismatch in call to '{func.name}': expected {expected}, got {arg_type}")
+                                self._coerce_call_args(
+                                    param_types,
+                                    args,
+                                    arg_types,
+                                    f"Argument type mismatch in call to '{func.name}'"
+                                )
                             return self._set_type(node, ret_type or "void")
-                        return self._set_type(node, self._check_component_call(func.name, arg_types))
+                        return self._set_type(node, self._check_component_call(func.name, args, arg_types))
 
                     sym = self._lookup_symbol(func.name)
                     if not sym: 
@@ -767,14 +1037,15 @@ class TypeChecker:
                     ret_type = sym["info"].get("return")
                     param_types = sym["info"].get("params")
                     if param_types is not None:
-                        if len(param_types) != len(arg_types): 
-                            raise TypeError(f"You have provided the wrong number of arguments. Provided: {len(arg_types)}, expected: {len(param_types)}")
-                        for expected, arg_type in zip(param_types, arg_types):
-                            if not self._types_compatible(expected, arg_type):
-                                raise TypeError(f"Argument type mismatch in call to '{func.name}': expected {expected}, got {arg_type}")
+                        self._coerce_call_args(
+                            param_types,
+                            args,
+                            arg_types,
+                            f"Argument type mismatch in call to '{func.name}'"
+                        )
                     return self._set_type(node, ret_type or "void")
                 if isinstance(func, MemberAccess):
-                    return self._set_type(node, self._check_method_call(func, arg_types))
+                    return self._set_type(node, self._check_method_call(func, args, arg_types))
                 raise TypeError("Unsupported function call target")
 
 
@@ -807,8 +1078,13 @@ class TypeChecker:
                     raise TypeError("Cannot return a value from a void function")
                 else:
                     value_type = self.check(value)
-                    if not self._types_compatible(expected, value_type):
-                        raise TypeError("Return type mismatch")
+                    value = self._coerce_value_to_expected(
+                        expected,
+                        value,
+                        value_type,
+                        "Return type mismatch"
+                    )
+                    node.value = value
                 return value_type or None
 
 
@@ -847,7 +1123,7 @@ class TypeChecker:
                 raise TypeError(f"Unknown AST node type: {type(node).__name__}")
 
     # --- Class helpers ---
-    def _check_method_call(self, member_access, arg_types):
+    def _check_method_call(self, member_access, args, arg_types):
         # resolve object type
         obj_type = self.check(member_access.obj)
         if isinstance(obj_type, str) and obj_type in self.class_interfaces:
@@ -862,7 +1138,7 @@ class TypeChecker:
                     raise TypeError("match expects a component type argument")
                 target_type = target.split(":", 1)[1]
                 return f"component:{target_type}"
-            return self._resolve_component_function(comp_type, [member_access.attr], arg_types)
+            return self._resolve_component_function(comp_type, [member_access.attr], args, arg_types)
         if not isinstance(obj_type, str) or not obj_type.startswith("class:"):
             raise TypeError(f"'{member_access.obj}' is not a class instance")
         class_name = obj_type.split(":",1)[1]
@@ -873,11 +1149,12 @@ class TypeChecker:
         if not meth:
             raise TypeError(f"Class '{class_name}' has no method '{member_access.attr}'")
         params = meth.get("params", [])
-        if len(params) != len(arg_types):
-            raise TypeError(f"Wrong arg count for {class_name}.{member_access.attr}: expected {len(params)}, got {len(arg_types)}")
-        for expected, got in zip(params, arg_types):
-            if not self._types_compatible(expected, got):
-                raise TypeError(f"Argument type mismatch for {class_name}.{member_access.attr}: expected {expected}, got {got}")
+        self._coerce_call_args(
+            params,
+            args,
+            arg_types,
+            f"Argument type mismatch for {class_name}.{member_access.attr}"
+        )
         return meth.get("return") or "void"
 
     def _resolve_member_access(self, obj_type, attr):

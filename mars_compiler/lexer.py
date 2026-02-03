@@ -80,6 +80,7 @@ TOKEN_SPEC = [
     ("LPAREN",  r"\("),                # identifying parentheses for priority later on.
     ("RPAREN",  r"\)"),
     ("SEMI", r";"),                    # semicolon as statement separator
+    ("DBLCOLON", r"::"),               # double colon for unit tags
     ("COLON", r":"),                  # colon for dict key-value pairs
     ("COMMA", r","),                   # comma as parameter separator
     ("DOT", r"\."),                    # for module.function syntax
@@ -87,10 +88,10 @@ TOKEN_SPEC = [
     ("RBRACKET", r"\]"),
 
     # --- conditionals ---
-    ("IF", r"if"),                     # check for if statements
-    ("ELSE", r"else"),                 # check for else statements
-    ("WHILE", r"while"),               # check for while loops
-    ("FOR", r"for"),                 # check for for loops
+    ("IF", r"\bif\b"),                 # check for if statements
+    ("ELSE", r"\belse\b"),             # check for else statements
+    ("WHILE", r"\bwhile\b"),           # check for while loops
+    ("FOR", r"\bfor\b"),               # check for for loops
 
     # --- Identifiers & Keywords ---
     ("ID",      r"[A-Za-z_][A-Za-z0-9_]*"), # identifiers (including 'print')
@@ -98,7 +99,7 @@ TOKEN_SPEC = [
     # --- Blanks and Newlines ---
     ("SKIP",    r"[ \t\n]+"),          # whitespaces should be skipped
 
-]
+] 
 
 #combines all of the regexs into one big regular expression seperated by (|) "or"
 MASTER_REGEX = re.compile("|".join(f"(?P<{name}>{pattern})" for name, pattern in TOKEN_SPEC))

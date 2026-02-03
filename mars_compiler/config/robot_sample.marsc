@@ -1,3 +1,4 @@
+/*
 component myRobot extends Robot {
     subcomponents{
         DifferentialChassisSample myChassis;
@@ -20,6 +21,7 @@ component myOtherRobot extends Robot {
     functions{
     }
 }
+*/
 
 
 

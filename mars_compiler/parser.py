@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 
-from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction, RequirementExpr
+from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, UnitTag, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction, RequirementExpr
 from source_errors import format_source_error
 
 ROLE_PREFIX = "prefix"
@@ -40,6 +40,7 @@ class Parser:
         "LBRACKET": "[",
         "RBRACKET": "]",
         "SEMI": ";",
+        "DBLCOLON": "::",
         "COMMA": ",",
         "COLON": ":",
         "DOT": ".",
@@ -366,6 +367,14 @@ class Parser:
                 self.eat("GT")
                 base = f"dict<{key},{val}>"
 
+            # optional unit suffix for numeric types (float::cm)
+            if base in ("int", "float") and self.current().type == "DBLCOLON":
+                self.eat("DBLCOLON")
+                unit_expr = self.parse_unit_expr()
+                base = f"{base}::{unit_expr}"
+            elif self.current().type == "DBLCOLON":
+                self._raise("Units are only allowed on numeric types.", self.current())
+
             # array suffix: int[][], dict<int,string>[][]
             while self.current().type == "LBRACKET":
                 self.eat("LBRACKET")
@@ -376,7 +385,10 @@ class Parser:
 
         # User-defined types (This is for later when we add classes/structs) (The typechecker should handle checking if these types exist)
         elif tok.type == "ID":
-            return self.eat("ID").value
+            base = self.eat("ID").value
+            if self.current().type == "DBLCOLON":
+                self._raise("Units are only allowed on numeric types.", self.current())
+            return base
 
         else:
             self._raise(f"Expected a type name, got {self._token_desc(tok.type)}.", tok)
@@ -686,6 +698,8 @@ class Parser:
         while True:
             # array indexing
             if self.current().type == "LBRACKET":
+                if isinstance(node, UnitTag):
+                    self._raise("Unit-tagged expressions cannot be indexed.", self.current())
                 self.eat("LBRACKET")
                 index = self.parse_expression({"RBRACKET"})
                 if self.current().type != "RBRACKET":
@@ -696,11 +710,41 @@ class Parser:
 
             # postfix ++ / --
             if self.current().type in ("INC", "DEC"):
+                if isinstance(node, UnitTag):
+                    self._raise("Unit-tagged expressions cannot be incremented or decremented.", self.current())
                 op = self.eat(self.current().type).type
                 node = UnaryOp(op, node)
                 continue
+            
+            # unit tag postfix
+            if self.current().type == "DBLCOLON":
+                self.eat("DBLCOLON")
+                unit_expr = self.parse_unit_expr()
+                node = UnitTag(node, unit_expr)
+                continue
             break
         return node
+
+    def parse_unit_expr(self):
+        """Parse a unit expression used after ::, like m/s^2 or kg*m."""
+        tokens = []
+
+        def parse_unit_atom():
+            if self.current().type != "ID":
+                self._raise("Expected unit identifier after '::'.", self.current())
+            tokens.append(self.eat("ID").value)
+            if self.current().type == "POW":
+                tokens.append(self.eat("POW").value)
+                if self.current().type != "INT":
+                    self._raise("Unit exponent must be an integer.", self.current())
+                tokens.append(self.eat("INT").value)
+
+        parse_unit_atom()
+        while self.current().type in ("MUL", "DIV"):
+            tokens.append(self.eat(self.current().type).value)
+            parse_unit_atom()
+
+        return "".join(tokens)
 
     # Primary expressions: literals, grouped expressions, variables, function calls
     def parse_primary(self):
@@ -900,6 +944,9 @@ class Parser:
                     print(f"{prefix}  Value:")
                     self.print_ast(v, indent + 2)
                 print(f"{prefix}}}")
+            case UnitTag(expr, unit):
+                print(f"{prefix}UnitTag({unit})")
+                self.print_ast(expr, indent + 1)
 
             case _:
                 print(f"{prefix}Unknown node type: {node}")

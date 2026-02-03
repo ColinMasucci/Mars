@@ -6,7 +6,7 @@ from type_checker import TypeChecker
 from component_registry import ComponentRegistry
 from component_validator import ComponentValidator, ComponentValidationError
 from component_visualizer import visualize_components
-from ast_nodes import ArrayAccess, ArrayLiteral, Assign, AugAssign, BinaryOp, Block, BooleanLiteral, Call, ComponentDef, DictLiteral, FuncDecl, If, MemberAccess, NumberLiteral, Program, RequirementExpr, RequirementFunction, RequirementParam, RequirementSpec, Return, StringLiteral, UnaryOp, Var, VarDecl, While
+from ast_nodes import ArrayAccess, ArrayLiteral, Assign, AugAssign, BinaryOp, Block, BooleanLiteral, Call, ComponentDef, DictLiteral, FuncDecl, If, MemberAccess, NumberLiteral, Program, RequirementExpr, RequirementFunction, RequirementParam, RequirementSpec, Return, StringLiteral, UnaryOp, UnitTag, Var, VarDecl, While
 
 
 def precompile_config(config_dir: str, debug: bool = False):
@@ -67,6 +67,8 @@ def build_component_tree(registry, interfaces):
             return None
         if isinstance(node, NumberLiteral):
             return node.value
+        if isinstance(node, UnitTag):
+            return _eval_literal(node.expr)
         if isinstance(node, StringLiteral):
             return node.value
         if isinstance(node, BooleanLiteral):
@@ -169,6 +171,8 @@ def validate_requirements(component_tree, component_parents, base_dir):
             return expr.name
         if isinstance(expr, NumberLiteral):
             return str(expr.value)
+        if isinstance(expr, UnitTag):
+            return f"{_expr_to_str(expr.expr)}::{expr.unit}"
         if isinstance(expr, StringLiteral):
             return repr(expr.value)
         if isinstance(expr, BooleanLiteral):
@@ -256,6 +260,8 @@ def validate_requirements(component_tree, component_parents, base_dir):
     def _collect_vars(expr, out):
         if isinstance(expr, Var):
             out.add(expr.name)
+        elif isinstance(expr, UnitTag):
+            _collect_vars(expr.expr, out)
         elif isinstance(expr, UnaryOp):
             _collect_vars(expr.operand, out)
         elif isinstance(expr, BinaryOp):
@@ -267,6 +273,8 @@ def validate_requirements(component_tree, component_parents, base_dir):
             return param_values.get(expr.name)
         if isinstance(expr, NumberLiteral):
             return expr.value
+        if isinstance(expr, UnitTag):
+            return _eval_condition(expr.expr, param_values)
         if isinstance(expr, StringLiteral):
             return expr.value
         if isinstance(expr, BooleanLiteral):
@@ -565,6 +573,8 @@ def validate_instantiated_requirements(program, component_tree, component_parent
             return expr.name
         if isinstance(expr, NumberLiteral):
             return str(expr.value)
+        if isinstance(expr, UnitTag):
+            return f"{_expr_to_str(expr.expr)}::{expr.unit}"
         if isinstance(expr, StringLiteral):
             return repr(expr.value)
         if isinstance(expr, BooleanLiteral):
@@ -604,6 +614,8 @@ def validate_instantiated_requirements(program, component_tree, component_parent
     def _collect_vars(expr, out):
         if isinstance(expr, Var):
             out.add(expr.name)
+        elif isinstance(expr, UnitTag):
+            _collect_vars(expr.expr, out)
         elif isinstance(expr, UnaryOp):
             _collect_vars(expr.operand, out)
         elif isinstance(expr, BinaryOp):
@@ -615,6 +627,8 @@ def validate_instantiated_requirements(program, component_tree, component_parent
             return param_values.get(expr.name)
         if isinstance(expr, NumberLiteral):
             return expr.value
+        if isinstance(expr, UnitTag):
+            return _eval_condition(expr.expr, param_values)
         if isinstance(expr, StringLiteral):
             return expr.value
         if isinstance(expr, BooleanLiteral):
@@ -986,6 +1000,9 @@ def validate_instantiated_requirements(program, component_tree, component_parent
             return
         if isinstance(expr, UnaryOp):
             _walk_expr(expr.operand)
+            return
+        if isinstance(expr, UnitTag):
+            _walk_expr(expr.expr)
             return
         if isinstance(expr, ArrayAccess):
             _walk_expr(expr.array)

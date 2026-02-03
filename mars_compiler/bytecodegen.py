@@ -11,6 +11,15 @@ CLASS_NAMES = set()
 COMPONENT_BASES = set()
 COMPONENT_INSTANCE_PATHS = set()
 
+def _strip_unit_type(typ):
+    if not isinstance(typ, str):
+        return typ
+    if typ.startswith(("array<", "dict<", "component:", "class:")):
+        return typ
+    if "::" in typ:
+        return typ.split("::", 1)[0]
+    return typ
+
 def _flatten_member_access(node):
     """Return list of identifiers for MemberAccess chain, or None if not pure identifiers."""
     parts = []
@@ -86,6 +95,7 @@ def compile_statement(node, code: List[Instr]):
         ast.NumberLiteral,
         ast.StringLiteral,
         ast.BooleanLiteral,
+        ast.UnitTag,
         ast.ArrayLiteral,
         ast.DictLiteral,
         ast.ArrayAccess,
@@ -114,6 +124,9 @@ def compile_node(node, code: List[Instr]):
         
         case ast.BooleanLiteral(value):
             code.append(("PUSH_BOOL", value))
+
+        case ast.UnitTag(expr, unit):
+            compile_node(expr, code)
 
         case ast.ArrayLiteral(elements):
             # compile elements in-order (left-to-right)
@@ -147,7 +160,8 @@ def compile_node(node, code: List[Instr]):
                     
                 # Primitive defaults
                 else:
-                    match vartype:
+                    base_type = _strip_unit_type(vartype)
+                    match base_type:
                         case "int" | "float":
                             code.append(("PUSH_INT", 0))
                         case "bool":
@@ -258,9 +272,10 @@ def compile_node(node, code: List[Instr]):
                 # compile value to assign
                 compile_node(value, code)
                 target_type = getattr(name_node, "inferred_type", None)
-                if target_type == "int":
+                base_type = _strip_unit_type(target_type)
+                if base_type == "int":
                     code.append(("CAST_INT",))
-                elif target_type == "float":
+                elif base_type == "float":
                     code.append(("CAST_FLOAT",))
                 # VM: pops value, index, container — sets and pushes nothing
                 code.append(("INDEX_SET",))
@@ -306,9 +321,10 @@ def compile_node(node, code: List[Instr]):
                 compile_node(value, code)
                 code.append((op_instr,))
                 target_type = getattr(name_node, "inferred_type", None)
-                if target_type == "int":
+                base_type = _strip_unit_type(target_type)
+                if base_type == "int":
                     code.append(("CAST_INT",))
-                elif target_type == "float":
+                elif base_type == "float":
                     code.append(("CAST_FLOAT",))
                 code.append(("INDEX_SET",))
                 return
@@ -367,9 +383,10 @@ def compile_node(node, code: List[Instr]):
                 compile_node(value, code)
                 if RETURN_TYPE_STACK:
                     ret_type = RETURN_TYPE_STACK[-1]
-                    if ret_type == "int":
+                    base_ret = _strip_unit_type(ret_type)
+                    if base_ret == "int":
                         code.append(("CAST_INT",))
-                    elif ret_type == "float":
+                    elif base_ret == "float":
                         code.append(("CAST_FLOAT",))
             else:
                 code.append(("PUSH_NONE",))  # placeholder for void return
@@ -449,6 +466,14 @@ def compile_node(node, code: List[Instr]):
                     code.append(("POP",))
                     type_str = getattr(node, "type_str", "any")
                     code.append(("PUSH_STR", type_str))
+                    return
+                if func.name == "unit":
+                    if len(args) != 1:
+                        raise TypeError(f"Function 'unit' expects 1 argument, got {len(args)}")
+                    compile_node(args[0], code)
+                    code.append(("POP",))
+                    unit_str = getattr(node, "unit_str", "unitless")
+                    code.append(("PUSH_STR", unit_str))
                     return
                 if func.name in CLASS_NAMES:
                     code.append(("PUSH_STR", func.name))

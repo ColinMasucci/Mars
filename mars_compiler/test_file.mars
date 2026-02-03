@@ -1,3 +1,49 @@
-import DifferentialFK;
+print("== unit tests ==");
 
-DifferentialFK fk1 = DifferentialFK(myRobot);
+# assignment conversion (in -> cm)
+float::cm len_cm = 10.0::in;
+print(len_cm); # expected 25.4
+
+# assignment conversion (cm -> m)
+float::m len_m = 200.0::cm;
+print(len_m); # expected 2.0
+
+# tag on expression (whitespace allowed around ::)
+float::cm expr_cm = (5.0 + 3.0) :: cm;
+print(expr_cm); # expected 8.0
+
+# unitless -> unitful is accepted (no conversion)
+float::cm assumed_cm = 5.0;
+print(assumed_cm); # expected 5.0
+
+# parameter conversion
+float::cm add_cm(float::cm a, float::cm b) {
+    return a + b;
+}
+int integer = 1;
+float::cm sum_cm = add_cm(integer, 5.0::cm);
+print(sum_cm); # expected 10.08
+
+# unit algebra (division) and unit()
+float::m distance = 10.0::m;
+float::s time = 2.0::s;
+float::m/s speed = distance / time;
+print(speed);      # expected 5.0
+print(unit(speed)); # expected "m/s"
+
+# unit algebra (multiplication) with canonical derived unit
+float::kg mass = 2.0::kg;
+float::m/s^2 accel = 3.0::m/s^2;
+float::N force = mass * accel;
+print(force);       # expected 6.0
+print(unit(force)); # expected "N"
+
+# exponentiation with units (fallback expression)
+float::m side = 5.0::m;
+float::m^2 area = side ^ 2;
+print(area);        # expected 25.0
+print(unit(area));  # expected "m^2"
+
+# unit() on unitless
+float plain = 7.0;
+print(unit(plain)); # expected "unitless"

@@ -7,6 +7,15 @@ Instr = Tuple[str, ...]
 
 class VMError(Exception): pass
 
+def _strip_unit_type(typ):
+    if not isinstance(typ, str):
+        return typ
+    if typ.startswith(("array<", "dict<", "component:", "class:")):
+        return typ
+    if "::" in typ:
+        return typ.split("::", 1)[0]
+    return typ
+
 class VM:
     def __init__(self, bytecode: List[Instr], class_field_info=None, component_tree=None, component_parents=None):
         self.code = bytecode
@@ -120,9 +129,10 @@ class VM:
         if component_path:
             self._bind_component_locals(component_path)
         for (name, ptype), val in zip(param_info, arg_values):
-            if ptype == "float" and type(val) is int:
+            base_type = _strip_unit_type(ptype)
+            if base_type == "float" and type(val) is int:
                 val = float(val)
-            elif ptype == "int" and type(val) is float:
+            elif base_type == "int" and type(val) is float:
                 val = int(val)
             self.locals[name] = (val, ptype or "unknown", False)
 
@@ -293,9 +303,10 @@ class VM:
                     self.locals = {}
                     self.locals["this"] = (obj, f"class:{class_ref}", False)
                     for (name, ptype), val in zip(param_info[1:], arg_values):
-                        if ptype == "float" and type(val) is int:
+                        base_type = _strip_unit_type(ptype)
+                        if base_type == "float" and type(val) is int:
                             val = float(val)
-                        elif ptype == "int" and type(val) is float:
+                        elif base_type == "int" and type(val) is float:
                             val = int(val)
                         self.locals[name] = (val, ptype or "unknown", False)
                     self.pc = func_pc + param_count
@@ -372,9 +383,10 @@ class VM:
                     if len(args) > 2:
                         readonly = bool(args[2])
                     val = self.stack.pop()
-                    if vartype == "float" and type(val) is int:
+                    base_type = _strip_unit_type(vartype)
+                    if base_type == "float" and type(val) is int:
                         val = float(val)
-                    elif vartype == "int" and type(val) is float:
+                    elif base_type == "int" and type(val) is float:
                         val = int(val)
                     target = self.globals if not self.call_stack else self.locals
                     if name in target:
@@ -390,9 +402,10 @@ class VM:
                     old_val, vartype, readonly = target[name]
                     if readonly:
                         raise VMError(f"Cannot assign to readonly variable '{name}'")
-                    if vartype == "float" and type(val) is int:
+                    base_type = _strip_unit_type(vartype)
+                    if base_type == "float" and type(val) is int:
                         val = float(val)
-                    elif vartype == "int" and type(val) is float:
+                    elif base_type == "int" and type(val) is float:
                         val = int(val)
                     target[name] = (val, vartype, readonly)
 
@@ -548,9 +561,10 @@ class VM:
                     # Bind this
                     self.locals["this"] = (obj, f"class:{class_name}", False)
                     for (name, ptype), val in zip(param_info[1:], arg_values):
-                        if ptype == "float" and type(val) is int:
+                        base_type = _strip_unit_type(ptype)
+                        if base_type == "float" and type(val) is int:
                             val = float(val)
-                        elif ptype == "int" and type(val) is float:
+                        elif base_type == "int" and type(val) is float:
                             val = int(val)
                         self.locals[name] = (val, ptype or "unknown", False)
                     self.pc = func_pc + param_count

@@ -1,0 +1,24 @@
+{
+  "tests": [
+    {
+      "name": "assignment conversion",
+      "code": "float::cm len = 10::in; print(len);",
+      "expect": "25.4"
+    },
+    {
+      "name": "param conversion",
+      "code": "float::cm add(float::cm a, float::cm b) { return a + b; } float::cm x = add(2::in, 5::cm); print(x);",
+      "expect": "10.08"
+    },
+    {
+      "name": "unit algebra and unit()",
+      "code": "float::m distance = 10::m; float::s time = 2::s; float::m/s speed = distance / time; print(unit(speed));",
+      "expect": "m/s"
+    },
+    {
+      "name": "unitless unit()",
+      "code": "float x = 5; print(unit(x));",
+      "expect": "unitless"
+    }
+  ]
+}
