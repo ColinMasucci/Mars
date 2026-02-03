@@ -118,6 +118,24 @@ class TypeChecker:
     def _dims_tuple(self, dims):
         return tuple(sorted((k, v) for k, v in dims.items() if v != 0))
 
+    def _is_temp_unit(self, spec: UnitSpec) -> bool:
+        return any(dim == "Temp" for dim, _ in spec.dims)
+
+    def _is_energy_unit(self, spec: UnitSpec) -> bool:
+        # energy/torque dimensions: kg*m^2/s^2
+        return spec.dims == (("L", 2), ("M", 1), ("T", -2)) and not spec.affine
+
+    def _is_pure_angle(self, spec: UnitSpec) -> bool:
+        return spec.dims == (("A", 1),) and not spec.affine
+
+    def _should_drop_angle(self, left_spec: UnitSpec, right_spec: UnitSpec, op: str) -> bool:
+        if op == "MUL":
+            return (self._is_energy_unit(left_spec) and self._is_pure_angle(right_spec)) or \
+                (self._is_energy_unit(right_spec) and self._is_pure_angle(left_spec))
+        if op == "DIV":
+            return self._is_energy_unit(left_spec) and self._is_pure_angle(right_spec)
+        return False
+
     def _combine_units(self, left_spec: UnitSpec, right_spec: UnitSpec, op: str):
         if left_spec.affine or right_spec.affine:
             raise TypeError("Affine temperature units cannot be multiplied or divided")
@@ -128,6 +146,8 @@ class TypeChecker:
             dims[dim] = dims.get(dim, 0) + exp * sign
         scale *= right_spec.scale ** sign
         expr = f"{left_spec.expr}{'*' if op == 'MUL' else '/'}{right_spec.expr}"
+        if self._should_drop_angle(left_spec, right_spec, op):
+            dims.pop("A", None)
         dims_tuple = self._dims_tuple(dims)
         cname = canonical_name(dims_tuple, scale, 0.0, False)
         display = cname if cname is not None else expr
@@ -866,16 +886,51 @@ class TypeChecker:
                         if left_unit and right_unit:
                             if left_unit.dims != right_unit.dims:
                                 raise TypeError(f"Unit mismatch for {op}: '{left_unit.expr}' vs '{right_unit.expr}'")
-                            if left_unit.affine or right_unit.affine:
-                                if left_unit.affine != right_unit.affine:
-                                    raise TypeError(f"Cannot mix absolute temperature with delta in {op.lower()}")
+                            if self._is_temp_unit(left_unit) and self._is_temp_unit(right_unit):
+                                # Temperature-specific arithmetic:
+                                # absolute + delta -> absolute
+                                # absolute - delta -> absolute
+                                # absolute - absolute -> delta
+                                # delta + absolute -> absolute
+                                # delta - absolute -> error
                                 if op == "PLUS":
-                                    raise TypeError("Cannot add absolute temperatures")
-                                node.right = self._convert_unit_node(right, right_unit, left_unit)
-                                result_unit = self._delta_unit(left_unit)
+                                    if left_unit.affine and right_unit.affine:
+                                        raise TypeError("Cannot add absolute temperatures")
+                                    if left_unit.affine and not right_unit.affine:
+                                        delta_target = self._delta_unit(left_unit)
+                                        node.right = self._convert_unit_node(right, right_unit, delta_target)
+                                        result_unit = left_unit
+                                    elif not left_unit.affine and right_unit.affine:
+                                        delta_target = self._delta_unit(right_unit)
+                                        node.left = self._convert_unit_node(left, left_unit, delta_target)
+                                        result_unit = right_unit
+                                    else:
+                                        node.right = self._convert_unit_node(right, right_unit, left_unit)
+                                        result_unit = left_unit
+                                else:  # MINUS
+                                    if left_unit.affine and right_unit.affine:
+                                        node.right = self._convert_unit_node(right, right_unit, left_unit)
+                                        result_unit = self._delta_unit(left_unit)
+                                    elif left_unit.affine and not right_unit.affine:
+                                        delta_target = self._delta_unit(left_unit)
+                                        node.right = self._convert_unit_node(right, right_unit, delta_target)
+                                        result_unit = left_unit
+                                    elif not left_unit.affine and right_unit.affine:
+                                        raise TypeError("Cannot subtract an absolute temperature from a delta temperature")
+                                    else:
+                                        node.right = self._convert_unit_node(right, right_unit, left_unit)
+                                        result_unit = left_unit
                             else:
-                                node.right = self._convert_unit_node(right, right_unit, left_unit)
-                                result_unit = left_unit
+                                if left_unit.affine or right_unit.affine:
+                                    if left_unit.affine != right_unit.affine:
+                                        raise TypeError(f"Cannot mix absolute temperature with delta in {op.lower()}")
+                                    if op == "PLUS":
+                                        raise TypeError("Cannot add absolute temperatures")
+                                    node.right = self._convert_unit_node(right, right_unit, left_unit)
+                                    result_unit = self._delta_unit(left_unit)
+                                else:
+                                    node.right = self._convert_unit_node(right, right_unit, left_unit)
+                                    result_unit = left_unit
                         else:
                             result_unit = left_unit or right_unit
                         if result_unit:
