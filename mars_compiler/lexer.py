@@ -92,6 +92,8 @@ TOKEN_SPEC = [
     ("ELSE", r"\belse\b"),             # check for else statements
     ("WHILE", r"\bwhile\b"),           # check for while loops
     ("FOR", r"\bfor\b"),               # check for for loops
+    ("BREAK", r"\bbreak\b"),           # break out of loops
+    ("CONTINUE", r"\bcontinue\b"),     # continue loops
 
     # --- Identifiers & Keywords ---
     ("ID",      r"[A-Za-z_][A-Za-z0-9_]*"), # identifiers (including 'print')

@@ -6,7 +6,7 @@ from type_checker import TypeChecker
 from component_registry import ComponentRegistry
 from component_validator import ComponentValidator, ComponentValidationError
 from component_visualizer import visualize_components
-from ast_nodes import ArrayAccess, ArrayLiteral, Assign, AugAssign, BinaryOp, Block, BooleanLiteral, Call, ComponentDef, DictLiteral, FuncDecl, If, MemberAccess, NumberLiteral, Program, RequirementExpr, RequirementFunction, RequirementParam, RequirementSpec, Return, StringLiteral, UnaryOp, UnitTag, Var, VarDecl, While
+from ast_nodes import ArrayAccess, ArrayLiteral, Assign, AugAssign, BinaryOp, Block, BooleanLiteral, Call, ComponentDef, DictLiteral, FuncDecl, If, MemberAccess, NumberLiteral, Program, RequirementExpr, RequirementFunction, RequirementParam, RequirementSpec, Return, StringLiteral, UnaryOp, UnitTag, Var, VarDecl, While, For
 
 
 def precompile_config(config_dir: str, debug: bool = False):
@@ -1046,6 +1046,19 @@ def validate_instantiated_requirements(program, component_tree, component_parent
             type_scopes.append({})
             path_scopes.append({})
             _walk_statement(stmt.body)
+            type_scopes.pop()
+            path_scopes.pop()
+            return
+        if isinstance(stmt, For):
+            type_scopes.append({})
+            path_scopes.append({})
+            if stmt.init is not None:
+                _walk_statement(stmt.init)
+            if stmt.condition is not None:
+                _walk_expr(stmt.condition)
+            _walk_statement(stmt.body)
+            if stmt.increment is not None:
+                _walk_statement(stmt.increment)
             type_scopes.pop()
             path_scopes.pop()
             return

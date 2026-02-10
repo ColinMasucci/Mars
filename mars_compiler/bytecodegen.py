@@ -10,6 +10,7 @@ RETURN_TYPE_STACK = []
 CLASS_NAMES = set()
 COMPONENT_BASES = set()
 COMPONENT_INSTANCE_PATHS = set()
+LOOP_STACK = []  # stack of {"breaks": [idx], "continues": [idx]}
 
 def _strip_unit_type(typ):
     if not isinstance(typ, str):
@@ -36,10 +37,11 @@ def _flatten_member_access(node):
 def compile_program(node: ast.Program, printBytecode = False, component_functions=None, component_params=None, class_functions=None, class_interfaces=None) -> List[Instr]:
     code = []
     function_table.clear()
-    global CLASS_NAMES, COMPONENT_BASES, COMPONENT_INSTANCE_PATHS
+    global CLASS_NAMES, COMPONENT_BASES, COMPONENT_INSTANCE_PATHS, LOOP_STACK
     CLASS_NAMES = set(class_interfaces.keys()) if class_interfaces else set()
     COMPONENT_BASES = set()
     COMPONENT_INSTANCE_PATHS = set()
+    LOOP_STACK = []
     for decl in component_params or []:
         if isinstance(decl, ast.VarDecl) and isinstance(decl.name, str):
             base = decl.name.split(".",1)[0]
@@ -418,13 +420,68 @@ def compile_node(node, code: List[Instr]):
             compile_node(cond, code) # compile the condition
             jmp_false_index = len(code) # this is the index of the below placeholder so we know where to go back and fill it in later
             code.append(("JUMP_IF_FALSE", None))  # placeholder to exit loop if condition is false
+            loop_ctx = {"breaks": [], "continues": []}
+            LOOP_STACK.append(loop_ctx)
             compile_statement(body, code) # compile the body of the loop
+            LOOP_STACK.pop()
             code.append(("JUMP", loop_start)) # jump back to start of loop
             code[jmp_false_index] = ("JUMP_IF_FALSE", len(code)) # now we know where to jump to if the condition is false so we go back and fill it in
+            loop_end = len(code)
+            for idx in loop_ctx["breaks"]:
+                code[idx] = ("JUMP", loop_end)
+            for idx in loop_ctx["continues"]:
+                code[idx] = ("JUMP", loop_start)
+            return
+
+        case ast.For(init, cond, increment, body):
+            if init is not None:
+                compile_statement(init, code)
+
+            loop_start = len(code)
+            jmp_false_index = None
+            if cond is not None:
+                compile_node(cond, code)
+                jmp_false_index = len(code)
+                code.append(("JUMP_IF_FALSE", None))
+
+            loop_ctx = {"breaks": [], "continues": []}
+            LOOP_STACK.append(loop_ctx)
+            compile_statement(body, code)
+            LOOP_STACK.pop()
+
+            increment_start = len(code)
+            if increment is not None:
+                compile_statement(increment, code)
+
+            code.append(("JUMP", loop_start))
+            loop_end = len(code)
+
+            if jmp_false_index is not None:
+                code[jmp_false_index] = ("JUMP_IF_FALSE", loop_end)
+
+            for idx in loop_ctx["breaks"]:
+                code[idx] = ("JUMP", loop_end)
+            for idx in loop_ctx["continues"]:
+                code[idx] = ("JUMP", increment_start)
+            return
 
         case ast.Block(statements):
             for stmt in statements:
                 compile_statement(stmt, code)
+
+        case ast.Break():
+            if not LOOP_STACK:
+                raise TypeError("break used outside of a loop")
+            code.append(("JUMP", None))
+            LOOP_STACK[-1]["breaks"].append(len(code) - 1)
+            return
+
+        case ast.Continue():
+            if not LOOP_STACK:
+                raise TypeError("continue used outside of a loop")
+            code.append(("JUMP", None))
+            LOOP_STACK[-1]["continues"].append(len(code) - 1)
+            return
 
         case ast.Call(func, args):
             """Compile a function call (top-level, module, component, class ctor, or method)."""

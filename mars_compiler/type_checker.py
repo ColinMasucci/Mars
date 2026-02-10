@@ -1,4 +1,4 @@
-from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, UnitTag, Import, Return, FuncDecl, MemberAccess, ClassDecl
+from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, Return, Break, Continue, FuncDecl, MemberAccess, ClassDecl
 from units import parse_unit_expr, canonical_name, UnitSpec
 import os
 import importlib.util
@@ -10,6 +10,7 @@ class TypeChecker:
         self.scopes = [{}]
         self._loaded_modules = {}  # cache loaded builtin modules
         self.function_return_stack = [] # stack of return types
+        self.loop_depth = 0
         self.user_types = set()  # placeholder for user-defined types (classes, structs, enums, etc) - not implemented yet
         self.component_interfaces = component_interfaces or {}
         self.class_interfaces = class_interfaces or {}
@@ -999,7 +1000,30 @@ class TypeChecker:
                 cond_type = self.check(condition)
                 if cond_type not in ("bool", "int", "float"):
                     raise TypeError(f"Condition must be boolean or numeric, got {cond_type}") # allow numeric conditions as truthy/falsy
-                self.check(body)
+                self.loop_depth += 1
+                try:
+                    self.check(body)
+                finally:
+                    self.loop_depth -= 1
+
+            case For(init, condition, increment, body):
+                self._push_scope()
+                try:
+                    if init is not None:
+                        self.check(init)
+                    if condition is not None:
+                        cond_type = self.check(condition)
+                        if cond_type not in ("bool", "int", "float"):
+                            raise TypeError(f"Condition must be boolean or numeric, got {cond_type}")
+                    self.loop_depth += 1
+                    try:
+                        self.check(body)
+                        if increment is not None:
+                            self.check(increment)
+                    finally:
+                        self.loop_depth -= 1
+                finally:
+                    self._pop_scope()
             
             case ArrayLiteral(elements):
                 # empty array -> array<any>
@@ -1136,6 +1160,15 @@ class TypeChecker:
                     return self._set_type(node, self._check_method_call(func, args, arg_types))
                 raise TypeError("Unsupported function call target")
 
+            case Break():
+                if self.loop_depth <= 0:
+                    raise TypeError("Break used outside of a loop")
+                return None
+
+            case Continue():
+                if self.loop_depth <= 0:
+                    raise TypeError("Continue used outside of a loop")
+                return None
 
             case FuncDecl(return_type, name, params, body):
                 if name in self._current_scope(): raise TypeError(f"Function '{name}' already declared")
@@ -1161,18 +1194,19 @@ class TypeChecker:
                     raise TypeError("Return outside function")
                 expected = self.function_return_stack[-1]
                 if value is None:
-                    if expected is not None: raise TypeError("Return without value in function expecting ...")
+                    if expected == "void":
+                        return None
+                    raise TypeError("Return without value in function expecting ...")
                 if expected == "void":
                     raise TypeError("Cannot return a value from a void function")
-                else:
-                    value_type = self.check(value)
-                    value = self._coerce_value_to_expected(
-                        expected,
-                        value,
-                        value_type,
-                        "Return type mismatch"
-                    )
-                    node.value = value
+                value_type = self.check(value)
+                value = self._coerce_value_to_expected(
+                    expected,
+                    value,
+                    value_type,
+                    "Return type mismatch"
+                )
+                node.value = value
                 return value_type or None
 
 

@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 
-from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, VarDecl, UnaryOp, UnitTag, Import, FuncDecl, Return, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction, RequirementExpr
+from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, FuncDecl, Return, Break, Continue, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction, RequirementExpr
 from source_errors import format_source_error
 
 ROLE_PREFIX = "prefix"
@@ -33,6 +33,8 @@ class Parser:
         "AND": "&&",
         "OR": "||",
         "BANG": "!",
+        "BREAK": "break",
+        "CONTINUE": "continue",
         "LPAREN": "(",
         "RPAREN": ")",
         "LBRACE": "{",
@@ -245,6 +247,16 @@ class Parser:
                 value = self.expr()
             self.eat("SEMI")
             return Return(value)
+        
+        # --- BREAK / CONTINUE ---
+        if tok.type == "BREAK":
+            self.eat("BREAK")
+            self.eat("SEMI")
+            return Break()
+        if tok.type == "CONTINUE":
+            self.eat("CONTINUE")
+            self.eat("SEMI")
+            return Continue()
 
         # --- IF ---
         if tok.type == "IF":
@@ -484,17 +496,7 @@ class Parser:
 
         body = self.parse_blockorstatement()
 
-        # Transform for into equivalent while
-        if condition is None:
-            condition = BooleanLiteral(True)
-        if increment is None:
-            loop_body = body
-        else:
-            loop_body = Block([body, increment])
-
-        if init is not None:
-            return Block([init, While(condition, loop_body)])
-        return While(condition, loop_body)
+        return For(init, condition, increment, body)
     
     def parse_simple_statement(self):
         """

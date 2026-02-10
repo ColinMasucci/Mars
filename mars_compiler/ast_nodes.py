@@ -98,6 +98,13 @@ class While:
     body: Any
 
 @dataclass
+class For:
+    init: Any
+    condition: Any
+    increment: Any
+    body: Any
+
+@dataclass
 class Call:
     func: Any      
     args: List[Any] 
@@ -122,6 +129,14 @@ class FuncDecl:
 @dataclass
 class Return:
     value: Any
+
+@dataclass
+class Break:
+    pass
+
+@dataclass
+class Continue:
+    pass
 
 
 
