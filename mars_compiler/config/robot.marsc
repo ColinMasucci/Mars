@@ -1,7 +1,7 @@
 ### KHEPERA ###
 component Khepera extends Robot {
     subcomponents{
-        #KheperaChassis chassis;
+        KheperaChassis chassis;
     }
     parameters{}
     functions{}

@@ -3,5 +3,5 @@ from interpreter import interpret_code_from_file
 
 
 print("===EXAMPLE 001=================================================================================================================")
-interpret_code_from_file("test_file.mars", debug=True)
+interpret_code_from_file("test_file.mars", debug=False)
 print("==============================================================================================================================\n")

@@ -70,9 +70,9 @@ def visualize_components(components):
         return "Robot" in _parent_chain(comp, comp_map)
 
     for comp in components:
-        if not comp.subcomponents:
-            continue
         if not _is_robot_family(comp):
+            continue
+        if comp.name == "Robot":
             continue
         root_id = comp.name
         label = _component_label(comp.name, _parent_chain(comp, comp_map))
@@ -80,7 +80,7 @@ def visualize_components(components):
         _add_node(root_id, label, color)
         _add_children(root_id, comp.name, [comp.name])
 
-    connected = set()
+    connected = set(nodes.keys())
     for src, dst in edges:
         connected.add(src)
         connected.add(dst)
