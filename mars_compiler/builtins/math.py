@@ -71,13 +71,25 @@ def atan2(y, x):
     return _math.atan2(y, x)
 
 # --- Min / Max ---
-@_sig(params=["float", "..."], ret="float")  # variadic
+@_sig(params=[["float", "..."], ["array<float>"], ["array<int>"]], ret="float")  # variadic or array
 def min_val(*args):
-    return min(args)
+    if len(args) == 1 and isinstance(args[0], list):
+        seq = args[0]
+    else:
+        seq = list(args)
+    if len(seq) == 0:
+        raise ValueError("min_val expects at least one value")
+    return float(min(seq))
 
-@_sig(params=["float", "..."], ret="float")  # variadic
+@_sig(params=[["float", "..."], ["array<float>"], ["array<int>"]], ret="float")  # variadic or array
 def max_val(*args):
-    return max(args)
+    if len(args) == 1 and isinstance(args[0], list):
+        seq = args[0]
+    else:
+        seq = list(args)
+    if len(seq) == 0:
+        raise ValueError("max_val expects at least one value")
+    return float(max(seq))
 
 # --- Constants ---
 PI = _math.pi

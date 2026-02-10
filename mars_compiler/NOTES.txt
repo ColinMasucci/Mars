@@ -16,6 +16,7 @@ TODO:
 
     # add ! to requirements
 
+    add command to comment out lines correctly
 
     if expect_operand:  #Error in parser. 2 repeated if statements that say the same thing. (around line 438)
 

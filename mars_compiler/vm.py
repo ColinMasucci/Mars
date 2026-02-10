@@ -1,6 +1,7 @@
 from typing import List, Tuple, Any
 import importlib.util
 import os
+import types
 
 
 Instr = Tuple[str, ...]
@@ -323,6 +324,10 @@ class VM:
                             self.stack.append(node["params"][attr])
                         else:
                             raise VMError(f"Component '{obj}' has no member '{attr}'")
+                    elif isinstance(obj, types.ModuleType):
+                        if not hasattr(obj, attr):
+                            raise VMError(f"Module '{obj.__name__}' has no member '{attr}'")
+                        self.stack.append(getattr(obj, attr))
                     else:
                         if not isinstance(obj, dict) or "__fields__" not in obj:
                             raise VMError("GET_FIELD on non-object")
@@ -475,6 +480,8 @@ class VM:
                     spec.loader.exec_module(module)
 
                     self._modules[module_name] = module
+                    # Expose module object for member access (math.PI / math.sqrt)
+                    self.globals[module_name] = (module, "module", False)
 
                     # populate locals with dotted names
                     funcs_dict = getattr(module, f"{module_name.upper()}_FUNCS", {})
@@ -529,6 +536,16 @@ class VM:
                         node = self.component_tree["nodes"][obj]
                         func_name = f"{node['type']}.{method_name}"
                         self._call_user_function(func_name, arg_values, component_path=obj)
+                        continue
+                    if isinstance(obj, types.ModuleType):
+                        if not hasattr(obj, method_name):
+                            raise VMError(f"Module '{obj.__name__}' has no member '{method_name}'")
+                        fn = getattr(obj, method_name)
+                        if not callable(fn):
+                            raise VMError(f"'{obj.__name__}.{method_name}' is not callable")
+                        result = fn(*arg_values)
+                        self.stack.append(result)
+                        self.pc += 1
                         continue
                     if not isinstance(obj, dict) or "__class__" not in obj:
                         raise VMError("Method call on non-object")

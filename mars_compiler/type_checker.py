@@ -219,6 +219,52 @@ class TypeChecker:
     def _coerce_call_args(self, param_types, args, arg_types, context):
         if param_types is None:
             return
+        if isinstance(param_types, (list, tuple)) and param_types and isinstance(param_types[0], (list, tuple)):
+            last_error = None
+            for sig in param_types:
+                try:
+                    tmp_args = list(args)
+                    tmp_types = list(arg_types)
+                    self._coerce_call_args_single(sig, tmp_args, tmp_types, context)
+                    args[:] = tmp_args
+                    arg_types[:] = tmp_types
+                    return
+                except TypeError as exc:
+                    last_error = exc
+            raise TypeError(f"{context}: no matching overload") from last_error
+        self._coerce_call_args_single(param_types, args, arg_types, context)
+
+    def _coerce_call_args_single(self, param_types, args, arg_types, context):
+        if isinstance(param_types, tuple):
+            param_types = list(param_types)
+        if param_types and param_types[-1] == "...":
+            if len(param_types) < 2:
+                raise TypeError(f"{context}: invalid variadic signature")
+            fixed = param_types[:-1]
+            if len(arg_types) < len(fixed):
+                raise TypeError(f"{context}: expected at least {len(fixed)} args, got {len(arg_types)}")
+            # Coerce fixed params
+            for i, expected in enumerate(fixed):
+                new_arg = self._coerce_value_to_expected(
+                    expected,
+                    args[i],
+                    arg_types[i],
+                    f"{context} (arg {i + 1})"
+                )
+                args[i] = new_arg
+                arg_types[i] = expected
+            # Coerce remaining params to the last fixed type
+            repeat_type = fixed[-1]
+            for i in range(len(fixed), len(arg_types)):
+                new_arg = self._coerce_value_to_expected(
+                    repeat_type,
+                    args[i],
+                    arg_types[i],
+                    f"{context} (arg {i + 1})"
+                )
+                args[i] = new_arg
+                arg_types[i] = repeat_type
+            return
         if len(param_types) != len(arg_types):
             raise TypeError(f"{context}: expected {len(param_types)} args, got {len(arg_types)}")
         for i, (expected, arg, arg_type) in enumerate(zip(param_types, args, arg_types)):
@@ -1237,6 +1283,9 @@ class TypeChecker:
 
                 # Register exported members into self.symbols (e.g., math.PI, math.round)
                 self._register_module_members(module_name, mod)
+                # Declare the module itself so member access (math.PI / math.sqrt) can type-check
+                if not self._lookup_symbol(module_name):
+                    self._declare_symbol(module_name, f"module:{module_name}", mutable=False)
                 return None
 
 
@@ -1250,6 +1299,22 @@ class TypeChecker:
         obj_type = self.check(member_access.obj)
         if isinstance(obj_type, str) and obj_type in self.class_interfaces:
             obj_type = f"class:{obj_type}"
+        if isinstance(obj_type, str) and obj_type.startswith("module:"):
+            module_name = obj_type.split(":", 1)[1]
+            sym = self._lookup_symbol(f"{module_name}.{member_access.attr}")
+            if not sym:
+                raise TypeError(f"Module '{module_name}' has no member '{member_access.attr}'")
+            if sym["type"] != "function":
+                raise TypeError(f"'{module_name}.{member_access.attr}' is not callable")
+            param_types = sym["info"].get("params")
+            if param_types is not None:
+                self._coerce_call_args(
+                    param_types,
+                    args,
+                    arg_types,
+                    f"Argument type mismatch in call to '{module_name}.{member_access.attr}'"
+                )
+            return sym["info"].get("return") or "void"
         if isinstance(obj_type, str) and obj_type.startswith("component:"):
             comp_type = obj_type.split(":",1)[1]
             if member_access.attr == "match":
@@ -1280,6 +1345,14 @@ class TypeChecker:
         return meth.get("return") or "void"
 
     def _resolve_member_access(self, obj_type, attr):
+        if obj_type.startswith("module:"):
+            module_name = obj_type.split(":", 1)[1]
+            sym = self._lookup_symbol(f"{module_name}.{attr}")
+            if not sym:
+                raise TypeError(f"Module '{module_name}' has no member '{attr}'")
+            if sym["type"] == "function":
+                raise TypeError(f"'{module_name}.{attr}' is a function and must be called")
+            return sym["type"]
         if obj_type.startswith("component:"):
             cname = obj_type.split(":",1)[1]
             iface = self.component_interfaces.get(cname)

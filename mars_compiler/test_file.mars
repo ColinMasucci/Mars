@@ -1,1 +1,35 @@
+import math;
 
+print("=== min/max: ints ===");
+int a = 5;
+int b = 2;
+print(math.min_val(a, b)); # expect 2.0
+print(math.max_val(a, b)); # expect 5.0
+
+print("=== min/max: floats ===");
+float c = 3.5;
+float d = math.sqrt(math.PI);
+print(math.min_val(c, d)); # expect 3.5
+print(math.max_val(c, d)); # expect 7.25
+
+print("=== min/max: mixed int/float ===");
+int e = 9;
+float f = 4.5;
+print(math.min_val(e, f)); # expect 4.5
+print(math.max_val(e, f)); # expect 9.0
+
+print("=== min/max: mixed float/int ===");
+float g = 1.25;
+int h = 8;
+print(math.min_val(g, h)); # expect 1.25
+print(math.max_val(g, h)); # expect 8.0
+
+print("=== min/max: int array ===");
+int[] ia = [3, 1, 9, 2];
+print(math.min_val(ia)); # expect 1.0
+print(math.max_val(ia)); # expect 9.0
+
+print("=== min/max: float array ===");
+float[] fa = [2.5, 9.75, 1.25];
+print(math.min_val(fa)); # expect 1.25
+print(math.max_val(fa)); # expect 9.75
