@@ -109,10 +109,10 @@ def _interpret(code: str, config_dir: str, debug: bool, capture_output: bool, so
 
     if capture_output:
         with _capture_stdout() as buf:
-            vm.run()
+            vm.run_loop()
         return buf.getvalue()
 
-    vm.run()
+    vm.run_loop()
     return None
 
 
