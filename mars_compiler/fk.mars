@@ -26,7 +26,7 @@ class FK{
     }
 
     # Integrate pose using robot-frame velocities over dt
-    void step(float dt) {
+    void stepFK(float dt) {
         float[] velocities = chassis.getVelocities();
         float vx = velocities[0];
         float vy = velocities[1];

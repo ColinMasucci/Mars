@@ -3,6 +3,7 @@ import importlib.util
 import os
 import types
 import time;
+from ros_bridge_client import write_topics_file
 
 
 Instr = Tuple[str, ...]
@@ -42,6 +43,22 @@ class VM:
         self.step_stack = []     
         # stores return PCs for STEP loops
         # acts like a loop stack (like call_stack, but for control flow)
+
+        self.ros_bridge = None
+        self.ros_topics_path = None
+        self._publish_queue = []
+
+    def attach_ros_bridge(self, bridge, topics_path: str | None = "ros_topics.txt", request_topics: bool = True):
+        self.ros_bridge = bridge
+        self.ros_topics_path = topics_path
+        if self.ros_bridge and request_topics:
+            try:
+                self.ros_bridge.request_topics()
+            except Exception as e:
+                print(f"[ros] request_topics failed: {e}")
+
+    def queue_publish(self, topic: str, msg_type: str, msg: Any):
+        self._publish_queue.append((topic, msg_type, msg))
 
     def _component_is_a(self, child_type, parent_type):
         if child_type == parent_type:
@@ -154,10 +171,35 @@ class VM:
 
 
     def sense(self):
-        pass   # later ROS cache → VM vars
+        if not self.ros_bridge:
+            return
+
+        messages = self.ros_bridge.poll()
+        for msg in messages:
+            op = msg.get("op")
+            if op == "msg":
+                topic = msg.get("topic")
+                if topic:
+                    self.sensor_cache[topic] = msg.get("msg")
+            elif op == "topics":
+                if self.ros_topics_path:
+                    try:
+                        write_topics_file(self.ros_topics_path, msg.get("topics", []))
+                    except Exception as e:
+                        print(f"[ros] failed to write topics file: {e}")
+            elif op == "error":
+                print(f"[ros] {msg.get('message')}")
 
     def act(self):
-        pass   # D1: empty, publish() sends immediately
+        if not self.ros_bridge:
+            return
+
+        while self._publish_queue:
+            topic, msg_type, payload = self._publish_queue.pop(0)
+            try:
+                self.ros_bridge.publish(topic, msg_type, payload)
+            except Exception as e:
+                print(f"[ros] publish failed for {topic}: {e}")
 
 
 

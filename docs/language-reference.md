@@ -75,15 +75,7 @@ class Point {
 - Methods use explicit return types.
 - Constructors use the class name.
 - `this` refers to the current instance.
-- Requirements block:
-```mars
-class Example {
-    requirements {
-        Motor(functions=spin());
-        optional Sensor(parameters=[range > 10]);
-    }
-}
-```
+- Requirements are documented separately in `docs/requirements.md`.
 
 ## Grammar Notes
 - Declarations require explicit types; there is no type inference for variables.

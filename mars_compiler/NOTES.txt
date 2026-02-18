@@ -20,6 +20,8 @@ TODO:
 
     if expect_operand:  #Error in parser. 2 repeated if statements that say the same thing. (around line 438)
 
+    Component implementation check failed:
+        why is it not flagging for parameters?
 
     TODO: GET RID OF THE COMPILER ACCESS FOR USERS 
         and update documentation accordingly

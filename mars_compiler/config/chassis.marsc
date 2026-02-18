@@ -5,9 +5,12 @@ component Chassis {
         float maxAngularSpeed;
         float positionTolerance;
         float angleTolerance;
+        #float vx = sensed("lin_velocity")::in;
     }
     functions{
         void drive(float vx, float vy, float omega);
+            #call(set_wheel_vel());
+            
         float[] getVelocities();
     }
 }

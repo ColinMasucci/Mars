@@ -1,7 +1,9 @@
 from contextlib import contextmanager
 from io import StringIO
 import os
+import subprocess
 import sys
+import time
 
 from lexer import tokenize  # tokenizer from lexer.py
 from parser import Parser  # parser from parser.py
@@ -14,22 +16,68 @@ from ast_nodes import FuncDecl, Return, Block, Var, Assign, MemberAccess, Import
 from ast_visualizer import visualize  # for visualizing the AST
 
 
-def interpret_code_from_file(file_path: str, config_dir: str = "config", debug: bool = False):
+def interpret_code_from_file(
+    file_path: str,
+    config_dir: str = "config",
+    debug: bool = False,
+    ros_bridge: str | None = None,
+    ros_topics_file: str | None = None,
+    ros_autostart: bool = False,
+    ros_version: str | None = None,
+):
     """Run a .mars program from disk through the full pipeline."""
     with open(file_path, "r", encoding="utf-8") as f:
         code = f.read()
-    return _interpret(code, config_dir=config_dir, debug=debug, capture_output=False, source_path=file_path)
+    return _interpret(
+        code,
+        config_dir=config_dir,
+        debug=debug,
+        capture_output=False,
+        source_path=file_path,
+        ros_bridge=ros_bridge,
+        ros_topics_file=ros_topics_file,
+        ros_autostart=ros_autostart,
+        ros_version=ros_version,
+    )
 
 
-def interpret_code_from_string(code: str, config_dir: str = "config", debug: bool = False):
+def interpret_code_from_string(
+    code: str,
+    config_dir: str = "config",
+    debug: bool = False,
+    ros_bridge: str | None = None,
+    ros_topics_file: str | None = None,
+    ros_autostart: bool = False,
+    ros_version: str | None = None,
+):
     """
     Run code provided as a string. Used by tests.
     Returns captured stdout from the VM execution.
     """
-    return _interpret(code, config_dir=config_dir, debug=debug, capture_output=True, source_path=None)
+    return _interpret(
+        code,
+        config_dir=config_dir,
+        debug=debug,
+        capture_output=True,
+        source_path=None,
+        ros_bridge=ros_bridge,
+        ros_topics_file=ros_topics_file,
+        ros_autostart=ros_autostart,
+        ros_version=ros_version,
+    )
 
 
-def _interpret(code: str, config_dir: str, debug: bool, capture_output: bool, source_path: str | None):
+def _interpret(
+    code: str,
+    config_dir: str,
+    debug: bool,
+    capture_output: bool,
+    source_path: str | None,
+    ros_bridge: str | None,
+    ros_topics_file: str | None,
+    ros_autostart: bool,
+    ros_version: str | None,
+):
     # Precompile component configurations
     _registry, interfaces, comp_funcs, comp_params, component_tree, component_parents = precompile_config(config_dir, debug=debug)
 
@@ -107,13 +155,26 @@ def _interpret(code: str, config_dir: str, debug: bool, capture_output: bool, so
     bytecode = compile_program(parsed_ast, debug, component_functions=comp_funcs, component_params=comp_params, class_functions=class_funcs, class_interfaces=class_interfaces)
     vm = VM(bytecode, class_field_info=class_field_info, component_tree=component_tree, component_parents=component_parents)
 
-    if capture_output:
-        with _capture_stdout() as buf:
-            vm.run()
-        return buf.getvalue()
+    bridge_proc = None
+    if ros_autostart:
+        bridge_proc, ros_bridge = _maybe_start_ros_bridge(ros_bridge, ros_version)
 
-    vm.run()
-    return None
+    connected = _attach_ros_bridge(vm, ros_bridge, ros_topics_file, connect_retries=30 if bridge_proc else 0)
+    if bridge_proc and not connected:
+        _stop_ros_bridge_process(bridge_proc)
+        bridge_proc = None
+
+    try:
+        if capture_output:
+            with _capture_stdout() as buf:
+                vm.run()
+            return buf.getvalue()
+
+        vm.run()
+        return None
+    finally:
+        if bridge_proc:
+            _stop_ros_bridge_process(bridge_proc)
 
 
 def build_class_runtime(classes, class_interfaces):
@@ -158,6 +219,89 @@ def build_class_runtime(classes, class_interfaces):
             class_funcs.append(FuncDecl(m.return_type, f"{cls.name}.{m.name}", params, m.body))
 
     return class_funcs, class_field_info
+
+
+def _attach_ros_bridge(
+    vm: VM,
+    ros_bridge: str | None,
+    ros_topics_file: str | None,
+    connect_retries: int = 0,
+    connect_delay: float = 0.1,
+) -> bool:
+    addr = ros_bridge or os.environ.get("MARS_ROS_BRIDGE")
+    if not addr:
+        return False
+
+    from ros_bridge_client import RosBridgeClient
+
+    host, port = _parse_host_port(addr)
+    bridge = RosBridgeClient(host=host, port=port)
+    connected = False
+    for attempt in range(connect_retries + 1):
+        if bridge.connect():
+            connected = True
+            break
+        if attempt < connect_retries:
+            time.sleep(connect_delay)
+
+    if not connected:
+        print(f"[ros] Unable to connect to bridge at {host}:{port}; continuing without ROS.")
+        return False
+
+    topics_path = ros_topics_file or os.environ.get("MARS_ROS_TOPICS_FILE", "ros_topics.txt")
+    vm.attach_ros_bridge(bridge, topics_path=topics_path, request_topics=True)
+    print(f"[ros] Connected to bridge at {host}:{port}")
+    return True
+
+
+def _parse_host_port(addr: str) -> tuple[str, int]:
+    if ":" in addr:
+        host, port_str = addr.rsplit(":", 1)
+        try:
+            port = int(port_str)
+        except ValueError:
+            raise SystemExit(f"Invalid MARS_ROS_BRIDGE port: {port_str}")
+    else:
+        host = addr
+        port = 5566
+    return host, port
+
+
+def _maybe_start_ros_bridge(ros_bridge: str | None, ros_version: str | None) -> tuple[subprocess.Popen | None, str]:
+    addr = ros_bridge
+    if not addr or addr in ("auto", "ros1", "ros2"):
+        if addr in ("ros1", "ros2") and not ros_version:
+            ros_version = "1" if addr == "ros1" else "2"
+        addr = "127.0.0.1:5566"
+
+    host, port = _parse_host_port(addr)
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"[ros] Autostart skipped for non-local address {host}:{port}")
+        return None, addr
+
+    script_path = os.path.join(os.path.dirname(__file__), "ros_bridge.py")
+    cmd = [sys.executable, "-u", script_path, "--host", host, "--port", str(port)]
+    if ros_version:
+        cmd.extend(["--ros-version", ros_version])
+
+    try:
+        proc = subprocess.Popen(cmd)
+    except Exception as e:
+        print(f"[ros] Failed to start bridge process: {e}")
+        return None, addr
+
+    return proc, addr
+
+
+def _stop_ros_bridge_process(proc: subprocess.Popen) -> None:
+    try:
+        proc.terminate()
+        proc.wait(timeout=2)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
 
 
 def _render_graphviz(dot_obj, filename):
