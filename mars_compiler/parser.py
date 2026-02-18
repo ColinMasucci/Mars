@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 
-from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, FuncDecl, Return, Break, Continue, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction, RequirementExpr
+from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, FuncDecl, Return, Break, Continue, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction, RequirementExpr, Step
 from source_errors import format_source_error
 
 ROLE_PREFIX = "prefix"
@@ -463,6 +463,11 @@ class Parser:
         condition = self.parse_condition() # parse the condition expression
         body = self.parse_blockorstatement()
         return While(condition, body)
+    
+    def parse_step(self):
+        self.eat("STEP")
+        body = self.parse_blockorstatement()
+        return Step(body)
     
     def parse_condition(self):
         self.eat("LPAREN")

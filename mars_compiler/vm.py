@@ -31,6 +31,18 @@ class VM:
         self.component_tree = component_tree or {"nodes": {}, "roots": []}
         self.component_parents = component_parents or {}
 
+        self.subscriptions = {}  
+        # var_name -> topic_name
+        # example: {"pose": "/robot/pose", "scan": "/lidar"}
+
+        self.sensor_cache = {}   
+        # topic_name -> last_value
+        # example: {"/robot/pose": PoseMsg, "/lidar": LaserScanMsg}
+
+        self.step_stack = []     
+        # stores return PCs for STEP loops
+        # acts like a loop stack (like call_stack, but for control flow)
+
     def _component_is_a(self, child_type, parent_type):
         if child_type == parent_type:
             return True
@@ -149,57 +161,18 @@ class VM:
 
 
 
-    #Control Loop (sense -> think -> act)
-    def run_loop(self, hz=30, debug=False):
-        self.find_step_function()
-
-        while True:
-            self.sense() #sense
-            self.call_step(debug) #think
-            self.act() #act
-            time.sleep(1.0 / hz)
-
-    #This searches and finds the "step()" location so we know what to loop through (Need to implement checks for exactly 1 step function inside typechecker)
-    def find_step_function(self):
-        for idx, instr in enumerate(self.code):
-            if instr[0] == "FUNC_BEGIN" and instr[1] == "step":
-                self.step_pc = idx + 1
-                return
-        raise VMError("No step() function found")
-    
-    #Resets VM state and runs the users step() exactly once
-    def call_step(self, debug=False):
-        # reset execution state for step call
-        self.stack = []
-        self.call_stack = []
-        self.locals = {}
-        self.pc = self.step_pc
-
-        self.execute_until_return(debug)
-    
-    #Executes instructions until a "RETURN" opcode is encountered
-    def execute_until_return(self, debug=False, max_steps=None):
-        steps = 0
-        while self.pc < len(self.code):
-            steps += 1
-            if max_steps is not None and steps > max_steps:
-                raise VMError("Exceeded maximum VM steps; possible infinite loop")
-
-            instr = self.code[self.pc]
-            if instr[0] == "RETURN":
-                self.pc += 1
-                return
-            self.execute_one(debug)
-
-    #This runs the whole "step" loop once (OLD Behaviour, NOT Used)
-    def run_once(self, max_steps=None, debug=False):
+    #This runs the bytecode from .mars file
+    def run(self, max_steps=None, debug=False):
         steps = 0 #just used for counting steps (self.pc is the pointer to the instruction being run)
         while self.pc < len(self.code):
             steps += 1
             if max_steps is not None and steps > max_steps:
                 raise VMError("Exceeded maximum VM steps; possible infinite loop")
 
-            self.execute_one(debug)#RUN ONE INSTRUCTION/STEP
+            #sense, think, act
+            self.sense()
+            self.execute_one(debug)#RUN ONE INSTRUCTION
+            self.act()
             self.pc += 1
         
         if self.stack is not None and len(self.stack) > 0:
@@ -522,8 +495,9 @@ class VM:
                     return
 
             case "HALT":
-                #Is no longer recognized since HALT was made for top level program execution which we do not use anymore.
-                raise VMError("HALT opperand unexpectedly found. Program Early Termination Issue.")
+                if (self.pc < len(self.code)-1):
+                    raise VMError("HALT opperand unexpectedly found. Program Early Termination Issue.")
+                return
 
             case "IMPORT":
                 module_name = args[0]
@@ -768,6 +742,19 @@ class VM:
                 # ---- unsupported type ----
                 else:
                     raise VMError(f"Trying to index-assign into unsupported type {type(container).__name__}")
+            
+            case "UPDATE":
+                for var, topic in self.subscriptions.items():
+                    if topic in self.sensor_cache:
+                        val = self.sensor_cache[topic]
+
+                        # Preserve metadata (type, unit, etc)
+                        old = self.globals.get(var)
+
+                        if old is not None:
+                            self.globals[var] = (val, old[1], old[2])
+                        else:
+                            self.globals[var] = (val, None, None)
 
 
             case _:

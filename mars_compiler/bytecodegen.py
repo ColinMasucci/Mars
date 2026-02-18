@@ -432,6 +432,32 @@ def compile_node(node, code: List[Instr]):
             for idx in loop_ctx["continues"]:
                 code[idx] = ("JUMP", loop_start)
             return
+        
+        case ast.Step(body):
+            loop_start = len(code)
+
+            # Enforce update at top of every iteration
+            code.append(("UPDATE",))
+
+            loop_ctx = {"breaks": [], "continues": []}
+            LOOP_STACK.append(loop_ctx)
+
+            compile_statement(body, code)
+
+            LOOP_STACK.pop()
+
+            # jump back to update
+            code.append(("JUMP", loop_start))
+
+            loop_end = len(code)
+
+            # patch breaks/continues
+            for idx in loop_ctx["breaks"]:
+                code[idx] = ("JUMP", loop_end)
+            for idx in loop_ctx["continues"]:
+                code[idx] = ("JUMP", loop_start)
+
+            return
 
         case ast.For(init, cond, increment, body):
             if init is not None:
@@ -543,6 +569,11 @@ def compile_node(node, code: List[Instr]):
                     compile_node(arg, code)
                 if func.name == "print":
                     code.append(("PRINT", len(args)))
+                    code.append(("PUSH_NONE",))
+                elif func.name == "update":
+                    if len(args) != 0:
+                        raise TypeError("update() takes no arguments")
+                    code.append(("UPDATE"))
                     code.append(("PUSH_NONE",))
                 else:
                     code.append(("CALL", func.name, len(args)))

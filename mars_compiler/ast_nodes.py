@@ -98,6 +98,10 @@ class While:
     body: Any
 
 @dataclass
+class Step:
+    body: Any
+
+@dataclass
 class For:
     init: Any
     condition: Any

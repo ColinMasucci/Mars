@@ -91,6 +91,7 @@ TOKEN_SPEC = [
     ("IF", r"\bif\b"),                 # check for if statements
     ("ELSE", r"\belse\b"),             # check for else statements
     ("WHILE", r"\bwhile\b"),           # check for while loops
+    ("STEP", r"\bstep\b"),             # check for step loops
     ("FOR", r"\bfor\b"),               # check for for loops
     ("BREAK", r"\bbreak\b"),           # break out of loops
     ("CONTINUE", r"\bcontinue\b"),     # continue loops
