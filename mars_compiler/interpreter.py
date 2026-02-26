@@ -24,6 +24,8 @@ def interpret_code_from_file(
     ros_topics_file: str | None = None,
     ros_autostart: bool = False,
     ros_version: str | None = None,
+    ros_bridge_python: str | None = None,
+    ros_bridge_pythonpath: str | None = None,
 ):
     """Run a .mars program from disk through the full pipeline."""
     with open(file_path, "r", encoding="utf-8") as f:
@@ -38,6 +40,8 @@ def interpret_code_from_file(
         ros_topics_file=ros_topics_file,
         ros_autostart=ros_autostart,
         ros_version=ros_version,
+        ros_bridge_python=ros_bridge_python,
+        ros_bridge_pythonpath=ros_bridge_pythonpath,
     )
 
 
@@ -49,6 +53,8 @@ def interpret_code_from_string(
     ros_topics_file: str | None = None,
     ros_autostart: bool = False,
     ros_version: str | None = None,
+    ros_bridge_python: str | None = None,
+    ros_bridge_pythonpath: str | None = None,
 ):
     """
     Run code provided as a string. Used by tests.
@@ -64,6 +70,8 @@ def interpret_code_from_string(
         ros_topics_file=ros_topics_file,
         ros_autostart=ros_autostart,
         ros_version=ros_version,
+        ros_bridge_python=ros_bridge_python,
+        ros_bridge_pythonpath=ros_bridge_pythonpath,
     )
 
 
@@ -77,6 +85,8 @@ def _interpret(
     ros_topics_file: str | None,
     ros_autostart: bool,
     ros_version: str | None,
+    ros_bridge_python: str | None,
+    ros_bridge_pythonpath: str | None,
 ):
     # Precompile component configurations
     _registry, interfaces, comp_funcs, comp_params, component_tree, component_parents = precompile_config(config_dir, debug=debug)
@@ -157,7 +167,12 @@ def _interpret(
 
     bridge_proc = None
     if ros_autostart:
-        bridge_proc, ros_bridge = _maybe_start_ros_bridge(ros_bridge, ros_version)
+        bridge_proc, ros_bridge = _maybe_start_ros_bridge(
+            ros_bridge,
+            ros_version,
+            ros_bridge_python=ros_bridge_python,
+            ros_bridge_pythonpath=ros_bridge_pythonpath,
+        )
 
     connected = _attach_ros_bridge(vm, ros_bridge, ros_topics_file, connect_retries=30 if bridge_proc else 0)
     if bridge_proc and not connected:
@@ -249,7 +264,7 @@ def _attach_ros_bridge(
         return False
 
     topics_path = ros_topics_file or os.environ.get("MARS_ROS_TOPICS_FILE", "ros_topics.txt")
-    vm.attach_ros_bridge(bridge, topics_path=topics_path, request_topics=True)
+    vm.attach_ros_bridge(bridge, topics_path=topics_path, request_topics=False)
     print(f"[ros] Connected to bridge at {host}:{port}")
     return True
 
@@ -267,7 +282,12 @@ def _parse_host_port(addr: str) -> tuple[str, int]:
     return host, port
 
 
-def _maybe_start_ros_bridge(ros_bridge: str | None, ros_version: str | None) -> tuple[subprocess.Popen | None, str]:
+def _maybe_start_ros_bridge(
+    ros_bridge: str | None,
+    ros_version: str | None,
+    ros_bridge_python: str | None = None,
+    ros_bridge_pythonpath: str | None = None,
+) -> tuple[subprocess.Popen | None, str]:
     addr = ros_bridge
     if not addr or addr in ("auto", "ros1", "ros2"):
         if addr in ("ros1", "ros2") and not ros_version:
@@ -279,16 +299,29 @@ def _maybe_start_ros_bridge(ros_bridge: str | None, ros_version: str | None) -> 
         print(f"[ros] Autostart skipped for non-local address {host}:{port}")
         return None, addr
 
+    bridge_python = ros_bridge_python or os.environ.get("MARS_ROS_BRIDGE_PYTHON") or sys.executable
+    bridge_pythonpath = ros_bridge_pythonpath or os.environ.get("MARS_ROS_BRIDGE_PYTHONPATH")
+
     script_path = os.path.join(os.path.dirname(__file__), "ros_bridge.py")
-    cmd = [sys.executable, "-u", script_path, "--host", host, "--port", str(port)]
+    cmd = [bridge_python, "-u", script_path, "--host", host, "--port", str(port)]
     if ros_version:
         cmd.extend(["--ros-version", ros_version])
 
+    child_env = os.environ.copy()
+    if bridge_pythonpath:
+        existing = child_env.get("PYTHONPATH")
+        child_env["PYTHONPATH"] = f"{bridge_pythonpath}:{existing}" if existing else bridge_pythonpath
+
     try:
-        proc = subprocess.Popen(cmd)
+        proc = subprocess.Popen(cmd, env=child_env)
     except Exception as e:
         print(f"[ros] Failed to start bridge process: {e}")
         return None, addr
+
+    if bridge_pythonpath:
+        print(f"[ros] Autostarted bridge using {bridge_python} with bridge PYTHONPATH prefix {bridge_pythonpath}")
+    else:
+        print(f"[ros] Autostarted bridge using {bridge_python}")
 
     return proc, addr
 

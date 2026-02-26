@@ -3,7 +3,6 @@ import importlib.util
 import os
 import types
 import time;
-from ros_bridge_client import write_topics_file
 
 
 Instr = Tuple[str, ...]
@@ -46,6 +45,7 @@ class VM:
 
         self.ros_bridge = None
         self.ros_topics_path = None
+        self.ros_topics = []
         self._publish_queue = []
 
     def attach_ros_bridge(self, bridge, topics_path: str | None = "ros_topics.txt", request_topics: bool = True):
@@ -182,11 +182,8 @@ class VM:
                 if topic:
                     self.sensor_cache[topic] = msg.get("msg")
             elif op == "topics":
-                if self.ros_topics_path:
-                    try:
-                        write_topics_file(self.ros_topics_path, msg.get("topics", []))
-                    except Exception as e:
-                        print(f"[ros] failed to write topics file: {e}")
+                topics = msg.get("topics", [])
+                self.ros_topics = topics if isinstance(topics, list) else []
             elif op == "error":
                 print(f"[ros] {msg.get('message')}")
 
@@ -213,9 +210,13 @@ class VM:
 
             #sense, think, act
             self.sense()
+            prev_pc = self.pc
             self.execute_one(debug)#RUN ONE INSTRUCTION
             self.act()
-            self.pc += 1
+            # Most instructions advance implicitly by falling through.
+            # Control-flow ops may set self.pc directly; in that case do not auto-increment.
+            if self.pc == prev_pc:
+                self.pc += 1
         
         if self.stack is not None and len(self.stack) > 0:
             raise VMError("VM halted prematurely. Final stack:", self.stack, "PC:", self.pc, " Code Length:", len(self.code))
@@ -522,6 +523,31 @@ class VM:
                 # Pop n values (last pushed first, so reverse to print in original order)
                 vals = [self.stack.pop() for _ in range(n)][::-1]
                 print(*vals)
+
+            case "PUBLISH":
+                if len(self.stack) < 3:
+                    raise VMError("PUBLISH requires topic, msg_type, and payload on stack")
+                payload = self.stack.pop()
+                msg_type = self.stack.pop()
+                topic = self.stack.pop()
+
+                if not isinstance(topic, str):
+                    raise VMError(f"publish topic must be string, got {type(topic).__name__}")
+                if not isinstance(msg_type, str):
+                    raise VMError(f"publish msg_type must be string, got {type(msg_type).__name__}")
+
+                self.queue_publish(topic, msg_type, payload)
+
+            case "WAIT":
+                if not self.stack:
+                    raise VMError("WAIT requires seconds on stack")
+                seconds = self.stack.pop()
+                if not isinstance(seconds, (int, float)):
+                    raise VMError(f"wait seconds must be numeric, got {type(seconds).__name__}")
+                seconds = float(seconds)
+                if seconds < 0:
+                    raise VMError("wait seconds must be non-negative")
+                time.sleep(seconds)
 
             case "JUMP":
                 self.pc = int(args[0])

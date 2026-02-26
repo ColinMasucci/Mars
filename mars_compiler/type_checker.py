@@ -23,6 +23,18 @@ class TypeChecker:
             mutable=False,
             info={"return": "void", "params": None}  # no type info for simplicity
         )
+        self._declare_symbol(
+            "publish",
+            "function",
+            mutable=False,
+            info={"return": "void", "params": ["string", "string", None]}
+        )
+        self._declare_symbol(
+            "wait",
+            "function",
+            mutable=False,
+            info={"return": "void", "params": ["float"]}
+        )
 
 
     def _type_from_python_obj(self, obj):
@@ -186,6 +198,9 @@ class TypeChecker:
         return UnitSpec(dims=base_spec.dims, scale=base_spec.scale, offset=0.0, expr=expr, affine=False)
 
     def _coerce_value_to_expected(self, expected_type, value_node, value_type, context):
+        if expected_type is None:
+            return value_node
+
         expected_info = self._numeric_type_info(expected_type)
         value_info = self._numeric_type_info(value_type)
 
