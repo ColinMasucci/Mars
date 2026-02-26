@@ -150,6 +150,10 @@ def compile_node(node, code: List[Instr]):
             if value is not None: # if there is an initializer expression
                 compile_node(value, code)
             else:
+                if getattr(node, "force_none_init", False):
+                    code.append(("PUSH_NONE",))
+                    code.append(("DECLARE", name, vartype, readonly))
+                    return
                 # -------- DEFAULT INITIALIZATION --------
 
                 # Add support for array types like "array<int>"
@@ -583,7 +587,7 @@ def compile_node(node, code: List[Instr]):
                 elif func.name == "update":
                     if len(args) != 0:
                         raise TypeError("update() takes no arguments")
-                    code.append(("UPDATE"))
+                    code.append(("UPDATE",))
                     code.append(("PUSH_NONE",))
                 else:
                     code.append(("CALL", func.name, len(args)))

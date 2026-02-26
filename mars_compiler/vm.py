@@ -47,6 +47,26 @@ class VM:
         self.ros_topics_path = None
         self.ros_topics = []
         self._publish_queue = []
+        self._subscription_specs = []
+        self._load_config_subscriptions()
+
+    def _load_config_subscriptions(self):
+        specs = []
+        seen = set()
+        for path, node in self.component_tree.get("nodes", {}).items():
+            for pname, sub in node.get("subscriptions", {}).items():
+                topic = sub.get("topic")
+                msg_type = sub.get("msg_type")
+                if not topic or not msg_type:
+                    continue
+                var_name = f"{path}.{pname}"
+                self.subscriptions[var_name] = topic
+                key = (topic, msg_type)
+                if key in seen:
+                    continue
+                seen.add(key)
+                specs.append({"name": topic, "type": msg_type})
+        self._subscription_specs = specs
 
     def attach_ros_bridge(self, bridge, topics_path: str | None = "ros_topics.txt", request_topics: bool = True):
         self.ros_bridge = bridge
@@ -56,9 +76,39 @@ class VM:
                 self.ros_bridge.request_topics()
             except Exception as e:
                 print(f"[ros] request_topics failed: {e}")
+        if self.ros_bridge and self._subscription_specs:
+            try:
+                self.ros_bridge.subscribe(self._subscription_specs)
+            except Exception as e:
+                print(f"[ros] subscribe setup failed: {e}")
 
     def queue_publish(self, topic: str, msg_type: str, msg: Any):
         self._publish_queue.append((topic, msg_type, msg))
+
+    def _wait_cooperative(self, seconds: float, tick: float = 0.01):
+        if seconds <= 0:
+            return
+        deadline = time.monotonic() + seconds
+        while True:
+            now = time.monotonic()
+            if now >= deadline:
+                break
+            # Keep message IO moving while waiting.
+            self.sense()
+            self.act()
+            remaining = deadline - now
+            time.sleep(min(tick, remaining))
+
+    def _apply_subscriptions(self):
+        for var, topic in self.subscriptions.items():
+            if topic in self.sensor_cache:
+                val = self.sensor_cache[topic]
+                if var in self.locals:
+                    old = self.locals[var]
+                    self.locals[var] = (val, old[1], old[2])
+                elif var in self.globals:
+                    old = self.globals[var]
+                    self.globals[var] = (val, old[1], old[2])
 
     def _component_is_a(self, child_type, parent_type):
         if child_type == parent_type:
@@ -547,7 +597,7 @@ class VM:
                 seconds = float(seconds)
                 if seconds < 0:
                     raise VMError("wait seconds must be non-negative")
-                time.sleep(seconds)
+                self._wait_cooperative(seconds)
 
             case "JUMP":
                 self.pc = int(args[0])
@@ -812,17 +862,7 @@ class VM:
                     raise VMError(f"Trying to index-assign into unsupported type {type(container).__name__}")
             
             case "UPDATE":
-                for var, topic in self.subscriptions.items():
-                    if topic in self.sensor_cache:
-                        val = self.sensor_cache[topic]
-
-                        # Preserve metadata (type, unit, etc)
-                        old = self.globals.get(var)
-
-                        if old is not None:
-                            self.globals[var] = (val, old[1], old[2])
-                        else:
-                            self.globals[var] = (val, None, None)
+                self._apply_subscriptions()
 
 
             case _:

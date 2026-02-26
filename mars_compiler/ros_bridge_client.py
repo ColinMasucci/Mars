@@ -1,3 +1,5 @@
+# How MARS connects to ROS bridge (ros_bridge.py) to send/receive messages and query topics.
+
 import json
 import select
 import socket

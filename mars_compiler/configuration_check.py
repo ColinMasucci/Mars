@@ -1,4 +1,5 @@
 import os
+import re
 
 from lexer import tokenize
 from parser import Parser
@@ -8,15 +9,37 @@ from component_validator import ComponentValidator, ComponentValidationError
 from component_visualizer import visualize_components
 from ast_nodes import ArrayAccess, ArrayLiteral, Assign, AugAssign, BinaryOp, Block, BooleanLiteral, Call, ComponentDef, DictLiteral, FuncDecl, If, MemberAccess, NumberLiteral, Program, RequirementExpr, RequirementFunction, RequirementParam, RequirementSpec, Return, StringLiteral, UnaryOp, UnitTag, Var, VarDecl, While, For
 
+_SUBSCRIBE_EXAMPLE = 'lidar = subscribe("/scan", "sensor_msgs/msg/LaserScan");'
 
-def precompile_config(config_dir: str, debug: bool = False):
+
+def _load_ros_topics_map(path: str | None) -> dict[str, str]:
+    if not path:
+        return {}
+    if not os.path.exists(path):
+        return {}
+    topics = {}
+    pat = re.compile(r"^(\S+)\s+\(([^)]+)\)")
+    with open(path, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            m = pat.match(line)
+            if not m:
+                continue
+            topics[m.group(1)] = m.group(2)
+    return topics
+
+
+def precompile_config(config_dir: str, debug: bool = False, ros_topics_file: str | None = None):
     """
     Parse and validate component config and prepare runtime metadata.
     Returns (registry, interfaces, comp_funcs, comp_params, component_tree, component_parents).
     """
     registry = ComponentRegistry()
     interfaces = load_marsc_files(config_dir, registry, debug=debug)
-    component_tree, component_parents = build_component_tree(registry, interfaces)
+    topics_map = _load_ros_topics_map(ros_topics_file)
+    component_tree, component_parents = build_component_tree(registry, interfaces, ros_topics_map=topics_map, ros_topics_file=ros_topics_file)
     comp_funcs, comp_params = build_component_runtime(registry, interfaces, component_tree)
     return registry, interfaces, comp_funcs, comp_params, component_tree, component_parents
 
@@ -57,10 +80,11 @@ def load_marsc_files(directory, registry, debug: bool = False):
     return {}
 
 
-def build_component_tree(registry, interfaces):
+def build_component_tree(registry, interfaces, ros_topics_map=None, ros_topics_file: str | None = None):
     component_parents = {name: comp.parent for name, comp in registry.components.items()}
     nodes = {}
     roots = []
+    ros_topics_map = ros_topics_map or {}
 
     def _eval_literal(node):
         if node is None:
@@ -106,6 +130,40 @@ def build_component_tree(registry, interfaces):
             parent = parent_def.parent
         return False
 
+    def _parse_subscribe(node, path, param_name):
+        if not isinstance(node, Call):
+            return None
+        if not isinstance(node.func, Var) or node.func.name != "subscribe":
+            return None
+        if len(node.args) != 2:
+            raise ComponentValidationError(
+                f"Invalid subscribe() in '{path}.{param_name}'. Expected subscribe(topic, msg_type). Example: {_SUBSCRIBE_EXAMPLE}"
+            )
+        topic_node, type_node = node.args
+        if not isinstance(topic_node, StringLiteral) or not isinstance(type_node, StringLiteral):
+            raise ComponentValidationError(
+                f"Invalid subscribe() in '{path}.{param_name}'. Topic and msg_type must be string literals. Example: {_SUBSCRIBE_EXAMPLE}"
+            )
+        topic = topic_node.value
+        msg_type = type_node.value
+        if not ros_topics_map:
+            raise ComponentValidationError(
+                f"Cannot validate subscribed topic '{topic}' for '{path}.{param_name}'. No ROS topics available at '{ros_topics_file or 'ros_topics.txt'}'. "
+                f"Example: {_SUBSCRIBE_EXAMPLE}"
+            )
+        discovered_type = ros_topics_map.get(topic)
+        if not discovered_type:
+            raise ComponentValidationError(
+                f"Invalid subscription topic '{topic}' for '{path}.{param_name}'. Topic not found in discovered ROS topics. "
+                f"Example: {_SUBSCRIBE_EXAMPLE}"
+            )
+        if discovered_type != msg_type:
+            raise ComponentValidationError(
+                f"Invalid subscription type for '{topic}' in '{path}.{param_name}'. Expected '{discovered_type}', got '{msg_type}'. "
+                f"Example: {_SUBSCRIBE_EXAMPLE}"
+            )
+        return {"topic": topic, "msg_type": msg_type}
+
     def _build_node(type_name, instance_name, parent_path, bindings, type_stack):
         comp_def = registry.get(type_name)
         if comp_def is None:
@@ -125,6 +183,14 @@ def build_component_tree(registry, interfaces):
             param_ast[bname] = bval
             param_values[bname] = _eval_literal(bval)
 
+        subscriptions = {}
+        for pname, pexpr in list(param_ast.items()):
+            sub = _parse_subscribe(pexpr, path, pname)
+            if sub:
+                subscriptions[pname] = sub
+                # Subscribed params are user-visible only after update(); default to None.
+                param_values[pname] = None
+
         node = {
             "name": instance_name,
             "type": type_name,
@@ -132,6 +198,7 @@ def build_component_tree(registry, interfaces):
             "params": param_values,
             "param_ast": param_ast,
             "param_types": param_types,
+            "subscriptions": subscriptions,
             "functions": set(interfaces.get(type_name, {}).get("funcs", {}).keys()),
             "subcomponents": {},
             "children": [],
@@ -1191,6 +1258,12 @@ def build_component_runtime(registry, interfaces, component_tree=None):
         for path, node in component_tree["nodes"].items():
             comp_params.append(VarDecl(node["type"], path, StringLiteral(path), True))
             for pname, ptype in node["param_types"].items():
+                is_subscription = pname in node.get("subscriptions", {})
+                if is_subscription:
+                    decl = VarDecl(ptype, f"{path}.{pname}", None, True)
+                    setattr(decl, "force_none_init", True)
+                    comp_params.append(decl)
+                    continue
                 pval = node["param_ast"].get(pname)
                 if pval is None:
                     pval = _literal_to_ast(node["params"].get(pname))

@@ -89,7 +89,12 @@ def _interpret(
     ros_bridge_pythonpath: str | None,
 ):
     # Precompile component configurations
-    _registry, interfaces, comp_funcs, comp_params, component_tree, component_parents = precompile_config(config_dir, debug=debug)
+    topics_path = ros_topics_file or os.environ.get("MARS_ROS_TOPICS_FILE", "ros_topics.txt")
+    _registry, interfaces, comp_funcs, comp_params, component_tree, component_parents = precompile_config(
+        config_dir,
+        debug=debug,
+        ros_topics_file=topics_path,
+    )
 
     # Tokenize -> Parse
     tokens = tokenize(code, printTokens=debug, source_path=source_path)

@@ -35,6 +35,12 @@ class TypeChecker:
             mutable=False,
             info={"return": "void", "params": ["float"]}
         )
+        self._declare_symbol(
+            "update",
+            "function",
+            mutable=False,
+            info={"return": "void", "params": []}
+        )
 
 
     def _type_from_python_obj(self, obj):
