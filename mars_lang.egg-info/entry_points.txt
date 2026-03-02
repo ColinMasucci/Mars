@@ -1,0 +1,2 @@
+[console_scripts]
+mars = mars_compiler.cli:main

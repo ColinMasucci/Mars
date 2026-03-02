@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 
-from source_errors import format_source_error
+from mars_compiler.source_errors import format_source_error
 
 @dataclass
 class Token:

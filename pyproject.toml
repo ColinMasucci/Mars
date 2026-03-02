@@ -1,0 +1,13 @@
+[project]
+name = "mars-lang"
+version = "0.1.0"
+description = "MARS robotics language and VM"
+requires-python = ">=3.10"
+
+dependencies = [
+    "graphviz==0.20.1",
+    "networkx==3.2.1",
+]
+
+[project.scripts]
+mars = "mars_compiler.cli:main"
