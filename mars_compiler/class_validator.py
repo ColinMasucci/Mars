@@ -1,4 +1,4 @@
-from ast_nodes import ClassDecl, FieldDecl, MethodDecl
+from mars_compiler.ast_nodes import ClassDecl, FieldDecl, MethodDecl
 
 
 class ClassValidationError(Exception):

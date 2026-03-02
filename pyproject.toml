@@ -9,5 +9,8 @@ dependencies = [
     "networkx==3.2.1",
 ]
 
+[tool.setuptools]
+packages = ["mars_compiler"]
+
 [project.scripts]
 mars = "mars_compiler.cli:main"

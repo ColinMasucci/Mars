@@ -1,13 +1,13 @@
 import os
 import re
 
-from lexer import tokenize
-from parser import Parser
-from type_checker import TypeChecker
-from component_registry import ComponentRegistry
-from component_validator import ComponentValidator, ComponentValidationError
-from component_visualizer import visualize_components
-from ast_nodes import ArrayAccess, ArrayLiteral, Assign, AugAssign, BinaryOp, Block, BooleanLiteral, Call, ComponentDef, DictLiteral, FuncDecl, If, MemberAccess, NumberLiteral, Program, RequirementExpr, RequirementFunction, RequirementParam, RequirementSpec, Return, StringLiteral, UnaryOp, UnitTag, Var, VarDecl, While, For
+from mars_compiler.lexer import tokenize
+from mars_compiler.parser import Parser
+from mars_compiler.type_checker import TypeChecker
+from mars_compiler.component_registry import ComponentRegistry
+from mars_compiler.component_validator import ComponentValidator, ComponentValidationError
+from mars_compiler.component_visualizer import visualize_components
+from mars_compiler.ast_nodes import ArrayAccess, ArrayLiteral, Assign, AugAssign, BinaryOp, Block, BooleanLiteral, Call, ComponentDef, DictLiteral, FuncDecl, If, MemberAccess, NumberLiteral, Program, RequirementExpr, RequirementFunction, RequirementParam, RequirementSpec, Return, StringLiteral, UnaryOp, UnitTag, Var, VarDecl, While, For
 
 _SUBSCRIBE_EXAMPLE = 'lidar = subscribe("/scan", "sensor_msgs/msg/LaserScan");'
 

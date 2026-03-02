@@ -41,6 +41,7 @@ Startup Windows (For just testing since we need the Linux for ROS bridge) [Run t
 
 
 
+
 Startup Linux, MAC, WSL [Run these in Bash]:
     chmod +x install.sh
     ./install.sh
