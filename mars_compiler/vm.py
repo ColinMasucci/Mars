@@ -129,6 +129,135 @@ class VM:
             vtype = f"component:{stype}" if stype else "component"
             self.locals[sname] = (spath, vtype, True)
 
+    def _normalize_runtime_type(self, typ):
+        if not isinstance(typ, str):
+            return typ
+        if typ.endswith("[]"):
+            return f"array<{self._normalize_runtime_type(typ[:-2])}>"
+        return typ
+
+    def _split_top_level_types(self, s: str):
+        parts = []
+        depth = 0
+        start = 0
+        for i, ch in enumerate(s):
+            if ch == "<":
+                depth += 1
+            elif ch == ">":
+                depth -= 1
+            elif ch == "," and depth == 0:
+                parts.append(s[start:i].strip())
+                start = i + 1
+        parts.append(s[start:].strip())
+        return parts
+
+    def _is_bool(self, val):
+        return type(val) is bool
+
+    def _is_int(self, val):
+        return type(val) is int and not isinstance(val, bool)
+
+    def _is_float(self, val):
+        return type(val) is float
+
+    def _runtime_type_name(self, val):
+        if isinstance(val, bool):
+            return "bool"
+        if isinstance(val, int) and not isinstance(val, bool):
+            return "int"
+        if isinstance(val, float):
+            return "float"
+        if isinstance(val, str):
+            node = self.component_tree.get("nodes", {}).get(val)
+            if node and node.get("type"):
+                return f"component:{node['type']}"
+            return "string"
+        if isinstance(val, list):
+            return "array"
+        if isinstance(val, dict):
+            if "__class__" in val:
+                return f"class:{val.get('__class__')}"
+            return "dict"
+        return type(val).__name__
+
+    def _runtime_type_check(self, val, expected_type, context="value"):
+        if expected_type is None or not isinstance(expected_type, str):
+            return
+        expected_type = self._normalize_runtime_type(expected_type)
+        if expected_type in ("dynamic", "any", "unknown", "module", "function"):
+            return
+
+        base_type = _strip_unit_type(expected_type)
+        if base_type in ("dynamic", "any", "unknown", "module", "function"):
+            return
+
+        if base_type == "void":
+            if val is not None:
+                raise VMError(f"Type mismatch for {context}: expected void, got {self._runtime_type_name(val)}")
+            return
+
+        if base_type == "bool":
+            if not self._is_bool(val):
+                raise VMError(f"Type mismatch for {context}: expected bool, got {self._runtime_type_name(val)}")
+            return
+
+        if base_type == "int":
+            if not self._is_int(val):
+                raise VMError(f"Type mismatch for {context}: expected int, got {self._runtime_type_name(val)}")
+            return
+
+        if base_type == "float":
+            if not (self._is_float(val) or self._is_int(val)):
+                raise VMError(f"Type mismatch for {context}: expected float, got {self._runtime_type_name(val)}")
+            return
+
+        if base_type == "string":
+            if not isinstance(val, str):
+                raise VMError(f"Type mismatch for {context}: expected string, got {self._runtime_type_name(val)}")
+            return
+
+        if base_type.startswith("array<") and base_type.endswith(">"):
+            if not isinstance(val, list):
+                raise VMError(f"Type mismatch for {context}: expected {base_type}, got {self._runtime_type_name(val)}")
+            inner = base_type[len("array<"):-1].strip()
+            for i, elem in enumerate(val):
+                self._runtime_type_check(elem, inner, f"{context}[{i}]")
+            return
+
+        if base_type.startswith("dict<") and base_type.endswith(">"):
+            if not isinstance(val, dict):
+                raise VMError(f"Type mismatch for {context}: expected {base_type}, got {self._runtime_type_name(val)}")
+            inside = base_type[len("dict<"):-1].strip()
+            parts = self._split_top_level_types(inside)
+            if len(parts) != 2:
+                raise VMError(f"Invalid dict type '{base_type}' in runtime check")
+            key_t, val_t = parts[0], parts[1]
+            for k, v in val.items():
+                self._runtime_type_check(k, key_t, f"{context} key")
+                self._runtime_type_check(v, val_t, f"{context}[{repr(k)}]")
+            return
+
+        if base_type.startswith("component:"):
+            expected_comp = base_type.split(":", 1)[1]
+            if not isinstance(val, str):
+                raise VMError(f"Type mismatch for {context}: expected {base_type}, got {self._runtime_type_name(val)}")
+            node = self.component_tree.get("nodes", {}).get(val)
+            if not node or "type" not in node:
+                raise VMError(f"Type mismatch for {context}: expected {base_type}, got {self._runtime_type_name(val)}")
+            actual_type = node.get("type")
+            if not self._component_is_a(actual_type, expected_comp):
+                raise VMError(f"Type mismatch for {context}: expected {base_type}, got component:{actual_type}")
+            return
+
+        if base_type.startswith("class:") or base_type in self.class_field_info:
+            expected_class = base_type.split(":", 1)[1] if base_type.startswith("class:") else base_type
+            if not isinstance(val, dict) or val.get("__class__") != expected_class:
+                raise VMError(f"Type mismatch for {context}: expected class:{expected_class}, got {self._runtime_type_name(val)}")
+            return
+
+        # Unknown type: skip runtime check to avoid breaking existing behavior
+        return
+
     def _call_user_function(self, func_name, arg_values, component_path=None):
         func_pc = None
         func_begin_idx = None
@@ -165,9 +294,10 @@ class VM:
                 val = float(val)
             elif base_type == "int" and type(val) is float:
                 val = int(val)
+            self._runtime_type_check(val, ptype, f"parameter '{name}'")
             self.locals[name] = (val, ptype or "unknown", False)
 
-        self.pc = func_pc + param_count
+        self.pc = func_pc + param_count - 1
 
 
     def sense(self):
@@ -365,7 +495,6 @@ class VM:
                 if func_pc is None:
                     # no ctor, just push object
                     self.stack.append(obj)
-                    self.pc += 1
                     return
                 param_count = int(self.code[func_begin_idx][2]) if len(self.code[func_begin_idx]) > 2 else 0
                 param_info = []
@@ -386,8 +515,9 @@ class VM:
                         val = float(val)
                     elif base_type == "int" and type(val) is float:
                         val = int(val)
+                    self._runtime_type_check(val, ptype, f"parameter '{name}'")
                     self.locals[name] = (val, ptype or "unknown", False)
-                self.pc = func_pc + param_count
+                self.pc = func_pc + param_count - 1
                 return
 
             case "GET_FIELD":
@@ -431,6 +561,8 @@ class VM:
                         val = float(val)
                     elif ftype == "int" and type(val) is float:
                         val = int(val)
+                    if ftype:
+                        self._runtime_type_check(val, ftype, f"field '{class_name}.{attr}'")
                 obj["__fields__"][attr] = val
 
             case "INC":
@@ -470,6 +602,7 @@ class VM:
                     val = float(val)
                 elif base_type == "int" and type(val) is float:
                     val = int(val)
+                self._runtime_type_check(val, vartype, f"variable '{name}'")
                 target = self.globals if not self.call_stack else self.locals
                 if name in target:
                     raise VMError(f"Variable '{name}' already declared")
@@ -489,6 +622,7 @@ class VM:
                     val = float(val)
                 elif base_type == "int" and type(val) is float:
                     val = int(val)
+                self._runtime_type_check(val, vartype, f"variable '{name}'")
                 target[name] = (val, vartype, readonly)
 
             case "LOAD":
@@ -496,16 +630,13 @@ class VM:
                 if name in self.locals:
                     val, _type, _ro = self.locals[name]
                     self.stack.append(val)
-                    self.pc += 1
                     return
                 if name in self.globals:
                     val, _type, _ro = self.globals[name]
                     self.stack.append(val)
-                    self.pc += 1
                     return
                 if name in self.component_tree.get("nodes", {}):
                     self.stack.append(name)
-                    self.pc += 1
                     return
                 if name not in self.locals:
                     raise VMError(f"Undefined variable '{name}'")
@@ -524,7 +655,7 @@ class VM:
                 print(*vals)
 
             case "JUMP":
-                self.pc = int(args[0])
+                self.pc = int(args[0]) - 1
                 return
 
             case "JUMP_IF_FALSE":
@@ -533,7 +664,7 @@ class VM:
                 if isinstance(cond, (int, float)):# Numbers collapse to bools
                     cond = cond != 0
                 if not cond:
-                    self.pc = target
+                    self.pc = target - 1
                     return
 
             case "HALT":
@@ -545,14 +676,16 @@ class VM:
                 module_name = args[0]
 
                 module_path = f"builtins/{module_name}.py"
-                if not os.path.exists(module_path):
+                tool_path = f"tools/{module_name}.py"
+                if not os.path.exists(module_path) and not os.path.exists(tool_path):
                     # Component or unknown import: skip at runtime
                     self.globals[f"{module_name}"] = (None, "module", False)
-                    self.pc += 1
                     return
                 if module_name in self._modules:
-                    self.pc += 1
                     return  # already imported
+
+                if not os.path.exists(module_path) and os.path.exists(tool_path):
+                    module_path = tool_path
 
                 spec = importlib.util.spec_from_file_location(module_name, module_path)
                 module = importlib.util.module_from_spec(spec)
@@ -624,7 +757,6 @@ class VM:
                         raise VMError(f"'{obj.__name__}.{method_name}' is not callable")
                     result = fn(*arg_values)
                     self.stack.append(result)
-                    self.pc += 1
                     return
                 if not isinstance(obj, dict) or "__class__" not in obj:
                     raise VMError("Method call on non-object")
@@ -662,8 +794,9 @@ class VM:
                         val = float(val)
                     elif base_type == "int" and type(val) is float:
                         val = int(val)
+                    self._runtime_type_check(val, ptype, f"parameter '{name}'")
                     self.locals[name] = (val, ptype or "unknown", False)
-                self.pc = func_pc + param_count
+                self.pc = func_pc + param_count - 1
                 return
 
 
@@ -684,6 +817,7 @@ class VM:
                     raise VMError("Return outside function")
 
                 self.pc, self.locals = self.call_stack.pop()
+                self.pc -= 1
                 self.stack.append(ret_val)
                 return
 

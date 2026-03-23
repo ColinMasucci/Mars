@@ -9,6 +9,7 @@ class TypeChecker:
         # Scopes: list of dicts, each dict: name -> { 'type': str or 'function', 'mutable': bool, 'info': dict }
         self.scopes = [{}]
         self._loaded_modules = {}  # cache loaded builtin modules
+        self.dynamic_modules = set()  # tool modules with dynamic typing
         self.function_return_stack = [] # stack of return types
         self.loop_depth = 0
         self.user_types = set()  # placeholder for user-defined types (classes, structs, enums, etc) - not implemented yet
@@ -186,6 +187,8 @@ class TypeChecker:
         return UnitSpec(dims=base_spec.dims, scale=base_spec.scale, offset=0.0, expr=expr, affine=False)
 
     def _coerce_value_to_expected(self, expected_type, value_node, value_type, context):
+        if expected_type == "dynamic" or value_type == "dynamic":
+            return value_node
         expected_info = self._numeric_type_info(expected_type)
         value_info = self._numeric_type_info(value_type)
 
@@ -303,6 +306,8 @@ class TypeChecker:
     # Compare two types for compatibility (including structured types) Ex. dict<int,string> and dict<int,string> are compatible, but dict<int,string> and dict<string,string> are not.
     def _types_compatible(self, a, b, allow_numeric_coercion=True):
         """Compare structured types like dict<K,V> and array<T>."""
+        if a == "dynamic" or b == "dynamic":
+            return True
         if a == b:
             return True
         a_info = self._numeric_type_info(a)
@@ -371,6 +376,8 @@ class TypeChecker:
         return typ
 
     def _binary_result_type(self, op, left_type, right_type):
+        if left_type == "dynamic" or right_type == "dynamic":
+            return "dynamic"
         # --- Arithmetic Operators ---
         if op in ("PLUS", "MINUS", "MUL", "DIV", "POW"):
             # --- Handle addition separately (since it can be string concat) ---
@@ -903,6 +910,8 @@ class TypeChecker:
             case BinaryOp(op, left, right):
                 left_type = self.check(left)
                 right_type = self.check(right)
+                if left_type == "dynamic" or right_type == "dynamic":
+                    return self._set_type(node, "dynamic")
 
                 # string concat falls back to base behavior
                 if op == "PLUS" and (left_type == "string" or right_type == "string"):
@@ -1016,10 +1025,14 @@ class TypeChecker:
             case UnaryOp(op, operand):
                 operand_type = self.check(operand)
                 if op == "NEGATE":  # prefix numeric negation
+                    if operand_type == "dynamic":
+                        return self._set_type(node, "dynamic")
                     if not self._numeric_type_info(operand_type):
                         raise TypeError(f"Unary '-' requires numeric type, got {operand_type}")
                     return self._set_type(node, operand_type)
                 if op == "BANG":   # logical NOT
+                    if operand_type == "dynamic":
+                        return self._set_type(node, "dynamic")
                     if operand_type != "bool":
                         raise TypeError(f"Unary '!' requires boolean type, got {operand_type}")
                     return self._set_type(node, "bool")
@@ -1028,6 +1041,8 @@ class TypeChecker:
                         raise TypeError(f"Unary '{op}' can only be applied to variables")
 
                     # must be int
+                    if operand_type == "dynamic":
+                        return self._set_type(node, "dynamic")
                     if operand_type != "int":
                         raise TypeError(f"Unary '{op}' requires int type, got {operand_type}")
 
@@ -1036,7 +1051,7 @@ class TypeChecker:
 
             case If(condition, then_branch, else_branch):
                 cond_type = self.check(condition)
-                if cond_type not in ("bool", "int", "float"):
+                if cond_type not in ("bool", "int", "float", "dynamic"):
                     raise TypeError(f"Condition must be boolean or numeric, got {cond_type}") # allow numeric conditions as truthy/falsy
                 self.check(then_branch)
                 if else_branch:
@@ -1044,7 +1059,7 @@ class TypeChecker:
 
             case While(condition, body):
                 cond_type = self.check(condition)
-                if cond_type not in ("bool", "int", "float"):
+                if cond_type not in ("bool", "int", "float", "dynamic"):
                     raise TypeError(f"Condition must be boolean or numeric, got {cond_type}") # allow numeric conditions as truthy/falsy
                 self.loop_depth += 1
                 try:
@@ -1059,7 +1074,7 @@ class TypeChecker:
                         self.check(init)
                     if condition is not None:
                         cond_type = self.check(condition)
-                        if cond_type not in ("bool", "int", "float"):
+                        if cond_type not in ("bool", "int", "float", "dynamic"):
                             raise TypeError(f"Condition must be boolean or numeric, got {cond_type}")
                     self.loop_depth += 1
                     try:
@@ -1077,6 +1092,8 @@ class TypeChecker:
                     return self._set_type(node, "array<any>")
                 # check types of all elements (must match)
                 elem_types = [self.check(e) for e in elements]
+                if "dynamic" in elem_types:
+                    return self._set_type(node, "array<dynamic>")
                 first = elem_types[0]
                 for t in elem_types[1:]:
                     if t != first:
@@ -1098,6 +1115,8 @@ class TypeChecker:
 
                 # All keys must match
                 first_key = key_types[0]
+                if "dynamic" in key_types or "dynamic" in value_types:
+                    return self._set_type(node, "dict<dynamic, dynamic>")
                 for k in key_types[1:]:
                     if k != first_key:
                         raise TypeError(f"Dictionary contains mixed key types: {first_key} and {k}")
@@ -1115,6 +1134,8 @@ class TypeChecker:
                 # check index and container types
                 idx_t = self.check(index_expr)
                 cont_t = self.check(container_expr)
+                if idx_t == "dynamic" or cont_t == "dynamic":
+                    return self._set_type(node, "dynamic")
 
                 # ARRAY ACCESS
                 if isinstance(cont_t, str) and cont_t.startswith("array<") and cont_t.endswith(">"):
@@ -1128,6 +1149,8 @@ class TypeChecker:
                     inside = cont_t[len("dict<"):-1]  # "keyType, valueType"
                     key_t, val_t = [x.strip() for x in inside.split(",")]
 
+                    if key_t == "dynamic" or val_t == "dynamic" or idx_t == "dynamic":
+                        return self._set_type(node, "dynamic")
                     if idx_t != key_t:
                         raise TypeError(f"Dictionary key must be {key_t}, got {idx_t}")
 
@@ -1185,6 +1208,9 @@ class TypeChecker:
                                     f"Argument type mismatch in call to '{func.name}'"
                                 )
                             return self._set_type(node, ret_type or "void")
+                        base_mod = func.name.split(".", 1)[0]
+                        if base_mod in self.dynamic_modules:
+                            return self._set_type(node, "dynamic")
                         return self._set_type(node, self._check_component_call(func.name, args, arg_types))
 
                     sym = self._lookup_symbol(func.name)
@@ -1275,6 +1301,12 @@ class TypeChecker:
                 else:
                     module_path = os.path.join("builtins", f"{module_name}.py")
                     if not os.path.exists(module_path):
+                        tool_path = os.path.join("tools", f"{module_name}.py")
+                        if os.path.exists(tool_path):
+                            self.dynamic_modules.add(module_name)
+                            if not self._lookup_symbol(module_name):
+                                self._declare_symbol(module_name, f"module_dynamic:{module_name}", mutable=False)
+                            return None
                         raise TypeError(f"Module '{module_name}' not found")
                     spec = importlib.util.spec_from_file_location(module_name, module_path)
                     mod = importlib.util.module_from_spec(spec)
@@ -1297,8 +1329,12 @@ class TypeChecker:
     def _check_method_call(self, member_access, args, arg_types):
         # resolve object type
         obj_type = self.check(member_access.obj)
+        if obj_type == "dynamic":
+            return "dynamic"
         if isinstance(obj_type, str) and obj_type in self.class_interfaces:
             obj_type = f"class:{obj_type}"
+        if isinstance(obj_type, str) and obj_type.startswith("module_dynamic:"):
+            return "dynamic"
         if isinstance(obj_type, str) and obj_type.startswith("module:"):
             module_name = obj_type.split(":", 1)[1]
             sym = self._lookup_symbol(f"{module_name}.{member_access.attr}")
@@ -1345,6 +1381,10 @@ class TypeChecker:
         return meth.get("return") or "void"
 
     def _resolve_member_access(self, obj_type, attr):
+        if obj_type == "dynamic":
+            return "dynamic"
+        if obj_type.startswith("module_dynamic:"):
+            return "dynamic"
         if obj_type.startswith("module:"):
             module_name = obj_type.split(":", 1)[1]
             sym = self._lookup_symbol(f"{module_name}.{attr}")
