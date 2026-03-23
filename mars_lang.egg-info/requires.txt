@@ -1,0 +1,2 @@
+graphviz==0.20.1
+networkx==3.2.1

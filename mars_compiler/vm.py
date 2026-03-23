@@ -3,7 +3,6 @@ import importlib.util
 import os
 import types
 import time;
-from ros_bridge_client import write_topics_file
 
 
 Instr = Tuple[str, ...]
@@ -46,7 +45,28 @@ class VM:
 
         self.ros_bridge = None
         self.ros_topics_path = None
+        self.ros_topics = []
         self._publish_queue = []
+        self._subscription_specs = []
+        self._load_config_subscriptions()
+
+    def _load_config_subscriptions(self):
+        specs = []
+        seen = set()
+        for path, node in self.component_tree.get("nodes", {}).items():
+            for pname, sub in node.get("subscriptions", {}).items():
+                topic = sub.get("topic")
+                msg_type = sub.get("msg_type")
+                if not topic or not msg_type:
+                    continue
+                var_name = f"{path}.{pname}"
+                self.subscriptions[var_name] = topic
+                key = (topic, msg_type)
+                if key in seen:
+                    continue
+                seen.add(key)
+                specs.append({"name": topic, "type": msg_type})
+        self._subscription_specs = specs
 
     def attach_ros_bridge(self, bridge, topics_path: str | None = "ros_topics.txt", request_topics: bool = True):
         self.ros_bridge = bridge
@@ -56,9 +76,39 @@ class VM:
                 self.ros_bridge.request_topics()
             except Exception as e:
                 print(f"[ros] request_topics failed: {e}")
+        if self.ros_bridge and self._subscription_specs:
+            try:
+                self.ros_bridge.subscribe(self._subscription_specs)
+            except Exception as e:
+                print(f"[ros] subscribe setup failed: {e}")
 
     def queue_publish(self, topic: str, msg_type: str, msg: Any):
         self._publish_queue.append((topic, msg_type, msg))
+
+    def _wait_cooperative(self, seconds: float, tick: float = 0.01):
+        if seconds <= 0:
+            return
+        deadline = time.monotonic() + seconds
+        while True:
+            now = time.monotonic()
+            if now >= deadline:
+                break
+            # Keep message IO moving while waiting.
+            self.sense()
+            self.act()
+            remaining = deadline - now
+            time.sleep(min(tick, remaining))
+
+    def _apply_subscriptions(self):
+        for var, topic in self.subscriptions.items():
+            if topic in self.sensor_cache:
+                val = self.sensor_cache[topic]
+                if var in self.locals:
+                    old = self.locals[var]
+                    self.locals[var] = (val, old[1], old[2])
+                elif var in self.globals:
+                    old = self.globals[var]
+                    self.globals[var] = (val, old[1], old[2])
 
     def _component_is_a(self, child_type, parent_type):
         if child_type == parent_type:
@@ -312,11 +362,8 @@ class VM:
                 if topic:
                     self.sensor_cache[topic] = msg.get("msg")
             elif op == "topics":
-                if self.ros_topics_path:
-                    try:
-                        write_topics_file(self.ros_topics_path, msg.get("topics", []))
-                    except Exception as e:
-                        print(f"[ros] failed to write topics file: {e}")
+                topics = msg.get("topics", [])
+                self.ros_topics = topics if isinstance(topics, list) else []
             elif op == "error":
                 print(f"[ros] {msg.get('message')}")
 
@@ -343,9 +390,13 @@ class VM:
 
             #sense, think, act
             self.sense()
+            prev_pc = self.pc
             self.execute_one(debug)#RUN ONE INSTRUCTION
             self.act()
-            self.pc += 1
+            # Most instructions advance implicitly by falling through.
+            # Control-flow ops may set self.pc directly; in that case do not auto-increment.
+            if self.pc == prev_pc:
+                self.pc += 1
         
         if self.stack is not None and len(self.stack) > 0:
             raise VMError("VM halted prematurely. Final stack:", self.stack, "PC:", self.pc, " Code Length:", len(self.code))
@@ -654,6 +705,31 @@ class VM:
                 vals = [self.stack.pop() for _ in range(n)][::-1]
                 print(*vals)
 
+            case "PUBLISH":
+                if len(self.stack) < 3:
+                    raise VMError("PUBLISH requires topic, msg_type, and payload on stack")
+                payload = self.stack.pop()
+                msg_type = self.stack.pop()
+                topic = self.stack.pop()
+
+                if not isinstance(topic, str):
+                    raise VMError(f"publish topic must be string, got {type(topic).__name__}")
+                if not isinstance(msg_type, str):
+                    raise VMError(f"publish msg_type must be string, got {type(msg_type).__name__}")
+
+                self.queue_publish(topic, msg_type, payload)
+
+            case "WAIT":
+                if not self.stack:
+                    raise VMError("WAIT requires seconds on stack")
+                seconds = self.stack.pop()
+                if not isinstance(seconds, (int, float)):
+                    raise VMError(f"wait seconds must be numeric, got {type(seconds).__name__}")
+                seconds = float(seconds)
+                if seconds < 0:
+                    raise VMError("wait seconds must be non-negative")
+                self._wait_cooperative(seconds)
+
             case "JUMP":
                 self.pc = int(args[0]) - 1
                 return
@@ -920,17 +996,7 @@ class VM:
                     raise VMError(f"Trying to index-assign into unsupported type {type(container).__name__}")
             
             case "UPDATE":
-                for var, topic in self.subscriptions.items():
-                    if topic in self.sensor_cache:
-                        val = self.sensor_cache[topic]
-
-                        # Preserve metadata (type, unit, etc)
-                        old = self.globals.get(var)
-
-                        if old is not None:
-                            self.globals[var] = (val, old[1], old[2])
-                        else:
-                            self.globals[var] = (val, None, None)
+                self._apply_subscriptions()
 
 
             case _:

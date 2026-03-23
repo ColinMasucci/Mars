@@ -25,3 +25,26 @@ TODO:
 
     TODO: GET RID OF THE COMPILER ACCESS FOR USERS 
         and update documentation accordingly
+
+
+
+
+    
+Startup Windows (For just testing since we need the Linux for ROS bridge) [Run these in PowerShell]: 
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+    .\install.ps1
+    .venv\Scripts\Activate.ps1
+    mars
+    mars run test_file.mars
+
+(Line03) Activation just switches your terminal into the project’s Python environment; install sets it up, activation selects it. The install script already does this however once the script ends activation does not persist. So we reactivate.
+
+
+
+
+Startup Linux, MAC, WSL [Run these in Bash]:
+    chmod +x install.sh
+    ./install.sh
+    source .venv/bin/activate
+    mars
+    mars run test_file.mars

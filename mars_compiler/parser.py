@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 
-from ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, FuncDecl, Return, Break, Continue, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction, RequirementExpr, Step
-from source_errors import format_source_error
+from mars_compiler.ast_nodes import ArrayAccess, ArrayLiteral, DictLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, FuncDecl, Return, Break, Continue, ComponentDef, SubcomponentDecl, ClassDecl, FieldDecl, MethodDecl, MemberAccess, RequirementSpec, RequirementParam, RequirementFunction, RequirementExpr, Step
+from mars_compiler.source_errors import format_source_error
 
 ROLE_PREFIX = "prefix"
 ROLE_POSTFIX = "postfix"

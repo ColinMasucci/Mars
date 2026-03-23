@@ -1,7 +1,9 @@
-from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, Return, Break, Continue, FuncDecl, MemberAccess, ClassDecl
-from units import parse_unit_expr, canonical_name, UnitSpec
 import os
 import importlib.util
+
+from mars_compiler.ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, Return, Break, Continue, FuncDecl, MemberAccess, ClassDecl
+from mars_compiler.units import parse_unit_expr, canonical_name, UnitSpec
+
 
 
 class TypeChecker:
@@ -23,6 +25,24 @@ class TypeChecker:
             "function",
             mutable=False,
             info={"return": "void", "params": None}  # no type info for simplicity
+        )
+        self._declare_symbol(
+            "publish",
+            "function",
+            mutable=False,
+            info={"return": "void", "params": ["string", "string", None]}
+        )
+        self._declare_symbol(
+            "wait",
+            "function",
+            mutable=False,
+            info={"return": "void", "params": ["float"]}
+        )
+        self._declare_symbol(
+            "update",
+            "function",
+            mutable=False,
+            info={"return": "void", "params": []}
         )
 
 

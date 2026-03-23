@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: mars-lang
+Version: 0.1.0
+Summary: MARS robotics language and VM
+Requires-Python: >=3.10
+Requires-Dist: graphviz==0.20.1
+Requires-Dist: networkx==3.2.1

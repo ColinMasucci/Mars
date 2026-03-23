@@ -1,7 +1,8 @@
 import os
 import importlib.util
 from typing import List, Tuple
-import ast_nodes as ast
+
+import mars_compiler.ast_nodes as ast
 
 
 Instr = Tuple[str, ...] # instruction is a tuple of strings and then somtimes numbers. (Ex. ("PUSH_INT", 42) or ("ADD",) )
@@ -150,6 +151,10 @@ def compile_node(node, code: List[Instr]):
             if value is not None: # if there is an initializer expression
                 compile_node(value, code)
             else:
+                if getattr(node, "force_none_init", False):
+                    code.append(("PUSH_NONE",))
+                    code.append(("DECLARE", name, vartype, readonly))
+                    return
                 # -------- DEFAULT INITIALIZATION --------
 
                 # Add support for array types like "array<int>"
@@ -570,10 +575,20 @@ def compile_node(node, code: List[Instr]):
                 if func.name == "print":
                     code.append(("PRINT", len(args)))
                     code.append(("PUSH_NONE",))
+                elif func.name == "publish":
+                    if len(args) != 3:
+                        raise TypeError("publish() takes exactly 3 arguments: topic, msg_type, payload")
+                    code.append(("PUBLISH",))
+                    code.append(("PUSH_NONE",))
+                elif func.name == "wait":
+                    if len(args) != 1:
+                        raise TypeError("wait() takes exactly 1 argument: seconds")
+                    code.append(("WAIT",))
+                    code.append(("PUSH_NONE",))
                 elif func.name == "update":
                     if len(args) != 0:
                         raise TypeError("update() takes no arguments")
-                    code.append(("UPDATE"))
+                    code.append(("UPDATE",))
                     code.append(("PUSH_NONE",))
                 else:
                     code.append(("CALL", func.name, len(args)))

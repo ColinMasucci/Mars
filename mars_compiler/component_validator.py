@@ -1,5 +1,3 @@
-from ast_nodes import ComponentDef
-
 
 class ComponentValidationError(Exception):
     pass
@@ -13,7 +11,7 @@ class ComponentValidator:
     """
 
     def __init__(self, components):
-        # Map name -> ComponentDef
+        # Map name -> ast_nodes.ComponentDef
         self.components = {c.name: c for c in components}
         if len(self.components) != len(components):
             raise ComponentValidationError("Duplicate component names found")
