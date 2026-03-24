@@ -1,3 +1,11 @@
+---
+id: index
+title: Compiler Internals
+sidebar_label: Compiler Internals
+slug: /compiler-internals
+---
+import DocCardList from '@theme/DocCardList';
+
 # Compiler Internals
 
 ## Pipeline
@@ -21,3 +29,8 @@
 - New syntax
 - New built-ins
 - New VM opcodes
+
+
+## Sections
+
+<DocCardList />
