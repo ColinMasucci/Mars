@@ -1,3 +1,10 @@
+---
+id: index
+title: Compiler Internals
+sidebar_label: Compiler Internals
+slug: /compiler-internals
+---
+
 # Compiler Internals
 
 ## Pipeline

@@ -1,3 +1,5 @@
+
+
 # MARS Documentation
 
 This folder is the starting point for MARS language and compiler documentation.
@@ -12,4 +14,4 @@ This folder is the starting point for MARS language and compiler documentation.
 7. [stdlib](stdlib.md)
 8. [Tooling](tooling.md)
 9. [Errors](errors.md)
-10. [Compiler Internals](compiler-internals.md)
+10. [Compiler Internals](compiler-internals/index.md)
