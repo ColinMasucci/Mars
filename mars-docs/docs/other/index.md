@@ -1,8 +1,8 @@
 ---
-id: other
+id: index
 title: Other
-slug: /other
 ---
+import DocCardList from '@theme/DocCardList';
 
 # Other
 
@@ -10,6 +10,4 @@ Additional tools and resources.
 
 ## Sections
 
-- [Tooling](./tooling)
-- [Errors](./errors)
-- [Basic Bridge Test](./basic_bridge_test)
+<DocCardList />
