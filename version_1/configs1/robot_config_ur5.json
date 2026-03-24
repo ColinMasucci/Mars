@@ -1,8 +1,0 @@
-{
-  "robot": {
-    "type": "ur5",
-    "vendor_config": "configs/ur5_vendor.json",
-    "ip": "192.168.0.2",
-    "tool": "parallel_gripper"
-  }
-}

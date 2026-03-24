@@ -1,0 +1,34 @@
+{
+  "tests": [
+    {
+      "name": "sqrt",
+      "code": "import math; print(math.sqrt(9.0));",
+      "expect": "3.0"
+    },
+    {
+      "name": "sin",
+      "code": "import math; print(math.sin(0.0));",
+      "expect": "0.0"
+    },
+    {
+      "name": "constants PI",
+      "code": "import math; print(math.PI);",
+      "expect": "3.141592653589793"
+    },
+    {
+      "name": "min_val",
+      "code": "import math; print(math.min_val(1.0, 9.0));",
+      "expect": "1.0"
+    },
+    {
+      "name": "min_val with multiple values",
+      "code_disabled": "import math; print(math.min_val(5.0, 1.0, 9.0));",
+      "expect": "1.0"
+    },
+    {
+      "name": "atan2",
+      "code": "import math; print(math.atan2(1.0, 1.0));",
+      "expect": "0.7853981633974483"
+    }
+  ]
+}

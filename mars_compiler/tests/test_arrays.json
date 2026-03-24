@@ -1,0 +1,26 @@
+{
+    "tests": [
+        {
+            "name": "simple array literal",
+            "code": "int[] a = [1,2,3]; print(a[1]);",
+            "expect": "2"
+        },
+
+        {
+            "name": "array assignment",
+            "code": "int[] a = [5,5]; a[0] = 9; print(a[0]);",
+            "expect": "9"
+        },
+        {
+            "name": "array compound assignment",
+            "code": "int[] a = [5,5]; a[0] += 4; print(a[0]);",
+            "expect": "9"
+        },
+
+        {
+            "name": "type error test",
+            "code": "int[] a = [1,2,3]; a[0] = true;",
+            "error": "Type mismatch assigning to array element: expected int, got bool"
+        }
+    ]
+}

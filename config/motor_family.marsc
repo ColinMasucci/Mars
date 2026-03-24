@@ -1,0 +1,55 @@
+component Motor {
+    subcomponents{}
+    parameters{}
+    functions{
+        void spin(int speed);
+    }
+}
+
+component BrushlessMotor extends Motor {
+    subcomponents{}
+    parameters{
+        int direction;
+        int port;
+    }
+    functions{
+        void spin(int speed){
+            # empty implementation for now
+        }
+    }
+}
+
+component BrandMotor extends BrushlessMotor {
+    subcomponents{}
+    parameters{
+        float maxRPM = 11;
+    }
+    functions{
+        void spin(int speed){
+            if (speed > 5) {
+                print("we fast");
+            } else {
+                print("we no fast");
+            }
+        }
+    }
+}
+
+component DifferentialChassisSample extends Chassis {
+    subcomponents{
+        BrandMotor leftMotor(direction = 1, port = 1);
+        BrandMotor rightMotor(direction = -1, port = 2);
+    }
+    parameters{}
+    functions{
+        void drive(int speed){
+            print(leftMotor.direction);
+            print(leftMotor.port);
+            print(rightMotor.direction);
+            print(rightMotor.port);
+            leftMotor.spin(speed);
+            rightMotor.spin(speed);
+        }
+    }
+}
+

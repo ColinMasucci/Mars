@@ -1,0 +1,57 @@
+import math;
+
+class FK{
+
+    requirements {
+        #WheeledChassis;
+    }
+
+    Chassis chassis;
+    float[] pose = [0, 0, 0];
+
+    FK(Robot robot){
+        chassis = robot.match(Chassis);
+    }
+
+    # Set pose in world frame (x, y, heading)
+    void setPose(float x, float y, float theta) {
+        pose[0] = x;
+        pose[1] = y;
+        pose[2] = theta;
+    }
+
+    # Read current pose in world frame.
+    float[] getPose() {
+        return pose;
+    }
+
+    # Integrate pose using robot-frame velocities over dt
+    void stepFK(float dt) {
+        float[] velocities = chassis.getVelocities();
+        float vx = velocities[0];
+        float vy = velocities[1];
+        float omega = velocities[2];
+
+        float theta = pose[2];
+        float cos_t = math.cos(theta);
+        float sin_t = math.sin(theta);
+        
+
+        float dx = (vx * cos_t - vy * sin_t) * dt;
+        float dy = (vx * sin_t + vy * cos_t) * dt;
+
+        pose[0] = pose[0] + dx;
+        pose[1] = pose[1] + dy;
+        pose[2] = pose[2] + omega * dt;
+
+        # set angle range to [0, 2pi]
+        float two_pi = math.PI * 2;
+        while (pose[2] < 0) {
+            pose[2] = pose[2] + two_pi;
+        }
+        while (pose[2] >= two_pi) {
+            pose[2] = pose[2] - two_pi;
+        }
+    }
+    
+}

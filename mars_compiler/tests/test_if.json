@@ -1,0 +1,19 @@
+{
+  "tests": [
+    {
+      "name": "simple if",
+      "code": "int x = 5; if (x > 3) { print(1); } else { print(0); }",
+      "expect": "1"
+    },
+    {
+      "name": "if else",
+      "code": "int x = 1; if (x > 3) { print(1); } else { print(99); }",
+      "expect": "99"
+    },
+    {
+      "name": "nested if",
+      "code": "int x = 10; if (x > 3) { if (x < 20) { print(7); } }",
+      "expect": "7"
+    }
+  ]
+}

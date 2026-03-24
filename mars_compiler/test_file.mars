@@ -1,0 +1,20 @@
+import demo_tools;
+
+int total = demo_tools.add(2, 3);
+print("Total: " + total);
+
+string msg = demo_tools.greet("mars");
+print("Message: " + msg);
+
+int[] nums = demo_tools.ints();
+print("Numbers: " + nums);
+
+dict<string,int> counts = demo_tools.counts();
+print("Counts: " + counts);
+
+# Uncomment to see runtime type errors:
+#int bad = demo_tools.greet("mars");
+#int[] bad_nums = demo_tools.bad_numbers();
+
+
+

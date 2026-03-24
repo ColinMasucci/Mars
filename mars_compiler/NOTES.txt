@@ -1,0 +1,50 @@
+#scope is done with a stack of dictionaries done after the AST generation
+
+TODO:
+    #methods
+    #arrays
+    hashmaps
+    #classes
+    scope
+    #multifile support
+    better error handling
+    external packages
+    change colors of our language (Text Mate, LSP Language Server Protocol)
+
+    #use constants instead of strings for the role in shunting yard
+    templates and generics for array
+
+    # add ! to requirements
+
+    add command to comment out lines correctly
+
+    if expect_operand:  #Error in parser. 2 repeated if statements that say the same thing. (around line 438)
+
+    Component implementation check failed:
+        why is it not flagging for parameters?
+
+    TODO: GET RID OF THE COMPILER ACCESS FOR USERS 
+        and update documentation accordingly
+
+
+
+
+    
+Startup Windows (For just testing since we need the Linux for ROS bridge) [Run these in PowerShell]: 
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+    .\install.ps1
+    .venv\Scripts\Activate.ps1
+    mars
+    mars run test_file.mars
+
+(Line03) Activation just switches your terminal into the project’s Python environment; install sets it up, activation selects it. The install script already does this however once the script ends activation does not persist. So we reactivate.
+
+
+
+
+Startup Linux, MAC, WSL [Run these in Bash]:
+    chmod +x install.sh
+    ./install.sh
+    source .venv/bin/activate
+    mars
+    mars run test_file.mars

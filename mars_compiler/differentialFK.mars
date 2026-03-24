@@ -1,0 +1,43 @@
+import math;
+class DifferentialFK{
+
+    requirements {
+        DifferentialChassis(
+            subcomponents=BrandMotor(
+                parameters=[maxRPM < 20 && maxRPM > 10, 
+                optional minRPM > 3]
+                ));
+        optional !IMU;
+    }
+
+    DifferentialChassis chassis;
+    float[] position = [0, 0];
+
+    DifferentialFK(Robot robot){
+        DifferentialChassis chassis = robot.match(DifferentialChassis);
+    }
+
+
+
+    void updatePosition(float x, float y) {
+        this.position[0] = this.position[0] + x;
+        this.position[1] = this.position[1] + y;
+    }
+
+    float[] getPosition() {
+        return this.position;
+    }
+
+
+    void fuckComponents(){
+        int i = 0;
+        while(true){
+            i++;
+            print(i);
+            if(i<0){
+                return;
+            }
+        }
+    }
+    
+}
