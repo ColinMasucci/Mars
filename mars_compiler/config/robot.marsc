@@ -1,0 +1,23 @@
+### KHEPERA ###
+component Khepera extends Robot {
+    subcomponents{
+        #KheperaChassis chassis;
+    }
+    parameters{}
+    functions{}
+}
+
+component KheperaChassis extends DifferentialChassis {
+
+}
+
+
+### AWSRACER ###
+component AWSRacer extends Robot {
+
+    subcomponents{
+        #DifferentialChassis chassis;
+    }
+    parameters{}
+    functions{}
+}

@@ -347,7 +347,7 @@ class VM:
             self._runtime_type_check(val, ptype, f"parameter '{name}'")
             self.locals[name] = (val, ptype or "unknown", False)
 
-        self.pc = func_pc + param_count - 1
+        self.pc = func_pc + param_count #- 1
 
 
     def sense(self):
@@ -568,7 +568,7 @@ class VM:
                         val = int(val)
                     self._runtime_type_check(val, ptype, f"parameter '{name}'")
                     self.locals[name] = (val, ptype or "unknown", False)
-                self.pc = func_pc + param_count - 1
+                self.pc = func_pc + param_count #- 1
                 return
 
             case "GET_FIELD":
@@ -731,7 +731,7 @@ class VM:
                 self._wait_cooperative(seconds)
 
             case "JUMP":
-                self.pc = int(args[0]) - 1
+                self.pc = int(args[0]) #- 1
                 return
 
             case "JUMP_IF_FALSE":
@@ -740,7 +740,7 @@ class VM:
                 if isinstance(cond, (int, float)):# Numbers collapse to bools
                     cond = cond != 0
                 if not cond:
-                    self.pc = target - 1
+                    self.pc = target #- 1
                     return
 
             case "HALT":
@@ -872,7 +872,7 @@ class VM:
                         val = int(val)
                     self._runtime_type_check(val, ptype, f"parameter '{name}'")
                     self.locals[name] = (val, ptype or "unknown", False)
-                self.pc = func_pc + param_count - 1
+                self.pc = func_pc + param_count #- 1
                 return
 
 

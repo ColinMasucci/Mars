@@ -1,0 +1,28 @@
+/*
+component myRobot extends Robot {
+    subcomponents{
+        DifferentialChassisSample myChassis;
+    }
+    parameters{
+        float height = 5;
+        bool flying = false;
+    }
+    functions{}
+}
+
+component myOtherRobot extends Robot {
+    subcomponents{
+
+    }
+    parameters{
+        float height = 5;
+        bool flying = false;
+    }
+    functions{
+    }
+}
+*/
+
+
+
+

@@ -5,15 +5,15 @@ import subprocess
 import sys
 import time
 
-from mars_compiler.lexer import tokenize  # tokenizer from lexer.py
-from mars_compiler.parser import Parser  # parser from parser.py
-from mars_compiler.type_checker import TypeChecker  # type checker from type_checker.py
-from mars_compiler.bytecodegen import compile_program  # bytecode generator from bytecodegen.py
-from mars_compiler.vm import VM  # the stack-based virtual machine from vm.py
-from mars_compiler.configuration_check import precompile_config, validate_instantiated_component_functions, validate_instantiated_requirements
-from mars_compiler.class_validator import ClassValidator
-from mars_compiler.ast_nodes import FuncDecl, Return, Block, Var, Assign, MemberAccess, Import
-from mars_compiler.ast_visualizer import visualize  # for visualizing the AST
+from lexer import tokenize  # tokenizer from lexer.py
+from parser import Parser  # parser from parser.py
+from type_checker import TypeChecker  # type checker from type_checker.py
+from bytecodegen import compile_program  # bytecode generator from bytecodegen.py
+from vm import VM  # the stack-based virtual machine from vm.py
+from configuration_check import precompile_config, validate_instantiated_component_functions, validate_instantiated_requirements
+from class_validator import ClassValidator
+from ast_nodes import FuncDecl, Return, Block, Var, Assign, MemberAccess, Import
+from ast_visualizer import visualize  # for visualizing the AST
 
 
 def interpret_code_from_file(
@@ -187,10 +187,10 @@ def _interpret(
     try:
         if capture_output:
             with _capture_stdout() as buf:
-                vm.run()
+                vm.run(debug=debug)
             return buf.getvalue()
 
-        vm.run()
+        vm.run(debug=debug)
         return None
     finally:
         if bridge_proc:

@@ -1,6 +1,6 @@
 import argparse
 
-from mars_compiler.interpreter import interpret_code_from_file
+from interpreter import interpret_code_from_file
 
 
 def main():

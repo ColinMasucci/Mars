@@ -1,20 +1,14 @@
-import demo_tools;
+import motor_driver;
 
-int total = demo_tools.add(2, 3);
-print("Total: " + total);
+motor_driver.init(17, 18, 22);
 
-string msg = demo_tools.greet("mars");
-print("Message: " + msg);
+float pow = -1;
+while (pow <= 1) {
+    print("power: " + pow);
+    motor_driver.drive(17, 18, 22, pow);
+    motor_driver.wait(3);
+    pow += 0.5;
+}
 
-int[] nums = demo_tools.ints();
-print("Numbers: " + nums);
-
-dict<string,int> counts = demo_tools.counts();
-print("Counts: " + counts);
-
-# Uncomment to see runtime type errors:
-#int bad = demo_tools.greet("mars");
-#int[] bad_nums = demo_tools.bad_numbers();
-
-
+motor_driver.stop(17, 18, 22);
 
