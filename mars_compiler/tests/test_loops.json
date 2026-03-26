@@ -11,6 +11,11 @@
       "expect": "3"
     },
     {
+      "name": "for loop block locals are released each iteration",
+      "code": "int s = 0; for (int i = 0; i < 3; i += 1) { float throttle = 2.0; s += throttle; } print(s);",
+      "expect": "6"
+    },
+    {
       "name": "break in loop",
       "code_disabled": "int i = 0; int s = 0; while (true) { if (i == 4) { break; } s = s + i; i = i + 1; } print(s);",
       "expect": "6"

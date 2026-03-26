@@ -29,6 +29,16 @@
       "name": "atan2",
       "code": "import math; print(math.atan2(1.0, 1.0));",
       "expect": "0.7853981633974483"
+    },
+    {
+      "name": "modulus int",
+      "code": "print(10 % 3);",
+      "expect": "1"
+    },
+    {
+      "name": "modulus assign",
+      "code": "int x = 10; x %= 4; print(x);",
+      "expect": "2"
     }
   ]
 }

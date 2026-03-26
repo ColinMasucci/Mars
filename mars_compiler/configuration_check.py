@@ -151,7 +151,20 @@ def build_component_tree(registry, interfaces, ros_topics_map=None, ros_topics_f
                 f"Cannot validate subscribed topic '{topic}' for '{path}.{param_name}'. No ROS topics available at '{ros_topics_file or 'ros_topics.txt'}'. "
                 f"Example: {_SUBSCRIBE_EXAMPLE}"
             )
-        discovered_type = ros_topics_map.get(topic)
+        resolved_topic = topic
+        field_path = []
+        discovered_type = ros_topics_map.get(resolved_topic)
+        if not discovered_type:
+            parts = topic.split("/")
+            for idx in range(len(parts) - 1, 1, -1):
+                candidate = "/".join(parts[:idx])
+                if not candidate:
+                    continue
+                discovered_type = ros_topics_map.get(candidate)
+                if discovered_type:
+                    resolved_topic = candidate
+                    field_path = parts[idx:]
+                    break
         if not discovered_type:
             raise ComponentValidationError(
                 f"Invalid subscription topic '{topic}' for '{path}.{param_name}'. Topic not found in discovered ROS topics. "
@@ -162,7 +175,7 @@ def build_component_tree(registry, interfaces, ros_topics_map=None, ros_topics_f
                 f"Invalid subscription type for '{topic}' in '{path}.{param_name}'. Expected '{discovered_type}', got '{msg_type}'. "
                 f"Example: {_SUBSCRIBE_EXAMPLE}"
             )
-        return {"topic": topic, "msg_type": msg_type}
+        return {"topic": resolved_topic, "msg_type": msg_type, "field_path": field_path}
 
     def _build_node(type_name, instance_name, parent_path, bindings, type_stack):
         comp_def = registry.get(type_name)

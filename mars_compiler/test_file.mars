@@ -1,14 +1,7 @@
-import motor_driver;
+int i = 0;
+while(true){
+    print("IMU dw: " + AWSRacer.vz);
+    update();
 
-motor_driver.init(17, 18, 22);
 
-float pow = -1;
-while (pow <= 1) {
-    print("power: " + pow);
-    motor_driver.drive(17, 18, 22, pow);
-    motor_driver.wait(3);
-    pow += 0.5;
 }
-
-motor_driver.stop(17, 18, 22);
-

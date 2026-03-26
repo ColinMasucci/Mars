@@ -153,7 +153,7 @@ def compile_node(node, code: List[Instr]):
             else:
                 if getattr(node, "force_none_init", False):
                     code.append(("PUSH_NONE",))
-                    code.append(("DECLARE", name, vartype, readonly))
+                    code.append(("DECLARE", name, vartype, readonly, True))
                     return
                 # -------- DEFAULT INITIALIZATION --------
 
@@ -196,6 +196,8 @@ def compile_node(node, code: List[Instr]):
                     code.append(("MUL",))
                 case "DIV":
                     code.append(("DIV",))
+                case "MOD":
+                    code.append(("MOD",))
                 case "POW":
                     code.append(("POW",))
                 case "AND":
@@ -296,6 +298,7 @@ def compile_node(node, code: List[Instr]):
                 "MINUS": "SUB",
                 "MUL": "MUL",
                 "DIV": "DIV",
+                "MOD": "MOD",
             }
             if op not in op_map:
                 raise NotImplementedError(f"Compound operator not implemented: {op}")
@@ -497,8 +500,10 @@ def compile_node(node, code: List[Instr]):
             return
 
         case ast.Block(statements):
+            code.append(("ENTER_SCOPE",))
             for stmt in statements:
                 compile_statement(stmt, code)
+            code.append(("EXIT_SCOPE",))
 
         case ast.Break():
             if not LOOP_STACK:
