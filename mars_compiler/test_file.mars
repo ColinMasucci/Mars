@@ -1,14 +1,4 @@
-import motor_driver;
-
-motor_driver.init(17, 18, 22);
-
-float pow = -1;
-while (pow <= 1) {
-    print("power: " + pow);
-    motor_driver.drive(17, 18, 22, pow);
-    motor_driver.wait(3);
-    pow += 0.5;
+for (int i = 0; i < 10; i++) {
+    wait(3);
 }
-
-motor_driver.stop(17, 18, 22);
 

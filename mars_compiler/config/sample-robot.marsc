@@ -1,0 +1,35 @@
+component Phobos extends Robot {
+    subcomponents{
+        PhobosChassisA chassis_A;
+        ADXL345 imu;
+    }
+    parameters{}
+    functions{}
+}
+
+component PhobosChassisA extends DifferentialChassis {
+    subcomponents{
+        N20 leftMotor;
+        N20 rightMotor;
+    }
+    parameters{
+        float trackWidth = 1;
+    }
+    functions{}
+}
+
+component N20 extends BrushlessMotor {
+    subcomponents{}
+    parameters{}
+    functions{}
+}
+
+component ADXL345 {
+    subcomponents{
+    }
+    parameters{}
+    functions{}
+}
+
+
+

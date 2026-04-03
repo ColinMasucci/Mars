@@ -1,17 +1,18 @@
 import math;
-class DifferentialFK{
+class WheeledFK{
 
     requirements {
-        DifferentialChassis(
-            subcomponents=BrandMotor(
-                parameters=[maxRPM < 20 && maxRPM > 10, 
-                optional minRPM > 3]
-                ));
-        optional !IMU;
+        WheeledChassis(
+            subcomponents=BrushlessMotor(parameters=[maxRPM < 20::rpm && maxRPM > 10:rpm])
+            );
+        optional IMU;
     }
 
-    DifferentialChassis chassis;
+    WheeledChassis chassis;
     float[] position = [0, 0];
+
+
+    
 
     DifferentialFK(Robot robot){
         DifferentialChassis chassis = robot.match(DifferentialChassis);
