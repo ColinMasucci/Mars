@@ -64,6 +64,7 @@ TOKEN_SPEC = [
     ("MINUS_ASSIGN", r"-="),
     ("MUL_ASSIGN", r"\*="),
     ("DIV_ASSIGN", r"/="),
+    ("MOD_ASSIGN", r"%="),
     ("INC",     r"\+\+"),              # check for increment operator
     ("DEC",     r"--"),                # check for decrement operator
     ("ASSIGN",  r"="),                 # check for operator
@@ -73,6 +74,7 @@ TOKEN_SPEC = [
     ("MINUS",   r"-"),                 # check for minus signs
     ("MUL",    r"\*"),                 # check for muliplication signs
     ("DIV",   r"/"),                   # check for division signs
+    ("MOD",   r"%"),                   # check for modulus signs
 
     # --- Parentheses & punctuation ---
     ("LBRACE", r"\{"),                 # identifying braces for blocks and also for dictionaries.

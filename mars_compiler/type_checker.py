@@ -102,6 +102,8 @@ class TypeChecker:
         # Convert parser array syntax -> type checker array syntax (e.g., int[] -> array<int>)
         # This is because parser uses int[] syntax for easier parsing, but type checker uses array<int> internally
         # We make this change because its better for the type checker to handle nested arrays (e.g., array<array<int>> vs int[][])
+        if typ is None:
+            return None
         if typ.endswith("[]"):
             elem_type = self._normalize_type(typ[:-2])  # recursive call
             return f"array<{elem_type}>"
@@ -207,7 +209,7 @@ class TypeChecker:
         return UnitSpec(dims=base_spec.dims, scale=base_spec.scale, offset=0.0, expr=expr, affine=False)
 
     def _coerce_value_to_expected(self, expected_type, value_node, value_type, context):
-        if expected_type == "dynamic" or value_type == "dynamic":
+        if expected_type is None or expected_type == "dynamic" or value_type is None or value_type == "dynamic":
             return value_node
         expected_info = self._numeric_type_info(expected_type)
         value_info = self._numeric_type_info(value_type)
@@ -275,7 +277,8 @@ class TypeChecker:
                     f"{context} (arg {i + 1})"
                 )
                 args[i] = new_arg
-                arg_types[i] = expected
+                if expected is not None:
+                    arg_types[i] = expected
             # Coerce remaining params to the last fixed type
             repeat_type = fixed[-1]
             for i in range(len(fixed), len(arg_types)):
@@ -286,7 +289,8 @@ class TypeChecker:
                     f"{context} (arg {i + 1})"
                 )
                 args[i] = new_arg
-                arg_types[i] = repeat_type
+                if repeat_type is not None:
+                    arg_types[i] = repeat_type
             return
         if len(param_types) != len(arg_types):
             raise TypeError(f"{context}: expected {len(param_types)} args, got {len(arg_types)}")
@@ -298,7 +302,8 @@ class TypeChecker:
                 f"{context} (arg {i + 1})"
             )
             args[i] = new_arg
-            arg_types[i] = expected
+            if expected is not None:
+                arg_types[i] = expected
 
     def _split_kind(self, typ: str):
         """Return (kind,name) where kind in {component,class,other}."""
@@ -326,6 +331,8 @@ class TypeChecker:
     # Compare two types for compatibility (including structured types) Ex. dict<int,string> and dict<int,string> are compatible, but dict<int,string> and dict<string,string> are not.
     def _types_compatible(self, a, b, allow_numeric_coercion=True):
         """Compare structured types like dict<K,V> and array<T>."""
+        if a is None or b is None:
+            return True
         if a == "dynamic" or b == "dynamic":
             return True
         if a == b:
@@ -399,7 +406,7 @@ class TypeChecker:
         if left_type == "dynamic" or right_type == "dynamic":
             return "dynamic"
         # --- Arithmetic Operators ---
-        if op in ("PLUS", "MINUS", "MUL", "DIV", "POW"):
+        if op in ("PLUS", "MINUS", "MUL", "DIV", "MOD", "POW"):
             # --- Handle addition separately (since it can be string concat) ---
             if op == "PLUS":
                 # If either operand is a string, result is string
@@ -410,7 +417,7 @@ class TypeChecker:
                     return "float" if "float" in (left_type, right_type) else "int"
                 raise TypeError(f"Invalid operand types for '+': {left_type} and {right_type}")
 
-            # --- For -, *, / only numeric types are allowed ---
+            # --- For -, *, /, % only numeric types are allowed ---
             if left_type in ("int", "float") and right_type in ("int", "float"):
                 return "float" if "float" in (left_type, right_type) else "int"
             raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
@@ -878,6 +885,10 @@ class TypeChecker:
                             result_unit = self._combine_units(left_unit, right_unit, op)
                         else:
                             result_unit = left_unit or right_unit
+                    elif op == "MOD":
+                        if left_unit or right_unit:
+                            raise TypeError("Modulo does not support unit-tagged values")
+                        result_unit = None
                     else:
                         result_unit = None
 
@@ -1024,6 +1035,12 @@ class TypeChecker:
                             result_unit = left_unit or right_unit
                         if result_unit:
                             return self._set_type(node, self._unit_type_string(result_unit))
+                        base_result = "float" if "float" in (left_base, right_base) else "int"
+                        return self._set_type(node, base_result)
+
+                    if op == "MOD":
+                        if left_unit or right_unit:
+                            raise TypeError("Modulo does not support unit-tagged values")
                         base_result = "float" if "float" in (left_base, right_base) else "int"
                         return self._set_type(node, base_result)
 

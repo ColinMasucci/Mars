@@ -1,0 +1,42 @@
+### AWS DeepRacer ###
+
+component AWSDeepRacer extends Robot {
+
+    subcomponents{
+        AWSDeepRacerChassis chassis;
+    }
+    parameters{}
+    functions{}
+}
+
+component AWSDeepRacerChassis extends AckermannChassis {
+    subcomponents{
+
+    }
+    parameters{
+        float wheelbase = 0;
+        float trackWidth = 0;
+        float steeringRatio = 0;
+        float steeringOffset = 0;
+        float maxSteerAngle = 0;
+
+        #float vx = subscribe("/imu_pkg/data_raw", "sensor_msgs/msg/Imu/orientation/x");
+    }
+    functions{
+        void drive(){
+
+        }
+    }
+}
+
+
+/*
+
+/cmd_vel (geometry_msgs/msg/Twist)
+  linear:
+    x: float
+    y: float
+    z: float
+  angular: geometry_msgs/Vector3
+
+*/

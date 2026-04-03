@@ -565,6 +565,10 @@ def _parse_ros2_array(ftype: str) -> tuple[str, bool, int | None]:
     if match:
         size = match.group("len")
         return match.group("base"), True, int(size) if size else None
+    match = ROS1_ARRAY_RE.match(ftype)
+    if match and match.group("len") is not None:
+        size = match.group("len")
+        return match.group("base"), True, int(size) if size else None
     return ftype, False, None
 
 

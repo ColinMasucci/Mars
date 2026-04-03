@@ -18,6 +18,8 @@ component AWSRacer extends Robot {
     subcomponents{
         #DifferentialChassis chassis;
     }
-    parameters{}
+    parameters{
+        float vz = subscribe("/imu_pkg/data_raw/angular_velocity/z", "sensor_msgs/msg/Imu");
+    }
     functions{}
 }

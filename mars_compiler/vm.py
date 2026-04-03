@@ -6,6 +6,7 @@ import time;
 
 
 Instr = Tuple[str, ...]
+_UNDECLARED = object()
 
 class VMError(Exception): pass
 
@@ -26,14 +27,16 @@ class VM:
         self.locals = {}  # current frame locals {name: (value, vartype, readonly)}
         self.globals = {} # global frame
         self._modules = {}  # module_name -> module object
-        self.call_stack = []  # stack of (return_pc, locals_snapshot)
+        self.call_stack = []  # stack of (return_pc, locals_snapshot, local_scope_stack_snapshot)
+        self.global_scope_stack = []
+        self.local_scope_stack = []
         self.class_field_info = class_field_info or {}
         self.component_tree = component_tree or {"nodes": {}, "roots": []}
         self.component_parents = component_parents or {}
 
-        self.subscriptions = {}  
-        # var_name -> topic_name
-        # example: {"pose": "/robot/pose", "scan": "/lidar"}
+        self.subscriptions = {}
+        # var_name -> {"topic": topic_name, "field_path": [nested, keys]}
+        # example: {"pose": {"topic": "/robot/pose", "field_path": ["position", "x"]}}
 
         self.sensor_cache = {}   
         # topic_name -> last_value
@@ -57,10 +60,11 @@ class VM:
             for pname, sub in node.get("subscriptions", {}).items():
                 topic = sub.get("topic")
                 msg_type = sub.get("msg_type")
+                field_path = sub.get("field_path", [])
                 if not topic or not msg_type:
                     continue
                 var_name = f"{path}.{pname}"
-                self.subscriptions[var_name] = topic
+                self.subscriptions[var_name] = {"topic": topic, "field_path": field_path}
                 key = (topic, msg_type)
                 if key in seen:
                     continue
@@ -100,15 +104,28 @@ class VM:
             time.sleep(min(tick, remaining))
 
     def _apply_subscriptions(self):
-        for var, topic in self.subscriptions.items():
+        for var, sub in self.subscriptions.items():
+            topic = sub.get("topic")
             if topic in self.sensor_cache:
-                val = self.sensor_cache[topic]
+                val = self._extract_subscription_value(self.sensor_cache[topic], sub.get("field_path", []))
                 if var in self.locals:
                     old = self.locals[var]
+                    self._runtime_type_check(val, old[1], f"variable '{var}'")
                     self.locals[var] = (val, old[1], old[2])
                 elif var in self.globals:
                     old = self.globals[var]
+                    self._runtime_type_check(val, old[1], f"variable '{var}'")
                     self.globals[var] = (val, old[1], old[2])
+
+    def _extract_subscription_value(self, payload, field_path):
+        cur = payload
+        for part in field_path or []:
+            if not isinstance(cur, dict):
+                raise VMError(f"Subscribed message field path '{'.'.join(field_path)}' is not available")
+            if part not in cur:
+                raise VMError(f"Subscribed message field '{part}' not found in path '{'.'.join(field_path)}'")
+            cur = cur[part]
+        return cur
 
     def _component_is_a(self, child_type, parent_type):
         if child_type == parent_type:
@@ -185,6 +202,30 @@ class VM:
         if typ.endswith("[]"):
             return f"array<{self._normalize_runtime_type(typ[:-2])}>"
         return typ
+
+    def _copy_scope_stack(self, scope_stack):
+        return [scope.copy() for scope in scope_stack]
+
+    def _active_scope_stack(self):
+        return self.local_scope_stack if self.call_stack else self.global_scope_stack
+
+    def _active_target(self):
+        return self.locals if self.call_stack else self.globals
+
+    def _enter_scope(self):
+        self._active_scope_stack().append({})
+
+    def _exit_scope(self):
+        scope_stack = self._active_scope_stack()
+        if not scope_stack:
+            raise VMError("EXIT_SCOPE without matching ENTER_SCOPE")
+        target = self._active_target()
+        scope = scope_stack.pop()
+        for name, previous in reversed(list(scope.items())):
+            if previous is _UNDECLARED:
+                target.pop(name, None)
+            else:
+                target[name] = previous
 
     def _split_top_level_types(self, s: str):
         parts = []
@@ -334,8 +375,9 @@ class VM:
                 raise VMError(f"Malformed function '{func_name}': expected DECLARE for parameter at bytecode index {decl_idx}, found {decl_instr[0]}")
             param_info.append((decl_instr[1], decl_instr[2] if len(decl_instr) > 2 else None))
 
-        self.call_stack.append((self.pc + 1, self.locals.copy()))
+        self.call_stack.append((self.pc + 1, self.locals.copy(), self._copy_scope_stack(self.local_scope_stack)))
         self.locals = {}
+        self.local_scope_stack = []
         if component_path:
             self._bind_component_locals(component_path)
         for (name, ptype), val in zip(param_info, arg_values):
@@ -422,6 +464,12 @@ class VM:
             case "PUSH_NONE":
                 self.stack.append(None)
 
+            case "ENTER_SCOPE":
+                self._enter_scope()
+
+            case "EXIT_SCOPE":
+                self._exit_scope()
+
             case "POP":
                 if not self.stack:
                     raise VMError("POP requires a value on the stack")
@@ -477,6 +525,10 @@ class VM:
             case "DIV":
                 b = self.stack.pop(); a = self.stack.pop()
                 self.stack.append(a / b)
+
+            case "MOD":
+                b = self.stack.pop(); a = self.stack.pop()
+                self.stack.append(a % b)
 
             case "POW":
                 b = self.stack.pop(); a = self.stack.pop()
@@ -557,8 +609,9 @@ class VM:
                     param_info.append((decl_instr[1], decl_instr[2] if len(decl_instr) > 2 else None))
 
                 # Save current frame
-                self.call_stack.append((self.pc + 1, self.locals.copy()))
+                self.call_stack.append((self.pc + 1, self.locals.copy(), self._copy_scope_stack(self.local_scope_stack)))
                 self.locals = {}
+                self.local_scope_stack = []
                 self.locals["this"] = (obj, f"class:{class_ref}", False)
                 for (name, ptype), val in zip(param_info[1:], arg_values):
                     base_type = _strip_unit_type(ptype)
@@ -645,17 +698,27 @@ class VM:
             case "DECLARE":
                 name, vartype = args[0], args[1]
                 readonly = False
+                allow_none_init = False
                 if len(args) > 2:
                     readonly = bool(args[2])
+                if len(args) > 3:
+                    allow_none_init = bool(args[3])
                 val = self.stack.pop()
                 base_type = _strip_unit_type(vartype)
                 if base_type == "float" and type(val) is int:
                     val = float(val)
                 elif base_type == "int" and type(val) is float:
                     val = int(val)
-                self._runtime_type_check(val, vartype, f"variable '{name}'")
-                target = self.globals if not self.call_stack else self.locals
-                if name in target:
+                if not (allow_none_init and val is None):
+                    self._runtime_type_check(val, vartype, f"variable '{name}'")
+                target = self._active_target()
+                scope_stack = self._active_scope_stack()
+                if scope_stack:
+                    current_scope = scope_stack[-1]
+                    if name in current_scope:
+                        raise VMError(f"Variable '{name}' already declared")
+                    current_scope[name] = target.get(name, _UNDECLARED)
+                elif name in target:
                     raise VMError(f"Variable '{name}' already declared")
                 target[name] = (val, vartype, readonly)
 
@@ -860,8 +923,9 @@ class VM:
                     param_info.append((decl_instr[1], decl_instr[2] if len(decl_instr) > 2 else None))
 
                 # Save current frame
-                self.call_stack.append((self.pc + 1, self.locals.copy()))
+                self.call_stack.append((self.pc + 1, self.locals.copy(), self._copy_scope_stack(self.local_scope_stack)))
                 self.locals = {}
+                self.local_scope_stack = []
                 # Bind this
                 self.locals["this"] = (obj, f"class:{class_name}", False)
                 for (name, ptype), val in zip(param_info[1:], arg_values):
@@ -892,7 +956,7 @@ class VM:
                 if not self.call_stack:
                     raise VMError("Return outside function")
 
-                self.pc, self.locals = self.call_stack.pop()
+                self.pc, self.locals, self.local_scope_stack = self.call_stack.pop()
                 self.pc -= 1
                 self.stack.append(ret_val)
                 return

@@ -315,7 +315,7 @@ class Parser:
             save_pos = self.pos
             if tok.type == "ID":
                 target = self.parse_assignable()
-                if self.current().type in ("ASSIGN", "PLUS_ASSIGN", "MINUS_ASSIGN", "MUL_ASSIGN", "DIV_ASSIGN"):
+                if self.current().type in ("ASSIGN", "PLUS_ASSIGN", "MINUS_ASSIGN", "MUL_ASSIGN", "DIV_ASSIGN", "MOD_ASSIGN"):
                     op_tok = self.current().type
                     self.eat(op_tok)
                     value = self.expr()
@@ -327,6 +327,7 @@ class Parser:
                             "MINUS_ASSIGN": "MINUS",
                             "MUL_ASSIGN": "MUL",
                             "DIV_ASSIGN": "DIV",
+                            "MOD_ASSIGN": "MOD",
                         }
                         stmt = AugAssign(target, op_map[op_tok], value)
                     self.eat("SEMI")
@@ -538,7 +539,7 @@ class Parser:
         if tok.type == "ID":
             save_pos = self.pos
             target = self.parse_assignable()
-            if self.current().type in ("ASSIGN", "PLUS_ASSIGN", "MINUS_ASSIGN", "MUL_ASSIGN", "DIV_ASSIGN"):
+            if self.current().type in ("ASSIGN", "PLUS_ASSIGN", "MINUS_ASSIGN", "MUL_ASSIGN", "DIV_ASSIGN", "MOD_ASSIGN"):
                 op_tok = self.current().type
                 self.eat(op_tok)
                 value = self.expr()
@@ -549,6 +550,7 @@ class Parser:
                     "MINUS_ASSIGN": "MINUS",
                     "MUL_ASSIGN": "MUL",
                     "DIV_ASSIGN": "DIV",
+                    "MOD_ASSIGN": "MOD",
                 }
                 return AugAssign(target, op_map[op_tok], value)
             self.pos = save_pos
@@ -595,6 +597,7 @@ class Parser:
         # multiplicative
         "MUL":       (5, "left", 2, ROLE_BINARY),
         "DIV":       (5, "left", 2, ROLE_BINARY),
+        "MOD":       (5, "left", 2, ROLE_BINARY),
 
         # additive
         "PLUS":      (4, "left", 2, ROLE_BINARY),
