@@ -5,7 +5,6 @@ component Chassis {
         float maxAngularSpeed;
         float positionTolerance;
         float angleTolerance;
-        #float vx = sensed("lin_velocity")::in;
     }
     functions{
         void drive(float vx, float vy, float omega);
@@ -37,10 +36,12 @@ component DifferentialChassis extends WheeledChassis {
     functions{}
 }
 
-component SkidSteerChassis extends WheeledChassis {
+component SkidChassis extends WheeledChassis {
     subcomponents{
-        Motor leftMotor;
-        Motor rightMotor;
+        Motor frontLeftMotor;
+        Motor rearLeftMotor;
+        Motor frontRightMotor;
+        Motor rearRightMotor;
     }
     parameters{
         float trackWidth;

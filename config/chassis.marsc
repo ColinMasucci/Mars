@@ -39,8 +39,25 @@ component DifferentialChassis extends WheeledChassis {
 
 component SkidSteerChassis extends WheeledChassis {
     subcomponents{
-        Motor leftMotor;
-        Motor rightMotor;
+        Motor frontLeftMotor;
+        Motor rearLeftMotor;
+        Motor frontRightMotor;
+        Motor rearRightMotor;
+    }
+    parameters{
+        float trackWidth;
+        float scrubFactor;
+    }
+    functions{
+    }
+}
+
+component SkidChassis extends WheeledChassis {
+    subcomponents{
+        Motor frontLeftMotor;
+        Motor rearLeftMotor;
+        Motor frontRightMotor;
+        Motor rearRightMotor;
     }
     parameters{
         float trackWidth;

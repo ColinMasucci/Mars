@@ -1,0 +1,26 @@
+import motor_driver
+
+print("Starting one-motor-at-a-time direction test");
+
+print("Testing motor 1 (front-left) forward");
+motor_driver.spin_motor(1, 0.6, 2.0);
+print("Testing motor 1 (front-left) backward");
+motor_driver.spin_motor(1, -0.6, 2.0);
+
+print("Testing motor 2 (rear-left) forward");
+motor_driver.spin_motor(2, 0.6, 2.0);
+print("Testing motor 2 (rear-left) backward");
+motor_driver.spin_motor(2, -0.6, 2.0);
+
+print("Testing motor 3 (front-right) forward");
+motor_driver.spin_motor(3, 0.6, 2.0);
+print("Testing motor 3 (front-right) backward");
+motor_driver.spin_motor(3, -0.6, 2.0);
+
+print("Testing motor 4 (rear-right) forward");
+motor_driver.spin_motor(4, 0.6, 2.0);
+print("Testing motor 4 (rear-right) backward");
+motor_driver.spin_motor(4, -0.6, 2.0);
+
+print("Motor direction test complete");
+motor_driver.cleanup()

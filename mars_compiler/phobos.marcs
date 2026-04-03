@@ -1,0 +1,33 @@
+component Phobos extends Robot {
+    subcomponents{
+        # Swap Chassis
+        PhobosChassisA chassis;
+        #PhobosChassisB chassis;
+
+        ADXL345 imu;
+    }
+    parameters{}
+    functions{}
+}
+
+component PhobosChassisA extends SkidChassis {
+    subcomponents {
+        N20 frontLeftMotor(direction = 1, port = );
+        N20 rearLeftMotor(direction = 1, port = );
+        N20 frontRightMotor(direction = 1, port = );
+        N20 rearRightMotor(direction = 1, port = );
+    }
+}
+
+
+import motor_driver;
+
+component N20 extends BrushlessMotor {
+    subcomponents{}
+    parameters{}
+    functions{
+        drive {
+
+        }
+    }
+}
