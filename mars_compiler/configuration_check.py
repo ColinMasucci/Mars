@@ -7,7 +7,7 @@ from type_checker import TypeChecker
 from component_registry import ComponentRegistry
 from component_validator import ComponentValidator, ComponentValidationError
 from component_visualizer import visualize_components
-from ast_nodes import ArrayAccess, ArrayLiteral, Assign, AugAssign, BinaryOp, Block, BooleanLiteral, Call, ComponentDef, DictLiteral, FuncDecl, If, MemberAccess, NumberLiteral, Program, RequirementExpr, RequirementFunction, RequirementParam, RequirementSpec, Return, StringLiteral, UnaryOp, UnitTag, Var, VarDecl, While, For
+from ast_nodes import ArrayAccess, ArrayLiteral, Assign, AugAssign, BinaryOp, Block, BooleanLiteral, Call, ComponentDef, DictLiteral, FuncDecl, If, Import, MemberAccess, NumberLiteral, Program, RequirementExpr, RequirementFunction, RequirementParam, RequirementSpec, Return, StringLiteral, UnaryOp, UnitTag, Var, VarDecl, While, For
 
 _SUBSCRIBE_EXAMPLE = 'lidar = subscribe("/scan", "sensor_msgs/msg/LaserScan");'
 
@@ -47,6 +47,7 @@ def precompile_config(config_dir: str, debug: bool = False, ros_topics_file: str
 def load_marsc_files(directory, registry, debug: bool = False):
     # built-in base Robot component (empty)
     components = [ComponentDef("Robot", None, [], [], [])]
+    import_statements = []
     for filename in os.listdir(directory):
         if filename.endswith(".marsc"):
             with open(os.path.join(directory, filename)) as f:
@@ -55,6 +56,9 @@ def load_marsc_files(directory, registry, debug: bool = False):
             tokens = tokenize(code, source_path=file_path)
             parser = Parser(tokens, source_text=code, source_path=file_path)
             ast = parser.parse()
+            import_statements.extend(
+                stmt for stmt in ast.statements if isinstance(stmt, Import)
+            )
             for comp in ast.components:
                 if comp.name == "Robot":
                     raise ComponentValidationError("Defining 'Robot' is not allowed; it is a built-in base component.")
@@ -69,6 +73,8 @@ def load_marsc_files(directory, registry, debug: bool = False):
 
         # Type-check component functions with component-aware scope
         tc = TypeChecker(component_interfaces=interfaces)
+        for stmt in import_statements:
+            tc.check(stmt)
         tc.check_components(components)
 
         _render_graphviz(visualize_components(components), os.path.join(directory, "component_tree"))
