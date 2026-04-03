@@ -2,6 +2,7 @@ from gpiozero import OutputDevice, PWMOutputDevice
 
 
 _devices = {}
+_MAX_MOTOR_OUTPUT = 0.8
 
 
 def _device_key(kind, pin):
@@ -43,6 +44,7 @@ def drive_motor(forward_pin, backward_pin, sleep_pin, speed):
     _require_device("sleep", sleep_pin).on()
     forward = _require_device("pwm", forward_pin)
     backward = _require_device("pwm", backward_pin)
+    speed = max(-1.0, min(1.0, speed)) * _MAX_MOTOR_OUTPUT
 
     if speed > 0:
         forward.value = speed

@@ -1,0 +1,41 @@
+class SkidDriveKinematics{
+
+    requirements {
+        SkidChassis(parameters=[trackWidth > 0]);
+    }
+
+    SkidChassis chassis;
+
+    SkidDriveKinematics(Robot robot){
+        chassis = robot.match(SkidChassis);
+    }
+
+    # Expects each wheel speed in cm/s.
+    # For now this uses physical trackWidth directly. If the robot consistently under- or
+    # over-rotates, add an effectiveTrackWidth config param later and use that instead.
+    #
+    # Config values you will likely want available on the chassis:
+    # - trackWidth
+    # - wheelRadius
+    # - gearRatio
+    # - frontLeftSpeedScale
+    # - rearLeftSpeedScale
+    # - frontRightSpeedScale
+    # - rearRightSpeedScale
+    float[] estimateFromWheelSpeeds(
+        float::cm/s frontLeftSpeed,
+        float::cm/s rearLeftSpeed,
+        float::cm/s frontRightSpeed,
+        float::cm/s rearRightSpeed
+    ) {
+        float::cm trackWidth = chassis.trackWidth;
+        float::cm/s leftSpeed = (frontLeftSpeed + rearLeftSpeed) / 2.0;
+        float::cm/s rightSpeed = (frontRightSpeed + rearRightSpeed) / 2.0;
+
+        float::cm/s vx = (leftSpeed + rightSpeed) / 2.0;
+        float::rad/s omega = (rightSpeed - leftSpeed) / trackWidth;
+
+        float[] estimate = [vx, 0, omega];
+        return estimate;
+    }
+}

@@ -1,0 +1,31 @@
+class DifferentialDriveKinematics{
+
+    requirements {
+        DifferentialChassis(parameters=[trackWidth > 0]);
+    }
+
+    DifferentialChassis chassis;
+
+    DifferentialDriveKinematics(Robot robot){
+        chassis = robot.match(DifferentialChassis);
+    }
+
+    # Expects leftSpeed and rightSpeed in cm/s, not wheel angular speed.
+    # If your robot measures wheel or motor angular speed, convert before calling with:
+    # linearSpeed = wheelAngularSpeed * wheelRadius
+    #
+    # Config values you will likely want available on the chassis:
+    # - trackWidth
+    # - wheelRadius
+    # - gearRatio
+    # - leftSpeedScale
+    # - rightSpeedScale
+    float[] estimateFromWheelSpeeds(float::cm/s leftSpeed, float::cm/s rightSpeed) {
+        float::cm trackWidth = chassis.trackWidth;
+        float::cm/s vx = (leftSpeed + rightSpeed) / 2.0;
+        float::rad/s omega = (rightSpeed - leftSpeed) / trackWidth;
+
+        float[] estimate = [vx, 0, omega];
+        return estimate;
+    }
+}

@@ -1,0 +1,96 @@
+import math;
+
+class ComplementaryFilter{
+
+    requirements {
+        Chassis(functions=[getVelocities()]);
+    }
+
+    Chassis chassis;
+
+    float[] pose = [0, 0, 0];
+    float imuHeading = 0;
+    float motionHeading = 0;
+    float motionTrust = 0.35;
+    float slipMagnitude = 0;
+
+    # Filter defaults for v1.
+    # These are intentionally local code defaults for now rather than config-backed params.
+    float headingBlendBase = 0.35;
+    float minMotionTrust = 0.05;
+    float maxMotionTrust = 0.60;
+    float::rad/s slipOmegaThreshold = 0.35::rad/s;
+    float::s/rad slipTrustSlope = 1.50::s/rad;
+    float::rad/s gyroZBias = 0.0::rad/s;
+
+    # If you later add a shared IMU component contract, this class can match it in the
+    # constructor and read it internally. For now the caller supplies [wx, wy, wz] to update().
+    ComplementaryFilter(Robot robot){
+        chassis = robot.match(Chassis);
+    }
+
+    float normalizeAngle(float angle) {
+        float two_pi = math.PI * 2;
+        while (angle > math.PI) {
+            angle = angle - two_pi;
+        }
+        while (angle <= -math.PI) {
+            angle = angle + two_pi;
+        }
+        return angle;
+    }
+
+    float clamp(float value, float minValue, float maxValue) {
+        if (value < minValue) {
+            return minValue;
+        }
+        if (value > maxValue) {
+            return maxValue;
+        }
+        return value;
+    }
+
+    # Pose uses [x, y, theta] = [cm, cm, rad].
+    void setPose(float::cm x, float::cm y, float::rad theta) {
+        pose[0] = x;
+        pose[1] = y;
+        pose[2] = normalizeAngle(theta);
+        imuHeading = pose[2];
+        motionHeading = pose[2];
+    }
+
+    float[] getPose() {
+        return pose;
+    }
+
+    float[] getDebugState() {
+        float[] debug = [imuHeading, motionHeading, motionTrust, slipMagnitude];
+        return debug;
+    }
+
+    # Expects angularVelocity = [wx, wy, wz] in [rad/s, rad/s, rad/s].
+    # The chassis is expected to provide getVelocities() = [vx, 0, omega] in [cm/s, 0, rad/s].
+    void update(float::s dt, float::rad/s[] angularVelocity) {
+        float[] motion = chassis.getVelocities();
+        float::cm/s vx = motion[0];
+        float::rad/s omegaMotion = motion[2];
+        float::rad/s omegaImu = angularVelocity[2] - gyroZBias;
+
+        imuHeading = normalizeAngle(imuHeading + omegaImu * dt);
+        motionHeading = normalizeAngle(pose[2] + omegaMotion * dt);
+
+        float::rad/s slipMagnitudeRate = math.abs(omegaImu - omegaMotion);
+        slipMagnitude = slipMagnitudeRate;
+        motionTrust = headingBlendBase;
+        if (slipMagnitudeRate > slipOmegaThreshold) {
+            motionTrust = headingBlendBase - slipTrustSlope * (slipMagnitudeRate - slipOmegaThreshold);
+        }
+        motionTrust = clamp(motionTrust, minMotionTrust, maxMotionTrust);
+
+        float headingError = normalizeAngle(motionHeading - imuHeading);
+        pose[2] = normalizeAngle(imuHeading + motionTrust * headingError);
+
+        pose[0] = pose[0] + vx * math.cos(pose[2]) * dt;
+        pose[1] = pose[1] + vx * math.sin(pose[2]) * dt;
+    }
+}
