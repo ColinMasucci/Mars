@@ -1,0 +1,12 @@
+
+Phobos.chassis.init();
+
+Phobos.chassis.frontLeftMotor.spin(0.6);
+Phobos.chassis.frontRightMotor.spin(0.6);
+Phobos.chassis.rearLeftMotor.spin(0.6);
+Phobos.chassis.rearRightMotor.spin(0.6);
+wait(2);
+Phobos.chassis.frontLeftMotor.stop();
+Phobos.chassis.frontRightMotor.stop();
+Phobos.chassis.rearLeftMotor.stop();
+Phobos.chassis.rearRightMotor.stop();
