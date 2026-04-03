@@ -10,7 +10,7 @@ component Chassis {
         void drive(float vx, float vy, float omega);
             #call(set_wheel_vel());
             
-        float[] getVelocities();
+        #float[] getVelocities();
     }
 }
 
