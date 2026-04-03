@@ -90,7 +90,7 @@ def _interpret(
 ):
     # Precompile component configurations
     topics_path = ros_topics_file or os.environ.get("MARS_ROS_TOPICS_FILE", "ros_topics.txt")
-    _registry, interfaces, comp_funcs, comp_params, component_tree, component_parents = precompile_config(
+    _registry, interfaces, comp_funcs, comp_params, component_imports, component_tree, component_parents = precompile_config(
         config_dir,
         debug=debug,
         ros_topics_file=topics_path,
@@ -167,7 +167,15 @@ def _interpret(
     class_funcs, class_field_info = build_class_runtime(parsed_ast.classes, class_interfaces)
 
     # Compile to bytecode and run on VM
-    bytecode = compile_program(parsed_ast, debug, component_functions=comp_funcs, component_params=comp_params, class_functions=class_funcs, class_interfaces=class_interfaces)
+    bytecode = compile_program(
+        parsed_ast,
+        debug,
+        component_functions=comp_funcs,
+        component_params=comp_params,
+        component_imports=component_imports,
+        class_functions=class_funcs,
+        class_interfaces=class_interfaces,
+    )
     vm = VM(bytecode, class_field_info=class_field_info, component_tree=component_tree, component_parents=component_parents)
 
     bridge_proc = None

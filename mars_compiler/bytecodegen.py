@@ -35,7 +35,15 @@ def _flatten_member_access(node):
     return None
 
 #This returns a List of instructions (bytecode) from the AST, and will give them to the Stack VM.
-def compile_program(node: ast.Program, printBytecode = False, component_functions=None, component_params=None, class_functions=None, class_interfaces=None) -> List[Instr]:
+def compile_program(
+    node: ast.Program,
+    printBytecode = False,
+    component_functions=None,
+    component_params=None,
+    component_imports=None,
+    class_functions=None,
+    class_interfaces=None,
+) -> List[Instr]:
     code = []
     function_table.clear()
     global CLASS_NAMES, COMPONENT_BASES, COMPONENT_INSTANCE_PATHS, LOOP_STACK
@@ -76,6 +84,10 @@ def compile_program(node: ast.Program, printBytecode = False, component_function
 
     # Patch the jump
     code[0] = ("JUMP", main_start)
+
+    # Emit config/component imports first so params and component functions can use them.
+    for stmt in component_imports or []:
+        compile_statement(stmt, code)
 
     # Emit component parameter declarations as globals
     for decl in component_params or []:

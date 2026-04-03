@@ -34,14 +34,14 @@ def _load_ros_topics_map(path: str | None) -> dict[str, str]:
 def precompile_config(config_dir: str, debug: bool = False, ros_topics_file: str | None = None):
     """
     Parse and validate component config and prepare runtime metadata.
-    Returns (registry, interfaces, comp_funcs, comp_params, component_tree, component_parents).
+    Returns (registry, interfaces, comp_funcs, comp_params, component_imports, component_tree, component_parents).
     """
     registry = ComponentRegistry()
-    interfaces = load_marsc_files(config_dir, registry, debug=debug)
+    interfaces, component_imports = load_marsc_files(config_dir, registry, debug=debug)
     topics_map = _load_ros_topics_map(ros_topics_file)
     component_tree, component_parents = build_component_tree(registry, interfaces, ros_topics_map=topics_map, ros_topics_file=ros_topics_file)
     comp_funcs, comp_params = build_component_runtime(registry, interfaces, component_tree)
-    return registry, interfaces, comp_funcs, comp_params, component_tree, component_parents
+    return registry, interfaces, comp_funcs, comp_params, component_imports, component_tree, component_parents
 
 
 def load_marsc_files(directory, registry, debug: bool = False):
@@ -81,9 +81,9 @@ def load_marsc_files(directory, registry, debug: bool = False):
 
         for component in components:
             registry.register(component)
-        return interfaces
+        return interfaces, import_statements
 
-    return {}
+    return {}, []
 
 
 def build_component_tree(registry, interfaces, ros_topics_map=None, ros_topics_file: str | None = None):

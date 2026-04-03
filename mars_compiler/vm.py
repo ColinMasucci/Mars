@@ -957,7 +957,6 @@ class VM:
                     raise VMError("Return outside function")
 
                 self.pc, self.locals, self.local_scope_stack = self.call_stack.pop()
-                self.pc -= 1
                 self.stack.append(ret_val)
                 return
 
