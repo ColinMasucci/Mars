@@ -1,3 +1,6 @@
+import motor_driver;
+import math;
+
 component Phobos extends Robot {
     subcomponents{
         # Swap Chassis
@@ -17,7 +20,9 @@ component PhobosChassisA extends SkidChassis {
         N20 frontRightMotor(direction = 1, forward=17, backward=27, sleep=12);
         N20 rearRightMotor(direction = 1, forward=26, backward=16, sleep=13);
     }
-    parameters {}
+    parameters {
+        maxSpeed = 1;
+    }
     functions {
         void init(){
             frontLeftMotor.init();
@@ -25,21 +30,30 @@ component PhobosChassisA extends SkidChassis {
             frontRightMotor.init();
             rearRightMotor.init();
         }
-        void drive(){}
+        void drive(float leftSpeed, float rightSpeed){
+            leftSpeed = math.max(-maxSpeed, math.min(leftSpeed, maxSpeed));
+            rightSpeed = math.max(-maxSpeed, math.min(rightSpeed, maxSpeed));
+            frontLeftMotor.spin(leftSpeed);
+            rearLeftMotor.spin(leftSpeed);
+            frontRightMotor.spin(rightSpeed);
+            rearRightMotor.spin(rightSpeed);
+        }
+        void stop(){
+            frontLeftMotor.stop();
+            rearLeftMotor.stop();
+            frontRightMotor.stop();
+            rearRightMotor.stop();
+        }
     }
 }
-
-
-
-import motor_driver;
-import math;
 
 component N20 extends BrushlessMotor {
     subcomponents{
     }
     parameters{
         int direction; # 1 or -1
-        # ports
+
+        # ports #
         int forward;
         int backward;
         int sleep;

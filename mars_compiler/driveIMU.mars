@@ -1,0 +1,81 @@
+import math;
+
+## Drive with IMU ##
+/* 
+    Help support smoother driving for wheeled robots without encoders.
+    * driveStraight: correct angular drift by matching starting heading, P control
+    * turn: turn for a given angle (deg), P control
+*/
+
+class DriveIMU {
+
+    requirements {
+        WheeledChassis;
+        IMU(parameters=[gyro]);
+    }
+
+    WheeledChassis chassis;
+    IMU imu;
+    float headingGain = 2.0;
+    float turnGain = 2.5;
+    float::s controlPeriod = 0.02::s;
+
+    DriveIMU(Robot robot){
+        chassis = robot.match(WheeledChassis);
+        imu = robot.match(IMU);
+    }
+
+    float normalizeAngle(float angle) {
+        float twoPi = math.PI * 2;
+        while (angle > math.PI) {
+            angle = angle - twoPi;
+        }
+        while (angle <= -math.PI) {
+            angle = angle + twoPi;
+        }
+        return angle;
+    }
+
+    void driveStraight(float speed, float::s time){
+        float::rad heading = 0.0::rad;
+        float::s elapsed = 0.0::s;
+
+        while (elapsed < time) {
+            float::s step = controlPeriod;
+            if (elapsed + step > time) {
+                step = time - elapsed;
+            }
+
+            float::rad headingError = -heading;
+            float omega = headingGain * headingError;
+
+            chassis.drive(speed, 0.0, omega);
+            wait(step);
+            elapsed = elapsed + step;
+
+            float::rad/s yawRate = imu.vz;
+            heading = normalizeAngle(heading + yawRate * step);
+        }
+
+        chassis.drive(0.0, 0.0, 0.0);
+    }
+
+    void turn(float speed, float::deg angle){
+        float::rad targetAngle = angle;
+        float::rad turned = 0.0::rad;
+
+        while (math.abs(targetAngle - turned) > chassis.angleTolerance) {
+            float::rad remaining = normalizeAngle(targetAngle - turned);
+            float omega = turnGain * remaining;
+
+            chassis.drive(0.0, 0.0, omega);
+            wait(controlPeriod);
+
+            float::rad/s yawRate = imu.vz;
+            turned = normalizeAngle(turned + yawRate * controlPeriod);
+        }
+
+        chassis.drive(0.0, 0.0, 0.0);
+    }
+
+}
