@@ -1,24 +1,17 @@
 component Chassis {
-    subcomponents{}
-    parameters{
-        float maxLinearSpeed;
-        float maxAngularSpeed;
-        float positionTolerance;
-        float angleTolerance;
+    subcomponents{
+        string controlMode; # "tank" (left, right) or "twist" (vx, vy, vw); impacts params of drive()
     }
+    parameters{}
     functions{
-        void drive(float vx, float vy, float omega);
+        void drive();
         void stop();
     }
 }
 
 component WheeledChassis extends Chassis {
     subcomponents{}
-    parameters{
-        float wheelRadius;
-        float gearRatio;
-        int encoderTicksPerRev;
-    }
+    parameters{}
     functions{}
 }
 

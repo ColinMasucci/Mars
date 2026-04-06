@@ -1,17 +1,4 @@
-import keyboard_input;
+import keyboardDemo;
 
-print("keyboard_input mars test");
-print("press ?, then use wasd, arrows, q/e/z/c, or esc to quit");
-
-keyboard_input.print_instructions();
-
-while (true) {
-    string key = keyboard_input.read_key();
-    print("key", key);
-
-    if (key == "quit") {
-        break;
-    }
-}
-
-keyboard_input.cleanup();
+KeyboardDemo demo = KeyboardDemo(Phobos);
+demo.run();

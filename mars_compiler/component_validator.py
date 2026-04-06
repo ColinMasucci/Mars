@@ -71,7 +71,7 @@ class ComponentValidator:
                 )
             iface["subcomponents"][sub.name] = sub.type_name
             # Enforce mandatory params on subcomponent are bound or have defaults
-            required = self._required_params(self.components[sub.type_name])
+            required = self._required_params(sub.type_name)
             bindings = {b[0]: b[1] for b in (sub.bindings or [])}
             for rname, rtype in required.items():
                 if rname not in bindings:
@@ -121,10 +121,20 @@ class ComponentValidator:
             cur = self.components.get(cur.parent)
         return False
 
-    def _required_params(self, comp_def):
-        """Return params without defaults (value is None)."""
+    def _required_params(self, type_name: str):
+        """Return inherited params that do not have defaults after overrides are applied."""
+        lineage = []
+        cur = self.components.get(type_name)
+        while cur is not None:
+            lineage.append(cur)
+            cur = self.components.get(cur.parent) if cur.parent else None
+
         req = {}
-        for p in comp_def.parameters:
-            if p.value is None:
-                req[p.name] = self._normalize_type(p.vartype)
+        for comp_def in reversed(lineage):
+            for p in comp_def.parameters:
+                pname = p.name
+                if p.value is None:
+                    req[pname] = self._normalize_type(p.vartype)
+                else:
+                    req.pop(pname, None)
         return req

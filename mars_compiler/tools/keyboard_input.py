@@ -17,7 +17,7 @@ q: up_left
 e: up_right
 z: down_left
 c: down_right
-?: print instructions
+? or /: print instructions
 esc: quit
 """
 
@@ -71,7 +71,7 @@ def read_key(timeout=0.0):
             return "down_left"
         if key == "c":
             return "down_right"
-        if key == "?":
+        if key == "?" or key == "/":
             print_instructions()
             continue
 
@@ -89,6 +89,13 @@ def read_key(timeout=0.0):
                 return "down"
             if rest == "[C":
                 return "right"
+
+
+def read_command(timeout=0.0):
+    key = read_key(timeout)
+    if key is None:
+        return "stop"
+    return key
 
 
 def cleanup():

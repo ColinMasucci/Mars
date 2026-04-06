@@ -136,6 +136,22 @@ def build_component_tree(registry, interfaces, ros_topics_map=None, ros_topics_f
             parent = parent_def.parent
         return False
 
+    def _required_params(comp_def):
+        lineage = []
+        cur = comp_def
+        while cur is not None:
+            lineage.append(cur)
+            cur = registry.get(cur.parent) if cur.parent else None
+
+        req = {}
+        for ancestor in reversed(lineage):
+            for param in ancestor.parameters:
+                if param.value is None:
+                    req[param.name] = param.vartype
+                else:
+                    req.pop(param.name, None)
+        return req
+
     def _parse_subscribe(node, path, param_name):
         if not isinstance(node, Call):
             return None
@@ -189,6 +205,13 @@ def build_component_tree(registry, interfaces, ros_topics_map=None, ros_topics_f
             return None
 
         path = instance_name if parent_path is None else f"{parent_path}.{instance_name}"
+        bound_names = {bname for bname, _ in (bindings or [])}
+        if parent_path is None:
+            for pname in _required_params(comp_def):
+                if pname not in bound_names:
+                    raise ComponentValidationError(
+                        f"Component '{type_name}' is missing required parameter '{pname}'"
+                    )
         param_ast = {}
         param_values = {}
         param_types = {}

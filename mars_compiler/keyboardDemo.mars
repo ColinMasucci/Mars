@@ -1,0 +1,88 @@
+import keyboard_input;
+
+class KeyboardDemo {
+
+    requirements {
+        WheeledChassis(parameters=[controlMode="tank"]);
+    }
+
+    WheeledChassis chassis;
+    float driveSpeed = 0.6;
+    float turnSpeed = 0.6;
+    float diagonalScale = 0.5;
+    float::s pollPeriod = 0.1::s;
+
+    KeyboardDemo(Robot robot){
+        chassis = robot.match(Chassis);
+    }
+
+    void applyKey(string key) {
+        if (key == "stop") {
+            chassis.stop();
+            return;
+        }
+
+        if (key == "up") {
+            chassis.drive(driveSpeed, driveSpeed);
+            return;
+        }
+
+        if (key == "down") {
+            chassis.drive(-driveSpeed, -driveSpeed);
+            return;
+        }
+
+        if (key == "left") {
+            chassis.drive(-turnSpeed, turnSpeed);
+            return;
+        }
+
+        if (key == "right") {
+            chassis.drive(turnSpeed, -turnSpeed);
+            return;
+        }
+
+        if (key == "up_left") {
+            chassis.drive(driveSpeed * diagonalScale, driveSpeed);
+            return;
+        }
+
+        if (key == "up_right") {
+            chassis.drive(driveSpeed, driveSpeed * diagonalScale);
+            return;
+        }
+
+        if (key == "down_left") {
+            chassis.drive(-driveSpeed * diagonalScale, -driveSpeed);
+            return;
+        }
+
+        if (key == "down_right") {
+            chassis.drive(-driveSpeed, -driveSpeed * diagonalScale);
+            return;
+        }
+    }
+
+    void run() {
+        print("KeyboardDemo");
+        print("controlMode", controlMode);
+        keyboard_input.print_instructions();
+
+        chassis.init();
+        chassis.stop();
+
+        while (true) {
+            string key = keyboard_input.read_command(pollPeriod);
+
+            if (key == "quit") {
+                break;
+            }
+
+            applyKey(key);
+        }
+
+        chassis.stop();
+        keyboard_input.cleanup();
+    }
+
+}
