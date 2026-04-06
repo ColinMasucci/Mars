@@ -135,7 +135,12 @@ def _interpret(
                 class_interfaces[mod] = class_interfaces[cls_name]
 
     # Type check
-    type_checker = TypeChecker(component_interfaces=interfaces, class_interfaces=class_interfaces)
+    type_checker = TypeChecker(
+        component_interfaces=interfaces,
+        class_interfaces=class_interfaces,
+        source_text=code,
+        source_path=source_path,
+    )
     type_checker.check(parsed_ast)
 
     # Validate component implementations for instantiated Robot trees
@@ -167,6 +172,7 @@ def _interpret(
     class_funcs, class_field_info = build_class_runtime(parsed_ast.classes, class_interfaces)
 
     # Compile to bytecode and run on VM
+    source_map = {}
     bytecode = compile_program(
         parsed_ast,
         debug,
@@ -175,8 +181,17 @@ def _interpret(
         component_imports=component_imports,
         class_functions=class_funcs,
         class_interfaces=class_interfaces,
+        source_map=source_map,
     )
-    vm = VM(bytecode, class_field_info=class_field_info, component_tree=component_tree, component_parents=component_parents)
+    vm = VM(
+        bytecode,
+        class_field_info=class_field_info,
+        component_tree=component_tree,
+        component_parents=component_parents,
+        source_map=source_map,
+        source_text=code,
+        source_path=source_path,
+    )
 
     bridge_proc = None
     if ros_autostart:

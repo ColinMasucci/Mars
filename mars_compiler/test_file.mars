@@ -16,8 +16,8 @@ while (i < 5) {
     float::G[] accelG = accel;
 
     print("sample", i);
-    print("accel_ms2", accel[0], accel[1], accel[2], unit(accel[1]));
-    print("accel_G", accelG[0], accelG[1], accelG[2], unit(accelG[2]));
+    print("accel_ms2", accel[0], accel[1], accel[2], unit(accel));
+    print("accel_G", accelG[0], accelG[1], accelG[2], unit(accelG));
 
     wait(0.5);
     i += 1;

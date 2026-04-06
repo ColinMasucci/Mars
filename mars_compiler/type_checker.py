@@ -2,12 +2,13 @@ import os
 import importlib.util
 
 from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, ArrayUnitConvert, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, Return, Break, Continue, FuncDecl, MemberAccess, ClassDecl
+from source_errors import format_node_error
 from units import parse_unit_expr, canonical_name, UnitSpec
 
 
 
 class TypeChecker:
-    def __init__(self, component_interfaces=None, class_interfaces=None):
+    def __init__(self, component_interfaces=None, class_interfaces=None, source_text=None, source_path=None):
         # Scopes: list of dicts, each dict: name -> { 'type': str or 'function', 'mutable': bool, 'info': dict }
         self.scopes = [{}]
         self._loaded_modules = {}  # cache loaded builtin modules
@@ -18,6 +19,8 @@ class TypeChecker:
         self.component_interfaces = component_interfaces or {}
         self.class_interfaces = class_interfaces or {}
         self.component_parents = {name: info.get("parent") for name, info in (self.component_interfaces or {}).items()}
+        self.source_text = source_text
+        self.source_path = source_path
 
         # pre-load built-in functions and constants (not from library)
         self._declare_symbol(
@@ -98,6 +101,9 @@ class TypeChecker:
         setattr(node, "inferred_type", typ)
         return typ
 
+    def _format_node_error(self, node, message):
+        return format_node_error(message, self.source_text, node, self.source_path, "typecheck")
+
     def _normalize_type(self, typ: str):
         # Convert parser array syntax -> type checker array syntax (e.g., int[] -> array<int>)
         # This is because parser uses int[] syntax for easier parsing, but type checker uses array<int> internally
@@ -118,6 +124,14 @@ class TypeChecker:
             base, unit_expr = typ.split("::", 1)
             return base, unit_expr
         return typ, None
+
+    def _array_element_type(self, typ: str):
+        if not isinstance(typ, str):
+            return None
+        cur = typ
+        while cur.startswith("array<") and cur.endswith(">"):
+            cur = cur[len("array<"):-1]
+        return cur
 
     def _parse_unit_expr(self, expr: str) -> UnitSpec:
         try:
@@ -653,741 +667,751 @@ class TypeChecker:
 
 
     def check(self, node):
-        match node:
-            case Program(statements, components, classes):
-                self._push_scope()
-                try:
-                    # Expose classes and components as symbols for dotted access in programs
-                    for cname in self.class_interfaces:
-                        self._declare_symbol(cname, f"class:{cname}", mutable=False)
-                    for cname in self.component_interfaces:
-                        self._declare_symbol(cname, f"component:{cname}", mutable=False)
-                    # also expose class names as types
-                    for stmt in statements:
-                        self.check(stmt)
-                finally:
-                    self._pop_scope()
-                # Components are validated separately; this matcher keeps parsing aligned with Program structure.
+        try:
+            match node:
+                case Program(statements, components, classes):
+                    self._push_scope()
+                    try:
+                        # Expose classes and components as symbols for dotted access in programs
+                        for cname in self.class_interfaces:
+                            self._declare_symbol(cname, f"class:{cname}", mutable=False)
+                        for cname in self.component_interfaces:
+                            self._declare_symbol(cname, f"component:{cname}", mutable=False)
+                        # also expose class names as types
+                        for stmt in statements:
+                            self.check(stmt)
+                    finally:
+                        self._pop_scope()
+                    # Components are validated separately; this matcher keeps parsing aligned with Program structure.
 
-            case Block(statements):
-                self._push_scope()
-                try:
-                    for stmt in statements:
-                        self.check(stmt)
-                finally:
-                    self._pop_scope()
-
-
-            case VarDecl(vartype, name, value):
-                # Normalize (e.g., int[] → array<int>)
-                vartype = self._normalize_type(vartype)
-
-                # Check the type exists or is valid (dict/array)
-                self._validate_declared_type(vartype)
-
-                stored_type = vartype
-                if vartype in self.component_interfaces:
-                    stored_type = f"component:{vartype}"
-                if vartype in self.class_interfaces:
-                    stored_type = f"class:{vartype}"
-
-                # Check redeclaration
-                if name in self._current_scope():
-                    raise TypeError(f"Variable '{name}' already declared")
-
-                # If initializer exists, ensure type compatibility
-                if value is not None:
-                    value_type = self.check(value)
-                    decl_info = self._numeric_type_info(stored_type)
-                    value_info = self._numeric_type_info(value_type)
-                    if decl_info and value_info:
-                        if decl_info["base"] == "float" and decl_info["unit_spec"] is None and value_info["unit_spec"] is not None:
-                            stored_type = self._unit_type_string(value_info["unit_spec"])
-                            node.vartype = stored_type
-                    value = self._coerce_value_to_expected(
-                        stored_type,
-                        value,
-                        value_type,
-                        f"Type mismatch in declaration of '{name}'"
-                    )
-                    node.value = value
-                # Add to symbol table
-                self._declare_symbol(name, stored_type, mutable=not getattr(node, "readonly", False))
-                return self._set_type(node, stored_type)
-
-
-
-            case Assign(name_node, value):
-                # ---------------- SIMPLE VAR ASSIGN ----------------
-                if isinstance(name_node, Var):
-                    name = name_node.name
-                    sym = self._lookup_symbol(name)
-                    if sym is None:
-                        raise TypeError(f"Assignment to undeclared variable '{name}'")
-                    if sym.get("mutable") is False:
-                        raise TypeError(f"Cannot assign to immutable symbol '{name}'")
-                    value_type = self.check(value)
-                    expected = sym["type"]
-                    value = self._coerce_value_to_expected(
-                        expected,
-                        value,
-                        value_type,
-                        f"Type mismatch in assignment to '{name}'"
-                    )
-                    node.value = value
-                    return self._set_type(node, expected)
-
-                # ---------------- ARRAY / DICT ELEMENT ASSIGN ----------------
-                if isinstance(name_node, ArrayAccess):
-                    container = name_node.array
-                    container_type = self.check(container)
-
-                    # Enforce mutability on container if it is a variable or class field
-                    if isinstance(container, Var):
-                        base_sym = self._lookup_symbol(container.name)
-                        if base_sym is None:
-                            raise TypeError(f"Assignment to undeclared variable '{container.name}'")
-                        if base_sym.get("mutable") is False:
-                            raise TypeError(f"Cannot assign to immutable symbol '{container.name}'")
-                    elif isinstance(container, MemberAccess):
-                        obj_type = self.check(container.obj)
-                        if isinstance(obj_type, str) and obj_type.startswith("class:"):
-                            cname = obj_type.split(":",1)[1]
-                            iface = self.class_interfaces.get(cname, {})
-                            readonly = iface.get("readonly", {}).get(container.attr, False)
-                            if readonly:
-                                raise TypeError(f"Cannot assign to const field '{container.attr}'")
-                        else:
-                            raise TypeError("Left-hand side of assignment must be a variable, array element, or class field")
-
-                    # array<int> or dict<K,V>
-                    if isinstance(container_type, str) and container_type.startswith("array<") and container_type.endswith(">"):
-                        elem_type = container_type[len("array<"):-1]
-                        idx_type = self.check(name_node.index)
-                        if idx_type != "int":
-                            raise TypeError(f"Array index must be int, got {idx_type}")
+                case Block(statements):
+                    self._push_scope()
+                    try:
+                        for stmt in statements:
+                            self.check(stmt)
+                    finally:
+                        self._pop_scope()
+    
+    
+                case VarDecl(vartype, name, value):
+                    # Normalize (e.g., int[] → array<int>)
+                    vartype = self._normalize_type(vartype)
+    
+                    # Check the type exists or is valid (dict/array)
+                    self._validate_declared_type(vartype)
+    
+                    stored_type = vartype
+                    if vartype in self.component_interfaces:
+                        stored_type = f"component:{vartype}"
+                    if vartype in self.class_interfaces:
+                        stored_type = f"class:{vartype}"
+    
+                    # Check redeclaration
+                    if name in self._current_scope():
+                        raise TypeError(f"Variable '{name}' already declared")
+    
+                    # If initializer exists, ensure type compatibility
+                    if value is not None:
                         value_type = self.check(value)
+                        decl_info = self._numeric_type_info(stored_type)
+                        value_info = self._numeric_type_info(value_type)
+                        if decl_info and value_info:
+                            if decl_info["base"] == "float" and decl_info["unit_spec"] is None and value_info["unit_spec"] is not None:
+                                stored_type = self._unit_type_string(value_info["unit_spec"])
+                                node.vartype = stored_type
                         value = self._coerce_value_to_expected(
-                            elem_type,
+                            stored_type,
                             value,
                             value_type,
-                            "Type mismatch assigning to array element"
+                            f"Type mismatch in declaration of '{name}'"
                         )
                         node.value = value
-                        name_node.inferred_type = elem_type
-                        return self._set_type(node, elem_type)
-
-                    if isinstance(container_type, str) and container_type.startswith("dict<") and container_type.endswith(">"):
-                        inside = container_type[len("dict<"):-1]
-                        key_type, val_type = [x.strip() for x in inside.split(",")]
-                        idx_type = self.check(name_node.index)
-                        if idx_type != key_type:
-                            raise TypeError(f"Dictionary key must be {key_type}, got {idx_type}")
+                    # Add to symbol table
+                    self._declare_symbol(name, stored_type, mutable=not getattr(node, "readonly", False))
+                    return self._set_type(node, stored_type)
+    
+    
+    
+                case Assign(name_node, value):
+                    # ---------------- SIMPLE VAR ASSIGN ----------------
+                    if isinstance(name_node, Var):
+                        name = name_node.name
+                        sym = self._lookup_symbol(name)
+                        if sym is None:
+                            raise TypeError(f"Assignment to undeclared variable '{name}'")
+                        if sym.get("mutable") is False:
+                            raise TypeError(f"Cannot assign to immutable symbol '{name}'")
                         value_type = self.check(value)
+                        expected = sym["type"]
                         value = self._coerce_value_to_expected(
-                            val_type,
+                            expected,
                             value,
                             value_type,
-                            "Type mismatch assigning to dictionary element"
+                            f"Type mismatch in assignment to '{name}'"
                         )
                         node.value = value
-                        name_node.inferred_type = val_type
-                        return self._set_type(node, val_type)
-
-                    raise TypeError(f"Trying to index non-indexable type '{container_type}'")
-
-                # ---------------- CLASS FIELD ASSIGN ----------------
-                if isinstance(name_node, MemberAccess):
-                    obj_type = self.check(name_node.obj)
-                    if not isinstance(obj_type, str) or not obj_type.startswith("class:"):
-                        raise TypeError("Left-hand side of assignment must be a variable, array element, or class field")
-                    cname = obj_type.split(":",1)[1]
-                    iface = self.class_interfaces.get(cname, {})
-                    readonly = iface.get("readonly", {}).get(name_node.attr, False)
-                    if readonly:
-                        raise TypeError(f"Cannot assign to const field '{name_node.attr}'")
-                    ftype = self._resolve_member_access(obj_type, name_node.attr)
-                    val_type = self.check(value)
-                    value = self._coerce_value_to_expected(
-                        ftype,
-                        value,
-                        val_type,
-                        f"Type mismatch assigning to field '{name_node.attr}'"
-                    )
-                    node.value = value
-                    return self._set_type(node, ftype)
-
-                raise TypeError("LHS of assignment must be a variable or an array access")
-
-            case AugAssign(name_node, op, value):
-                # ---------------- SIMPLE VAR ASSIGN ----------------
-                if isinstance(name_node, Var):
-                    name = name_node.name
-                    sym = self._lookup_symbol(name)
-                    if sym is None:
-                        raise TypeError(f"Assignment to undeclared variable '{name}'")
-                    if sym.get("mutable") is False:
-                        raise TypeError(f"Cannot assign to immutable symbol '{name}'")
-                    left_type = sym["type"]
-
-                # ---------------- ARRAY / DICT ELEMENT ASSIGN ----------------
-                elif isinstance(name_node, ArrayAccess):
-                    container = name_node.array
-                    container_type = self.check(container)
-
-                    # Enforce mutability on container if it is a variable or class field
-                    if isinstance(container, Var):
-                        base_sym = self._lookup_symbol(container.name)
-                        if base_sym is None:
-                            raise TypeError(f"Assignment to undeclared variable '{container.name}'")
-                        if base_sym.get("mutable") is False:
-                            raise TypeError(f"Cannot assign to immutable symbol '{container.name}'")
-                    elif isinstance(container, MemberAccess):
-                        obj_type = self.check(container.obj)
-                        if isinstance(obj_type, str) and obj_type.startswith("class:"):
-                            cname = obj_type.split(":",1)[1]
-                            iface = self.class_interfaces.get(cname, {})
-                            readonly = iface.get("readonly", {}).get(container.attr, False)
-                            if readonly:
-                                raise TypeError(f"Cannot assign to const field '{container.attr}'")
-                        else:
-                            raise TypeError("Left-hand side of assignment must be a variable, array element, or class field")
-
-                    # array<int> or dict<K,V>
-                    if isinstance(container_type, str) and container_type.startswith("array<") and container_type.endswith(">"):
-                        elem_type = container_type[len("array<"):-1]
-                        idx_type = self.check(name_node.index)
-                        if idx_type != "int":
-                            raise TypeError(f"Array index must be int, got {idx_type}")
-                        left_type = elem_type
-                        name_node.inferred_type = elem_type
-                    elif isinstance(container_type, str) and container_type.startswith("dict<") and container_type.endswith(">"):
-                        inside = container_type[len("dict<"):-1]
-                        key_type, val_type = [x.strip() for x in inside.split(",")]
-                        idx_type = self.check(name_node.index)
-                        if idx_type != key_type:
-                            raise TypeError(f"Dictionary key must be {key_type}, got {idx_type}")
-                        left_type = val_type
-                        name_node.inferred_type = val_type
-                    else:
-                        raise TypeError(f"Trying to index non-indexable type '{container_type}'")
-
-                # ---------------- CLASS FIELD ASSIGN ----------------
-                elif isinstance(name_node, MemberAccess):
-                    obj_type = self.check(name_node.obj)
-                    if not isinstance(obj_type, str) or not obj_type.startswith("class:"):
-                        raise TypeError("Left-hand side of assignment must be a variable, array element, or class field")
-                    cname = obj_type.split(":",1)[1]
-                    iface = self.class_interfaces.get(cname, {})
-                    readonly = iface.get("readonly", {}).get(name_node.attr, False)
-                    if readonly:
-                        raise TypeError(f"Cannot assign to const field '{name_node.attr}'")
-                    left_type = self._resolve_member_access(obj_type, name_node.attr)
-
-                else:
-                    raise TypeError("LHS of assignment must be a variable or an array access")
-
-                right_type = self.check(value)
-                left_info = self._numeric_type_info(left_type)
-                right_info = self._numeric_type_info(right_type)
-                if left_info or right_info:
-                    if not left_info or not right_info:
-                        raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
-                    left_unit = left_info["unit_spec"]
-                    right_unit = right_info["unit_spec"]
-                    left_base = left_info["base"]
-                    right_base = right_info["base"]
-
-                    if op in ("PLUS", "MINUS"):
-                        if left_unit and right_unit:
-                            if left_unit.dims != right_unit.dims:
-                                raise TypeError(f"Unit mismatch for {op}: '{left_unit.expr}' vs '{right_unit.expr}'")
-                            value = self._convert_unit_node(value, right_unit, left_unit)
+                        return self._set_type(node, expected)
+    
+                    # ---------------- ARRAY / DICT ELEMENT ASSIGN ----------------
+                    if isinstance(name_node, ArrayAccess):
+                        container = name_node.array
+                        container_type = self.check(container)
+    
+                        # Enforce mutability on container if it is a variable or class field
+                        if isinstance(container, Var):
+                            base_sym = self._lookup_symbol(container.name)
+                            if base_sym is None:
+                                raise TypeError(f"Assignment to undeclared variable '{container.name}'")
+                            if base_sym.get("mutable") is False:
+                                raise TypeError(f"Cannot assign to immutable symbol '{container.name}'")
+                        elif isinstance(container, MemberAccess):
+                            obj_type = self.check(container.obj)
+                            if isinstance(obj_type, str) and obj_type.startswith("class:"):
+                                cname = obj_type.split(":",1)[1]
+                                iface = self.class_interfaces.get(cname, {})
+                                readonly = iface.get("readonly", {}).get(container.attr, False)
+                                if readonly:
+                                    raise TypeError(f"Cannot assign to const field '{container.attr}'")
+                            else:
+                                raise TypeError("Left-hand side of assignment must be a variable, array element, or class field")
+    
+                        # array<int> or dict<K,V>
+                        if isinstance(container_type, str) and container_type.startswith("array<") and container_type.endswith(">"):
+                            elem_type = container_type[len("array<"):-1]
+                            idx_type = self.check(name_node.index)
+                            if idx_type != "int":
+                                raise TypeError(f"Array index must be int, got {idx_type}")
+                            value_type = self.check(value)
+                            value = self._coerce_value_to_expected(
+                                elem_type,
+                                value,
+                                value_type,
+                                "Type mismatch assigning to array element"
+                            )
                             node.value = value
-                            result_unit = left_unit
+                            name_node.inferred_type = elem_type
+                            return self._set_type(node, elem_type)
+    
+                        if isinstance(container_type, str) and container_type.startswith("dict<") and container_type.endswith(">"):
+                            inside = container_type[len("dict<"):-1]
+                            key_type, val_type = [x.strip() for x in inside.split(",")]
+                            idx_type = self.check(name_node.index)
+                            if idx_type != key_type:
+                                raise TypeError(f"Dictionary key must be {key_type}, got {idx_type}")
+                            value_type = self.check(value)
+                            value = self._coerce_value_to_expected(
+                                val_type,
+                                value,
+                                value_type,
+                                "Type mismatch assigning to dictionary element"
+                            )
+                            node.value = value
+                            name_node.inferred_type = val_type
+                            return self._set_type(node, val_type)
+    
+                        raise TypeError(f"Trying to index non-indexable type '{container_type}'")
+    
+                    # ---------------- CLASS FIELD ASSIGN ----------------
+                    if isinstance(name_node, MemberAccess):
+                        obj_type = self.check(name_node.obj)
+                        if not isinstance(obj_type, str) or not obj_type.startswith("class:"):
+                            raise TypeError("Left-hand side of assignment must be a variable, array element, or class field")
+                        cname = obj_type.split(":",1)[1]
+                        iface = self.class_interfaces.get(cname, {})
+                        readonly = iface.get("readonly", {}).get(name_node.attr, False)
+                        if readonly:
+                            raise TypeError(f"Cannot assign to const field '{name_node.attr}'")
+                        ftype = self._resolve_member_access(obj_type, name_node.attr)
+                        val_type = self.check(value)
+                        value = self._coerce_value_to_expected(
+                            ftype,
+                            value,
+                            val_type,
+                            f"Type mismatch assigning to field '{name_node.attr}'"
+                        )
+                        node.value = value
+                        return self._set_type(node, ftype)
+    
+                    raise TypeError("LHS of assignment must be a variable or an array access")
+    
+                case AugAssign(name_node, op, value):
+                    # ---------------- SIMPLE VAR ASSIGN ----------------
+                    if isinstance(name_node, Var):
+                        name = name_node.name
+                        sym = self._lookup_symbol(name)
+                        if sym is None:
+                            raise TypeError(f"Assignment to undeclared variable '{name}'")
+                        if sym.get("mutable") is False:
+                            raise TypeError(f"Cannot assign to immutable symbol '{name}'")
+                        left_type = sym["type"]
+    
+                    # ---------------- ARRAY / DICT ELEMENT ASSIGN ----------------
+                    elif isinstance(name_node, ArrayAccess):
+                        container = name_node.array
+                        container_type = self.check(container)
+    
+                        # Enforce mutability on container if it is a variable or class field
+                        if isinstance(container, Var):
+                            base_sym = self._lookup_symbol(container.name)
+                            if base_sym is None:
+                                raise TypeError(f"Assignment to undeclared variable '{container.name}'")
+                            if base_sym.get("mutable") is False:
+                                raise TypeError(f"Cannot assign to immutable symbol '{container.name}'")
+                        elif isinstance(container, MemberAccess):
+                            obj_type = self.check(container.obj)
+                            if isinstance(obj_type, str) and obj_type.startswith("class:"):
+                                cname = obj_type.split(":",1)[1]
+                                iface = self.class_interfaces.get(cname, {})
+                                readonly = iface.get("readonly", {}).get(container.attr, False)
+                                if readonly:
+                                    raise TypeError(f"Cannot assign to const field '{container.attr}'")
+                            else:
+                                raise TypeError("Left-hand side of assignment must be a variable, array element, or class field")
+    
+                        # array<int> or dict<K,V>
+                        if isinstance(container_type, str) and container_type.startswith("array<") and container_type.endswith(">"):
+                            elem_type = container_type[len("array<"):-1]
+                            idx_type = self.check(name_node.index)
+                            if idx_type != "int":
+                                raise TypeError(f"Array index must be int, got {idx_type}")
+                            left_type = elem_type
+                            name_node.inferred_type = elem_type
+                        elif isinstance(container_type, str) and container_type.startswith("dict<") and container_type.endswith(">"):
+                            inside = container_type[len("dict<"):-1]
+                            key_type, val_type = [x.strip() for x in inside.split(",")]
+                            idx_type = self.check(name_node.index)
+                            if idx_type != key_type:
+                                raise TypeError(f"Dictionary key must be {key_type}, got {idx_type}")
+                            left_type = val_type
+                            name_node.inferred_type = val_type
                         else:
-                            result_unit = left_unit or right_unit
-                    elif op in ("MUL", "DIV"):
-                        if left_unit and right_unit:
-                            result_unit = self._combine_units(left_unit, right_unit, op)
+                            raise TypeError(f"Trying to index non-indexable type '{container_type}'")
+    
+                    # ---------------- CLASS FIELD ASSIGN ----------------
+                    elif isinstance(name_node, MemberAccess):
+                        obj_type = self.check(name_node.obj)
+                        if not isinstance(obj_type, str) or not obj_type.startswith("class:"):
+                            raise TypeError("Left-hand side of assignment must be a variable, array element, or class field")
+                        cname = obj_type.split(":",1)[1]
+                        iface = self.class_interfaces.get(cname, {})
+                        readonly = iface.get("readonly", {}).get(name_node.attr, False)
+                        if readonly:
+                            raise TypeError(f"Cannot assign to const field '{name_node.attr}'")
+                        left_type = self._resolve_member_access(obj_type, name_node.attr)
+    
+                    else:
+                        raise TypeError("LHS of assignment must be a variable or an array access")
+    
+                    right_type = self.check(value)
+                    left_info = self._numeric_type_info(left_type)
+                    right_info = self._numeric_type_info(right_type)
+                    if left_info or right_info:
+                        if not left_info or not right_info:
+                            raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
+                        left_unit = left_info["unit_spec"]
+                        right_unit = right_info["unit_spec"]
+                        left_base = left_info["base"]
+                        right_base = right_info["base"]
+    
+                        if op in ("PLUS", "MINUS"):
+                            if left_unit and right_unit:
+                                if left_unit.dims != right_unit.dims:
+                                    raise TypeError(f"Unit mismatch for {op}: '{left_unit.expr}' vs '{right_unit.expr}'")
+                                value = self._convert_unit_node(value, right_unit, left_unit)
+                                node.value = value
+                                result_unit = left_unit
+                            else:
+                                result_unit = left_unit or right_unit
+                        elif op in ("MUL", "DIV"):
+                            if left_unit and right_unit:
+                                result_unit = self._combine_units(left_unit, right_unit, op)
+                            else:
+                                result_unit = left_unit or right_unit
+                        elif op == "MOD":
+                            if left_unit or right_unit:
+                                raise TypeError("Modulo does not support unit-tagged values")
+                            result_unit = None
                         else:
-                            result_unit = left_unit or right_unit
-                    elif op == "MOD":
-                        if left_unit or right_unit:
-                            raise TypeError("Modulo does not support unit-tagged values")
-                        result_unit = None
+                            result_unit = None
+    
+                        if result_unit:
+                            result_type = self._unit_type_string(result_unit)
+                        else:
+                            result_type = "float" if "float" in (left_base, right_base) else "int"
                     else:
-                        result_unit = None
-
-                    if result_unit:
-                        result_type = self._unit_type_string(result_unit)
-                    else:
-                        result_type = "float" if "float" in (left_base, right_base) else "int"
-                else:
-                    result_type = self._binary_result_type(op, left_type, right_type)
-                if not self._types_compatible(left_type, result_type):
-                    raise TypeError(f"Type mismatch in compound assignment: expected {left_type}, got {result_type}")
-                return self._set_type(node, left_type)
-
-
-            case Var(name):
-                sym = self._lookup_symbol(name)
-                if sym is None:
-                    raise TypeError(f"Undefined variable or symbol '{name}'")
-                return self._set_type(node, sym["type"])
-            case MemberAccess(obj, attr):
-                obj_type = self.check(obj)
-                res = self._resolve_member_access(obj_type, attr)
-                if res is None:
-                    raise TypeError(f"Cannot access member '{attr}' on {obj_type}")
-                return self._set_type(node, res)
-
-
-
-            case UnitTag(expr, unit):
-                expr_type = self.check(expr)
-                expr_info = self._numeric_type_info(expr_type)
-                if not expr_info:
-                    raise TypeError("Unit tags can only be applied to numeric expressions")
-                target_unit = self._parse_unit_expr(unit)
-                if expr_info["unit_spec"]:
-                    if expr_info["unit_spec"].dims != target_unit.dims:
-                        raise TypeError(f"Unit mismatch: '{expr_info['unit_spec'].expr}' vs '{target_unit.expr}'")
-                    node.expr = self._convert_unit_node(expr, expr_info["unit_spec"], target_unit)
-                return self._set_type(node, self._unit_type_string(target_unit))
-
-            case NumberLiteral(value):
-                return self._set_type(node, "float" if isinstance(value, float) else "int")
-
-            case StringLiteral(value):
-                return self._set_type(node, "string")
-
-            case BooleanLiteral(value):
-                return self._set_type(node, "bool")
-
-            case BinaryOp(op, left, right):
-                left_type = self.check(left)
-                right_type = self.check(right)
-                if left_type == "dynamic" or right_type == "dynamic":
-                    return self._set_type(node, "dynamic")
-
-                # string concat falls back to base behavior
-                if op == "PLUS" and (left_type == "string" or right_type == "string"):
-                    return self._set_type(node, self._binary_result_type(op, left_type, right_type))
-
-                left_info = self._numeric_type_info(left_type)
-                right_info = self._numeric_type_info(right_type)
-
-                if left_info or right_info:
-                    if not left_info or not right_info:
-                        raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
-
-                    left_unit = left_info["unit_spec"]
-                    right_unit = right_info["unit_spec"]
-                    left_base = left_info["base"]
-                    right_base = right_info["base"]
-
-                    # Comparisons
-                    if op in ("EQ", "NEQ", "LT", "LEQ", "GT", "GEQ"):
-                        if left_unit and right_unit:
-                            if left_unit.dims != right_unit.dims or left_unit.affine != right_unit.affine:
-                                raise TypeError(f"Unit mismatch in comparison: '{left_unit.expr}' vs '{right_unit.expr}'")
-                            node.right = self._convert_unit_node(right, right_unit, left_unit)
-                        return self._set_type(node, "bool")
-
-                    # Addition / subtraction
-                    if op in ("PLUS", "MINUS"):
-                        if left_unit and right_unit:
-                            if left_unit.dims != right_unit.dims:
-                                raise TypeError(f"Unit mismatch for {op}: '{left_unit.expr}' vs '{right_unit.expr}'")
-                            if self._is_temp_unit(left_unit) and self._is_temp_unit(right_unit):
-                                # Temperature-specific arithmetic:
-                                # absolute + delta -> absolute
-                                # absolute - delta -> absolute
-                                # absolute - absolute -> delta
-                                # delta + absolute -> absolute
-                                # delta - absolute -> error
-                                if op == "PLUS":
-                                    if left_unit.affine and right_unit.affine:
-                                        raise TypeError("Cannot add absolute temperatures")
-                                    if left_unit.affine and not right_unit.affine:
-                                        delta_target = self._delta_unit(left_unit)
-                                        node.right = self._convert_unit_node(right, right_unit, delta_target)
-                                        result_unit = left_unit
-                                    elif not left_unit.affine and right_unit.affine:
-                                        delta_target = self._delta_unit(right_unit)
-                                        node.left = self._convert_unit_node(left, left_unit, delta_target)
-                                        result_unit = right_unit
-                                    else:
-                                        node.right = self._convert_unit_node(right, right_unit, left_unit)
-                                        result_unit = left_unit
-                                else:  # MINUS
-                                    if left_unit.affine and right_unit.affine:
+                        result_type = self._binary_result_type(op, left_type, right_type)
+                    if not self._types_compatible(left_type, result_type):
+                        raise TypeError(f"Type mismatch in compound assignment: expected {left_type}, got {result_type}")
+                    return self._set_type(node, left_type)
+    
+    
+                case Var(name):
+                    sym = self._lookup_symbol(name)
+                    if sym is None:
+                        raise TypeError(f"Undefined variable or symbol '{name}'")
+                    return self._set_type(node, sym["type"])
+                case MemberAccess(obj, attr):
+                    obj_type = self.check(obj)
+                    res = self._resolve_member_access(obj_type, attr)
+                    if res is None:
+                        raise TypeError(f"Cannot access member '{attr}' on {obj_type}")
+                    return self._set_type(node, res)
+    
+    
+    
+                case UnitTag(expr, unit):
+                    expr_type = self.check(expr)
+                    expr_info = self._numeric_type_info(expr_type)
+                    if not expr_info:
+                        raise TypeError("Unit tags can only be applied to numeric expressions")
+                    target_unit = self._parse_unit_expr(unit)
+                    if expr_info["unit_spec"]:
+                        if expr_info["unit_spec"].dims != target_unit.dims:
+                            raise TypeError(f"Unit mismatch: '{expr_info['unit_spec'].expr}' vs '{target_unit.expr}'")
+                        node.expr = self._convert_unit_node(expr, expr_info["unit_spec"], target_unit)
+                    return self._set_type(node, self._unit_type_string(target_unit))
+    
+                case NumberLiteral(value):
+                    return self._set_type(node, "float" if isinstance(value, float) else "int")
+    
+                case StringLiteral(value):
+                    return self._set_type(node, "string")
+    
+                case BooleanLiteral(value):
+                    return self._set_type(node, "bool")
+    
+                case BinaryOp(op, left, right):
+                    left_type = self.check(left)
+                    right_type = self.check(right)
+                    if left_type == "dynamic" or right_type == "dynamic":
+                        return self._set_type(node, "dynamic")
+    
+                    # string concat falls back to base behavior
+                    if op == "PLUS" and (left_type == "string" or right_type == "string"):
+                        return self._set_type(node, self._binary_result_type(op, left_type, right_type))
+    
+                    left_info = self._numeric_type_info(left_type)
+                    right_info = self._numeric_type_info(right_type)
+    
+                    if left_info or right_info:
+                        if not left_info or not right_info:
+                            raise TypeError(f"Invalid operand types for {op}: {left_type} and {right_type}")
+    
+                        left_unit = left_info["unit_spec"]
+                        right_unit = right_info["unit_spec"]
+                        left_base = left_info["base"]
+                        right_base = right_info["base"]
+    
+                        # Comparisons
+                        if op in ("EQ", "NEQ", "LT", "LEQ", "GT", "GEQ"):
+                            if left_unit and right_unit:
+                                if left_unit.dims != right_unit.dims or left_unit.affine != right_unit.affine:
+                                    raise TypeError(f"Unit mismatch in comparison: '{left_unit.expr}' vs '{right_unit.expr}'")
+                                node.right = self._convert_unit_node(right, right_unit, left_unit)
+                            return self._set_type(node, "bool")
+    
+                        # Addition / subtraction
+                        if op in ("PLUS", "MINUS"):
+                            if left_unit and right_unit:
+                                if left_unit.dims != right_unit.dims:
+                                    raise TypeError(f"Unit mismatch for {op}: '{left_unit.expr}' vs '{right_unit.expr}'")
+                                if self._is_temp_unit(left_unit) and self._is_temp_unit(right_unit):
+                                    # Temperature-specific arithmetic:
+                                    # absolute + delta -> absolute
+                                    # absolute - delta -> absolute
+                                    # absolute - absolute -> delta
+                                    # delta + absolute -> absolute
+                                    # delta - absolute -> error
+                                    if op == "PLUS":
+                                        if left_unit.affine and right_unit.affine:
+                                            raise TypeError("Cannot add absolute temperatures")
+                                        if left_unit.affine and not right_unit.affine:
+                                            delta_target = self._delta_unit(left_unit)
+                                            node.right = self._convert_unit_node(right, right_unit, delta_target)
+                                            result_unit = left_unit
+                                        elif not left_unit.affine and right_unit.affine:
+                                            delta_target = self._delta_unit(right_unit)
+                                            node.left = self._convert_unit_node(left, left_unit, delta_target)
+                                            result_unit = right_unit
+                                        else:
+                                            node.right = self._convert_unit_node(right, right_unit, left_unit)
+                                            result_unit = left_unit
+                                    else:  # MINUS
+                                        if left_unit.affine and right_unit.affine:
+                                            node.right = self._convert_unit_node(right, right_unit, left_unit)
+                                            result_unit = self._delta_unit(left_unit)
+                                        elif left_unit.affine and not right_unit.affine:
+                                            delta_target = self._delta_unit(left_unit)
+                                            node.right = self._convert_unit_node(right, right_unit, delta_target)
+                                            result_unit = left_unit
+                                        elif not left_unit.affine and right_unit.affine:
+                                            raise TypeError("Cannot subtract an absolute temperature from a delta temperature")
+                                        else:
+                                            node.right = self._convert_unit_node(right, right_unit, left_unit)
+                                            result_unit = left_unit
+                                else:
+                                    if left_unit.affine or right_unit.affine:
+                                        if left_unit.affine != right_unit.affine:
+                                            raise TypeError(f"Cannot mix absolute temperature with delta in {op.lower()}")
+                                        if op == "PLUS":
+                                            raise TypeError("Cannot add absolute temperatures")
                                         node.right = self._convert_unit_node(right, right_unit, left_unit)
                                         result_unit = self._delta_unit(left_unit)
-                                    elif left_unit.affine and not right_unit.affine:
-                                        delta_target = self._delta_unit(left_unit)
-                                        node.right = self._convert_unit_node(right, right_unit, delta_target)
-                                        result_unit = left_unit
-                                    elif not left_unit.affine and right_unit.affine:
-                                        raise TypeError("Cannot subtract an absolute temperature from a delta temperature")
                                     else:
                                         node.right = self._convert_unit_node(right, right_unit, left_unit)
                                         result_unit = left_unit
                             else:
-                                if left_unit.affine or right_unit.affine:
-                                    if left_unit.affine != right_unit.affine:
-                                        raise TypeError(f"Cannot mix absolute temperature with delta in {op.lower()}")
-                                    if op == "PLUS":
-                                        raise TypeError("Cannot add absolute temperatures")
-                                    node.right = self._convert_unit_node(right, right_unit, left_unit)
-                                    result_unit = self._delta_unit(left_unit)
-                                else:
-                                    node.right = self._convert_unit_node(right, right_unit, left_unit)
-                                    result_unit = left_unit
-                        else:
-                            result_unit = left_unit or right_unit
-                        if result_unit:
-                            return self._set_type(node, self._unit_type_string(result_unit))
-                        base_result = "float" if "float" in (left_base, right_base) else "int"
-                        return self._set_type(node, base_result)
-
-                    # Multiplication / division
-                    if op in ("MUL", "DIV"):
-                        if (left_unit and left_unit.affine) or (right_unit and right_unit.affine):
-                            raise TypeError("Cannot multiply or divide absolute temperatures")
-                        if left_unit and right_unit:
-                            result_unit = self._combine_units(left_unit, right_unit, op)
-                        else:
-                            result_unit = left_unit or right_unit
-                        if result_unit:
-                            return self._set_type(node, self._unit_type_string(result_unit))
-                        base_result = "float" if "float" in (left_base, right_base) else "int"
-                        return self._set_type(node, base_result)
-
-                    if op == "MOD":
-                        if left_unit or right_unit:
-                            raise TypeError("Modulo does not support unit-tagged values")
-                        base_result = "float" if "float" in (left_base, right_base) else "int"
-                        return self._set_type(node, base_result)
-
-                    # Exponentiation
-                    if op == "POW":
-                        if right_unit:
-                            raise TypeError("Exponent cannot have units")
-                        if left_unit:
-                            if left_unit.affine:
-                                raise TypeError("Cannot exponentiate absolute temperatures")
-                            if not isinstance(right, NumberLiteral) or not isinstance(right.value, int):
-                                raise TypeError("Unit exponent must be an integer literal")
-                            result_unit = self._pow_unit(left_unit, int(right.value))
-                            return self._set_type(node, self._unit_type_string(result_unit))
-                        return self._set_type(node, self._binary_result_type(op, left_type, right_type))
-
-                return self._set_type(node, self._binary_result_type(op, left_type, right_type))
-
-            case UnaryOp(op, operand):
-                operand_type = self.check(operand)
-                if op == "NEGATE":  # prefix numeric negation
-                    if operand_type == "dynamic":
-                        return self._set_type(node, "dynamic")
-                    if not self._numeric_type_info(operand_type):
-                        raise TypeError(f"Unary '-' requires numeric type, got {operand_type}")
-                    return self._set_type(node, operand_type)
-                if op == "BANG":   # logical NOT
-                    if operand_type == "dynamic":
-                        return self._set_type(node, "dynamic")
-                    if operand_type != "bool":
-                        raise TypeError(f"Unary '!' requires boolean type, got {operand_type}")
-                    return self._set_type(node, "bool")
-                if op in ("INC", "DEC"):
-                    if not isinstance(operand, Var):
-                        raise TypeError(f"Unary '{op}' can only be applied to variables")
-
-                    # must be int
-                    if operand_type == "dynamic":
-                        return self._set_type(node, "dynamic")
-                    if operand_type != "int":
-                        raise TypeError(f"Unary '{op}' requires int type, got {operand_type}")
-
-                    return self._set_type(node, operand_type)
-                raise TypeError(f"Unknown unary operator {op}")
-
-            case If(condition, then_branch, else_branch):
-                cond_type = self.check(condition)
-                if cond_type not in ("bool", "int", "float", "dynamic"):
-                    raise TypeError(f"Condition must be boolean or numeric, got {cond_type}") # allow numeric conditions as truthy/falsy
-                self.check(then_branch)
-                if else_branch:
-                    self.check(else_branch)
-
-            case While(condition, body):
-                cond_type = self.check(condition)
-                if cond_type not in ("bool", "int", "float", "dynamic"):
-                    raise TypeError(f"Condition must be boolean or numeric, got {cond_type}") # allow numeric conditions as truthy/falsy
-                self.loop_depth += 1
-                try:
-                    self.check(body)
-                finally:
-                    self.loop_depth -= 1
-
-            case For(init, condition, increment, body):
-                self._push_scope()
-                try:
-                    if init is not None:
-                        self.check(init)
-                    if condition is not None:
-                        cond_type = self.check(condition)
-                        if cond_type not in ("bool", "int", "float", "dynamic"):
-                            raise TypeError(f"Condition must be boolean or numeric, got {cond_type}")
+                                result_unit = left_unit or right_unit
+                            if result_unit:
+                                return self._set_type(node, self._unit_type_string(result_unit))
+                            base_result = "float" if "float" in (left_base, right_base) else "int"
+                            return self._set_type(node, base_result)
+    
+                        # Multiplication / division
+                        if op in ("MUL", "DIV"):
+                            if (left_unit and left_unit.affine) or (right_unit and right_unit.affine):
+                                raise TypeError("Cannot multiply or divide absolute temperatures")
+                            if left_unit and right_unit:
+                                result_unit = self._combine_units(left_unit, right_unit, op)
+                            else:
+                                result_unit = left_unit or right_unit
+                            if result_unit:
+                                return self._set_type(node, self._unit_type_string(result_unit))
+                            base_result = "float" if "float" in (left_base, right_base) else "int"
+                            return self._set_type(node, base_result)
+    
+                        if op == "MOD":
+                            if left_unit or right_unit:
+                                raise TypeError("Modulo does not support unit-tagged values")
+                            base_result = "float" if "float" in (left_base, right_base) else "int"
+                            return self._set_type(node, base_result)
+    
+                        # Exponentiation
+                        if op == "POW":
+                            if right_unit:
+                                raise TypeError("Exponent cannot have units")
+                            if left_unit:
+                                if left_unit.affine:
+                                    raise TypeError("Cannot exponentiate absolute temperatures")
+                                if not isinstance(right, NumberLiteral) or not isinstance(right.value, int):
+                                    raise TypeError("Unit exponent must be an integer literal")
+                                result_unit = self._pow_unit(left_unit, int(right.value))
+                                return self._set_type(node, self._unit_type_string(result_unit))
+                            return self._set_type(node, self._binary_result_type(op, left_type, right_type))
+    
+                    return self._set_type(node, self._binary_result_type(op, left_type, right_type))
+    
+                case UnaryOp(op, operand):
+                    operand_type = self.check(operand)
+                    if op == "NEGATE":  # prefix numeric negation
+                        if operand_type == "dynamic":
+                            return self._set_type(node, "dynamic")
+                        if not self._numeric_type_info(operand_type):
+                            raise TypeError(f"Unary '-' requires numeric type, got {operand_type}")
+                        return self._set_type(node, operand_type)
+                    if op == "BANG":   # logical NOT
+                        if operand_type == "dynamic":
+                            return self._set_type(node, "dynamic")
+                        if operand_type != "bool":
+                            raise TypeError(f"Unary '!' requires boolean type, got {operand_type}")
+                        return self._set_type(node, "bool")
+                    if op in ("INC", "DEC"):
+                        if not isinstance(operand, Var):
+                            raise TypeError(f"Unary '{op}' can only be applied to variables")
+    
+                        # must be int
+                        if operand_type == "dynamic":
+                            return self._set_type(node, "dynamic")
+                        if operand_type != "int":
+                            raise TypeError(f"Unary '{op}' requires int type, got {operand_type}")
+    
+                        return self._set_type(node, operand_type)
+                    raise TypeError(f"Unknown unary operator {op}")
+    
+                case If(condition, then_branch, else_branch):
+                    cond_type = self.check(condition)
+                    if cond_type not in ("bool", "int", "float", "dynamic"):
+                        raise TypeError(f"Condition must be boolean or numeric, got {cond_type}") # allow numeric conditions as truthy/falsy
+                    self.check(then_branch)
+                    if else_branch:
+                        self.check(else_branch)
+    
+                case While(condition, body):
+                    cond_type = self.check(condition)
+                    if cond_type not in ("bool", "int", "float", "dynamic"):
+                        raise TypeError(f"Condition must be boolean or numeric, got {cond_type}") # allow numeric conditions as truthy/falsy
                     self.loop_depth += 1
                     try:
                         self.check(body)
-                        if increment is not None:
-                            self.check(increment)
                     finally:
                         self.loop_depth -= 1
-                finally:
-                    self._pop_scope()
-            
-            case ArrayLiteral(elements):
-                # empty array -> array<any>
-                if not elements:
-                    return self._set_type(node, "array<any>")
-                # check types of all elements (must match)
-                elem_types = [self.check(e) for e in elements]
-                if "dynamic" in elem_types:
-                    return self._set_type(node, "array<dynamic>")
-                first = elem_types[0]
-                for t in elem_types[1:]:
-                    if t != first:
-                        raise TypeError(f"Array literal contains mixed element types: {first} and {t}")
-                return self._set_type(node, f"array<{first}>")
-            
-            case DictLiteral(pairs):
-                if not pairs:
-                    return self._set_type(node, "dict<any, any>")
-
-                key_types = []
-                value_types = []
-
-                for key, value in pairs:
-                    k_type = self.check(key)
-                    v_type = self.check(value)
-                    key_types.append(k_type)
-                    value_types.append(v_type)
-
-                # All keys must match
-                first_key = key_types[0]
-                if "dynamic" in key_types or "dynamic" in value_types:
-                    return self._set_type(node, "dict<dynamic, dynamic>")
-                for k in key_types[1:]:
-                    if k != first_key:
-                        raise TypeError(f"Dictionary contains mixed key types: {first_key} and {k}")
-
-                # All values must match
-                first_val = value_types[0]
-                for v in value_types[1:]:
-                    if v != first_val:
-                        raise TypeError(f"Dictionary contains mixed value types: {first_val} and {v}")
-
-                return self._set_type(node, f"dict<{first_key}, {first_val}>")
-
-            #Used for both Arrays and Dictionaries
-            case ArrayAccess(container_expr, index_expr):
-                # check index and container types
-                idx_t = self.check(index_expr)
-                cont_t = self.check(container_expr)
-                if idx_t == "dynamic" or cont_t == "dynamic":
-                    return self._set_type(node, "dynamic")
-
-                # ARRAY ACCESS
-                if isinstance(cont_t, str) and cont_t.startswith("array<") and cont_t.endswith(">"):
-                    if idx_t != "int":
-                        raise TypeError(f"Array index must be an int, got {idx_t}")
-                    return self._set_type(node, cont_t[len("array<"):-1])
+    
+                case For(init, condition, increment, body):
+                    self._push_scope()
+                    try:
+                        if init is not None:
+                            self.check(init)
+                        if condition is not None:
+                            cond_type = self.check(condition)
+                            if cond_type not in ("bool", "int", "float", "dynamic"):
+                                raise TypeError(f"Condition must be boolean or numeric, got {cond_type}")
+                        self.loop_depth += 1
+                        try:
+                            self.check(body)
+                            if increment is not None:
+                                self.check(increment)
+                        finally:
+                            self.loop_depth -= 1
+                    finally:
+                        self._pop_scope()
                 
-
-                # DICT ACCESS
-                if isinstance(cont_t, str) and cont_t.startswith("dict<") and cont_t.endswith(">"):
-                    inside = cont_t[len("dict<"):-1]  # "keyType, valueType"
-                    key_t, val_t = [x.strip() for x in inside.split(",")]
-
-                    if key_t == "dynamic" or val_t == "dynamic" or idx_t == "dynamic":
+                case ArrayLiteral(elements):
+                    # empty array -> array<any>
+                    if not elements:
+                        return self._set_type(node, "array<any>")
+                    # check types of all elements (must match)
+                    elem_types = [self.check(e) for e in elements]
+                    if "dynamic" in elem_types:
+                        return self._set_type(node, "array<dynamic>")
+                    first = elem_types[0]
+                    for t in elem_types[1:]:
+                        if t != first:
+                            raise TypeError(f"Array literal contains mixed element types: {first} and {t}")
+                    return self._set_type(node, f"array<{first}>")
+                
+                case DictLiteral(pairs):
+                    if not pairs:
+                        return self._set_type(node, "dict<any, any>")
+    
+                    key_types = []
+                    value_types = []
+    
+                    for key, value in pairs:
+                        k_type = self.check(key)
+                        v_type = self.check(value)
+                        key_types.append(k_type)
+                        value_types.append(v_type)
+    
+                    # All keys must match
+                    first_key = key_types[0]
+                    if "dynamic" in key_types or "dynamic" in value_types:
+                        return self._set_type(node, "dict<dynamic, dynamic>")
+                    for k in key_types[1:]:
+                        if k != first_key:
+                            raise TypeError(f"Dictionary contains mixed key types: {first_key} and {k}")
+    
+                    # All values must match
+                    first_val = value_types[0]
+                    for v in value_types[1:]:
+                        if v != first_val:
+                            raise TypeError(f"Dictionary contains mixed value types: {first_val} and {v}")
+    
+                    return self._set_type(node, f"dict<{first_key}, {first_val}>")
+    
+                #Used for both Arrays and Dictionaries
+                case ArrayAccess(container_expr, index_expr):
+                    # check index and container types
+                    idx_t = self.check(index_expr)
+                    cont_t = self.check(container_expr)
+                    if idx_t == "dynamic" or cont_t == "dynamic":
                         return self._set_type(node, "dynamic")
-                    if idx_t != key_t:
-                        raise TypeError(f"Dictionary key must be {key_t}, got {idx_t}")
-
-                    return self._set_type(node, val_t)
-
-                raise TypeError(f"Trying to index non-indexable type '{cont_t}'")
-
-            case Call(func, args):
-                arg_types = [self.check(arg) for arg in args]
-                if isinstance(func, Var):
-                    if func.name == "type":
-                        if len(args) != 1:
-                            raise TypeError(f"Function 'type' expects 1 argument, got {len(args)}")
-                        node.type_str = self._display_type(arg_types[0])
-                        return self._set_type(node, "string")
-                    if func.name == "unit":
-                        if len(args) != 1:
-                            raise TypeError(f"Function 'unit' expects 1 argument, got {len(args)}")
-                        unit_info = self._numeric_type_info(arg_types[0])
-                        if unit_info and unit_info["unit_expr"]:
-                            spec = self._parse_unit_expr(unit_info["unit_expr"])
-                            node.unit_str = spec.expr
-                        else:
-                            node.unit_str = "unitless"
-                        return self._set_type(node, "string")
-                    # constructor call
-                    if func.name in self.class_interfaces:
-                        iface = self.class_interfaces[func.name]
-                        ctor = iface.get("ctor")
-                        if ctor:
-                            params = ctor.get("params", [])
-                            self._coerce_call_args(
-                                params,
-                                args,
-                                arg_types,
-                                f"Constructor arg mismatch for {func.name}"
-                            )
-                        else:
-                            if len(arg_types) != 0:
-                                raise TypeError(f"Constructor for {func.name} takes no arguments")
-                        return self._set_type(node, f"class:{func.name}")
-                    if "." in func.name:
-                        sym = self._lookup_symbol(func.name)
-                        if sym:
-                            # Dotted symbol resolved directly (e.g., module.func)
-                            if sym["type"] != "function":
-                                raise TypeError(f"'{func.name}' is not callable")
-                            ret_type = sym["info"].get("return")
-                            param_types = sym["info"].get("params")
-                            if param_types is not None:
+    
+                    # ARRAY ACCESS
+                    if isinstance(cont_t, str) and cont_t.startswith("array<") and cont_t.endswith(">"):
+                        if idx_t != "int":
+                            raise TypeError(f"Array index must be an int, got {idx_t}")
+                        return self._set_type(node, cont_t[len("array<"):-1])
+                    
+    
+                    # DICT ACCESS
+                    if isinstance(cont_t, str) and cont_t.startswith("dict<") and cont_t.endswith(">"):
+                        inside = cont_t[len("dict<"):-1]  # "keyType, valueType"
+                        key_t, val_t = [x.strip() for x in inside.split(",")]
+    
+                        if key_t == "dynamic" or val_t == "dynamic" or idx_t == "dynamic":
+                            return self._set_type(node, "dynamic")
+                        if idx_t != key_t:
+                            raise TypeError(f"Dictionary key must be {key_t}, got {idx_t}")
+    
+                        return self._set_type(node, val_t)
+    
+                    raise TypeError(f"Trying to index non-indexable type '{cont_t}'")
+    
+                case Call(func, args):
+                    arg_types = [self.check(arg) for arg in args]
+                    if isinstance(func, Var):
+                        if func.name == "type":
+                            if len(args) != 1:
+                                raise TypeError(f"Function 'type' expects 1 argument, got {len(args)}")
+                            node.type_str = self._display_type(arg_types[0])
+                            return self._set_type(node, "string")
+                        if func.name == "unit":
+                            if len(args) != 1:
+                                raise TypeError(f"Function 'unit' expects 1 argument, got {len(args)}")
+                            unit_arg_type = arg_types[0]
+                            unit_info = self._numeric_type_info(unit_arg_type)
+                            if not unit_info and isinstance(unit_arg_type, str) and unit_arg_type.startswith("array<"):
+                                unit_info = self._numeric_type_info(self._array_element_type(unit_arg_type))
+                            if unit_info and unit_info["unit_expr"]:
+                                spec = self._parse_unit_expr(unit_info["unit_expr"])
+                                node.unit_str = spec.expr
+                            else:
+                                node.unit_str = "unitless"
+                            return self._set_type(node, "string")
+                        # constructor call
+                        if func.name in self.class_interfaces:
+                            iface = self.class_interfaces[func.name]
+                            ctor = iface.get("ctor")
+                            if ctor:
+                                params = ctor.get("params", [])
                                 self._coerce_call_args(
-                                    param_types,
+                                    params,
                                     args,
                                     arg_types,
-                                    f"Argument type mismatch in call to '{func.name}'"
+                                    f"Constructor arg mismatch for {func.name}"
                                 )
-                            return self._set_type(node, ret_type or "void")
-                        base_mod = func.name.split(".", 1)[0]
-                        if base_mod in self.dynamic_modules:
-                            return self._set_type(node, "dynamic")
-                        return self._set_type(node, self._check_component_call(func.name, args, arg_types))
-
-                    sym = self._lookup_symbol(func.name)
-                    if not sym: 
-                        raise TypeError(f"Undefined function '{func.name}'")
-                    if sym["type"] != "function": 
-                        raise TypeError(f"'{func.name}' is not callable")
-                    ret_type = sym["info"].get("return")
-                    param_types = sym["info"].get("params")
-                    if param_types is not None:
-                        self._coerce_call_args(
-                            param_types,
-                            args,
-                            arg_types,
-                            f"Argument type mismatch in call to '{func.name}'"
-                        )
-                    return self._set_type(node, ret_type or "void")
-                if isinstance(func, MemberAccess):
-                    return self._set_type(node, self._check_method_call(func, args, arg_types))
-                raise TypeError("Unsupported function call target")
-
-            case Break():
-                if self.loop_depth <= 0:
-                    raise TypeError("Break used outside of a loop")
-                return None
-
-            case Continue():
-                if self.loop_depth <= 0:
-                    raise TypeError("Continue used outside of a loop")
-                return None
-
-            case FuncDecl(return_type, name, params, body):
-                if name in self._current_scope(): raise TypeError(f"Function '{name}' already declared")
-                param_types = [ptype for ptype,pname in params]
-                sig_info = {"return": return_type, "params": param_types}
-                self._declare_symbol(name, "function", mutable=False, info=sig_info)
-                if body is not None:
-                    self._push_scope()
-                    self.function_return_stack.append(return_type)
-                    try:
-                        for ptype, pname in params:
-                            if pname in self._current_scope():
-                                raise TypeError(f"Parameter '{pname}' already declared in function '{name}'")
-                            self._declare_symbol(pname, ptype, mutable=True)
-                        self.check(body)
-                    finally:
-                        self.function_return_stack.pop()
-                        self._pop_scope()
-                return None
-            
-            case Return(value):
-                if not self.function_return_stack:
-                    raise TypeError("Return outside function")
-                expected = self.function_return_stack[-1]
-                if value is None:
-                    if expected == "void":
-                        return None
-                    raise TypeError("Return without value in function expecting ...")
-                if expected == "void":
-                    raise TypeError("Cannot return a value from a void function")
-                value_type = self.check(value)
-                value = self._coerce_value_to_expected(
-                    expected,
-                    value,
-                    value_type,
-                    "Return type mismatch"
-                )
-                node.value = value
-                return value_type or None
-
-
-
-
-            case Import(module_name):
-                # If importing a component, just declare it
-                if module_name in self.component_interfaces:
-                    if not self._lookup_symbol(module_name):
-                        self._declare_symbol(module_name, f"component:{module_name}", mutable=False)
+                            else:
+                                if len(arg_types) != 0:
+                                    raise TypeError(f"Constructor for {func.name} takes no arguments")
+                            return self._set_type(node, f"class:{func.name}")
+                        if "." in func.name:
+                            sym = self._lookup_symbol(func.name)
+                            if sym:
+                                # Dotted symbol resolved directly (e.g., module.func)
+                                if sym["type"] != "function":
+                                    raise TypeError(f"'{func.name}' is not callable")
+                                ret_type = sym["info"].get("return")
+                                param_types = sym["info"].get("params")
+                                if param_types is not None:
+                                    self._coerce_call_args(
+                                        param_types,
+                                        args,
+                                        arg_types,
+                                        f"Argument type mismatch in call to '{func.name}'"
+                                    )
+                                return self._set_type(node, ret_type or "void")
+                            base_mod = func.name.split(".", 1)[0]
+                            if base_mod in self.dynamic_modules:
+                                return self._set_type(node, "dynamic")
+                            return self._set_type(node, self._check_component_call(func.name, args, arg_types))
+    
+                        sym = self._lookup_symbol(func.name)
+                        if not sym: 
+                            raise TypeError(f"Undefined function '{func.name}'")
+                        if sym["type"] != "function": 
+                            raise TypeError(f"'{func.name}' is not callable")
+                        ret_type = sym["info"].get("return")
+                        param_types = sym["info"].get("params")
+                        if param_types is not None:
+                            self._coerce_call_args(
+                                param_types,
+                                args,
+                                arg_types,
+                                f"Argument type mismatch in call to '{func.name}'"
+                            )
+                        return self._set_type(node, ret_type or "void")
+                    if isinstance(func, MemberAccess):
+                        return self._set_type(node, self._check_method_call(func, args, arg_types))
+                    raise TypeError("Unsupported function call target")
+    
+                case Break():
+                    if self.loop_depth <= 0:
+                        raise TypeError("Break used outside of a loop")
                     return None
-                if module_name in self.class_interfaces:
-                    if not self._lookup_symbol(module_name):
-                        self._declare_symbol(module_name, f"class:{module_name}", mutable=False)
+    
+                case Continue():
+                    if self.loop_depth <= 0:
+                        raise TypeError("Continue used outside of a loop")
                     return None
-
-                # Load module once and register its exported members into the symbol table
-                if module_name in self._loaded_modules:
-                    mod = self._loaded_modules[module_name]
-                else:
-                    module_path = os.path.join("builtins", f"{module_name}.py")
-                    if not os.path.exists(module_path):
-                        tool_path = os.path.join("tools", f"{module_name}.py")
-                        if os.path.exists(tool_path):
-                            self.dynamic_modules.add(module_name)
-                            if not self._lookup_symbol(module_name):
-                                self._declare_symbol(module_name, f"module_dynamic:{module_name}", mutable=False)
+    
+                case FuncDecl(return_type, name, params, body):
+                    if name in self._current_scope(): raise TypeError(f"Function '{name}' already declared")
+                    param_types = [ptype for ptype,pname in params]
+                    sig_info = {"return": return_type, "params": param_types}
+                    self._declare_symbol(name, "function", mutable=False, info=sig_info)
+                    if body is not None:
+                        self._push_scope()
+                        self.function_return_stack.append(return_type)
+                        try:
+                            for ptype, pname in params:
+                                if pname in self._current_scope():
+                                    raise TypeError(f"Parameter '{pname}' already declared in function '{name}'")
+                                self._declare_symbol(pname, ptype, mutable=True)
+                            self.check(body)
+                        finally:
+                            self.function_return_stack.pop()
+                            self._pop_scope()
+                    return None
+                
+                case Return(value):
+                    if not self.function_return_stack:
+                        raise TypeError("Return outside function")
+                    expected = self.function_return_stack[-1]
+                    if value is None:
+                        if expected == "void":
                             return None
-                        raise TypeError(f"Module '{module_name}' not found")
-                    spec = importlib.util.spec_from_file_location(module_name, module_path)
-                    mod = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(mod)
-                    self._loaded_modules[module_name] = mod
-
-                # Register exported members into self.symbols (e.g., math.PI, math.round)
-                self._register_module_members(module_name, mod)
-                # Declare the module itself so member access (math.PI / math.sqrt) can type-check
-                if not self._lookup_symbol(module_name):
-                    self._declare_symbol(module_name, f"module:{module_name}", mutable=False)
-                return None
-
-
-
-            case _:
-                raise TypeError(f"Unknown AST node type: {type(node).__name__}")
+                        raise TypeError("Return without value in function expecting ...")
+                    if expected == "void":
+                        raise TypeError("Cannot return a value from a void function")
+                    value_type = self.check(value)
+                    value = self._coerce_value_to_expected(
+                        expected,
+                        value,
+                        value_type,
+                        "Return type mismatch"
+                    )
+                    node.value = value
+                    return value_type or None
+    
+    
+    
+    
+                case Import(module_name):
+                    # If importing a component, just declare it
+                    if module_name in self.component_interfaces:
+                        if not self._lookup_symbol(module_name):
+                            self._declare_symbol(module_name, f"component:{module_name}", mutable=False)
+                        return None
+                    if module_name in self.class_interfaces:
+                        if not self._lookup_symbol(module_name):
+                            self._declare_symbol(module_name, f"class:{module_name}", mutable=False)
+                        return None
+    
+                    # Load module once and register its exported members into the symbol table
+                    if module_name in self._loaded_modules:
+                        mod = self._loaded_modules[module_name]
+                    else:
+                        module_path = os.path.join("builtins", f"{module_name}.py")
+                        if not os.path.exists(module_path):
+                            tool_path = os.path.join("tools", f"{module_name}.py")
+                            if os.path.exists(tool_path):
+                                self.dynamic_modules.add(module_name)
+                                if not self._lookup_symbol(module_name):
+                                    self._declare_symbol(module_name, f"module_dynamic:{module_name}", mutable=False)
+                                return None
+                            raise TypeError(f"Module '{module_name}' not found")
+                        spec = importlib.util.spec_from_file_location(module_name, module_path)
+                        mod = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(mod)
+                        self._loaded_modules[module_name] = mod
+    
+                    # Register exported members into self.symbols (e.g., math.PI, math.round)
+                    self._register_module_members(module_name, mod)
+                    # Declare the module itself so member access (math.PI / math.sqrt) can type-check
+                    if not self._lookup_symbol(module_name):
+                        self._declare_symbol(module_name, f"module:{module_name}", mutable=False)
+                    return None
+                case _:
+                        raise TypeError(f"Unknown AST node type: {type(node).__name__}")
+        except TypeError as exc:
+            if getattr(exc, "_mars_source_formatted", False):
+                raise
+            formatted = self._format_node_error(node, str(exc))
+            if formatted == str(exc):
+                raise
+            wrapped = TypeError(formatted)
+            setattr(wrapped, "_mars_source_formatted", True)
+            raise wrapped from None
 
     # --- Class helpers ---
     def _check_method_call(self, member_access, args, arg_types):

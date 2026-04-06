@@ -48,3 +48,12 @@ def format_source_error(message: str, source: str, position: int, source_path: s
         header += f", in {context}"
     caret = _caret_line(line_text, col)
     return "\n".join([header, f"  {line_text}", f"  {caret}", message])
+
+
+def format_node_error(message: str, source: str | None, node, source_path: str | None, context: str | None = None) -> str:
+    if source is None:
+        return message
+    position = getattr(node, "source_position", None)
+    if position is None:
+        return message
+    return format_source_error(message, source, position, source_path, context)

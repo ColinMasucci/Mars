@@ -71,6 +71,12 @@ class Parser:
     def _raise(self, message, tok=None):
         raise SyntaxError(self._format_error(message, tok))
 
+    def _mark(self, node, tok=None):
+        if tok is None:
+            tok = self.current()
+        setattr(node, "source_position", tok.position)
+        return node
+
     # Get the current token we are parsing
     def current(self):
         return self.tokens[self.pos]
@@ -101,12 +107,12 @@ class Parser:
             if printAST:
                 for stmt in statements:
                     self.print_ast(stmt)
-            return Program(statements, components, classes)
+            return self._mark(Program(statements, components, classes), self.tokens[0] if self.tokens else None)
     
 
     def parse_component(self):
         with self._context("parse_component"):
-            self.eat("COMPONENT")
+            start_tok = self.eat("COMPONENT")
             name = self.eat("ID").value
 
             parent = None
@@ -136,7 +142,7 @@ class Parser:
             self.eat("RBRACE")
 
 
-            return ComponentDef(name, parent, subcomponents, parameters, functions)
+            return self._mark(ComponentDef(name, parent, subcomponents, parameters, functions), start_tok)
 
     def parse_subcomponents_block(self):
         self.eat("LBRACE")
@@ -204,12 +210,12 @@ class Parser:
     def parse_dotted_var(self):
         """Parse a variable or dotted access like a.b.c into MemberAccess chain"""
         id_tok = self.eat("ID")
-        node = Var(id_tok.value)
+        node = self._mark(Var(id_tok.value), id_tok)
 
         while self.current().type == "DOT":
             self.eat("DOT")
             attr = self.eat("ID").value
-            node = MemberAccess(node, attr)
+            node = self._mark(MemberAccess(node, attr), id_tok)
 
         return node
     
@@ -241,7 +247,7 @@ class Parser:
             self.eat("IMPORT")
             module_name = self.eat("ID").value
             self.eat("SEMI")
-            return Import(module_name)
+            return self._mark(Import(module_name), tok)
 
         # --- RETURN ---
         if tok.type == "RETURN":
@@ -306,7 +312,7 @@ class Parser:
                     if self.current().type == "ASSIGN":
                         self.eat("ASSIGN")
                         value = self.expr()
-                    decl = VarDecl(vartype, name, value, readonly)
+                    decl = self._mark(VarDecl(vartype, name, value, readonly), tok)
                     self.eat("SEMI")
                     return decl
                 else:
@@ -324,7 +330,7 @@ class Parser:
                     self.eat(op_tok)
                     value = self.expr()
                     if op_tok == "ASSIGN":
-                        stmt = Assign(target, value)
+                        stmt = self._mark(Assign(target, value), tok)
                     else:
                         op_map = {
                             "PLUS_ASSIGN": "PLUS",
@@ -333,7 +339,7 @@ class Parser:
                             "DIV_ASSIGN": "DIV",
                             "MOD_ASSIGN": "MOD",
                         }
-                        stmt = AugAssign(target, op_map[op_tok], value)
+                        stmt = self._mark(AugAssign(target, op_map[op_tok], value), tok)
                     self.eat("SEMI")
                     return stmt
                 # Roll back and treat as expression
@@ -357,7 +363,7 @@ class Parser:
             self.eat("ASSIGN")
             value = self.expr()
 
-        decl = VarDecl(vartype, name, value, readonly)
+        decl = self._mark(VarDecl(vartype, name, value, readonly))
 
         if require_semi:
             self.eat("SEMI")
@@ -442,37 +448,37 @@ class Parser:
             # Body must be a block
             body = self.parse_block()
 
-        return FuncDecl(rettype, name, params, body, is_override)
+        return self._mark(FuncDecl(rettype, name, params, body, is_override))
     
 
 
     def parse_import(self):
         self.eat("IMPORT")
         module_name = self.eat("ID").value  # we only support single module imports for now
-        stmt = Import(module_name)
+        stmt = self._mark(Import(module_name))
         #self.eat("SEMI")
         return stmt
     
     def parse_if(self):
-        self.eat("IF")
+        start_tok = self.eat("IF")
         condition = self.parse_condition() # parse the condition expression
         then_branch = self.parse_blockorstatement() #parse the then branch
         else_branch = None
         if self.current().type == "ELSE":
             self.eat("ELSE")
             else_branch = self.parse_blockorstatement()
-        return If(condition, then_branch, else_branch)
+        return self._mark(If(condition, then_branch, else_branch), start_tok)
 
     def parse_while(self):
-        self.eat("WHILE")
+        start_tok = self.eat("WHILE")
         condition = self.parse_condition() # parse the condition expression
         body = self.parse_blockorstatement()
-        return While(condition, body)
+        return self._mark(While(condition, body), start_tok)
     
     def parse_step(self):
-        self.eat("STEP")
+        start_tok = self.eat("STEP")
         body = self.parse_blockorstatement()
-        return Step(body)
+        return self._mark(Step(body), start_tok)
     
     def parse_condition(self):
         self.eat("LPAREN")
@@ -483,7 +489,7 @@ class Parser:
         return condition
     
     def parse_for(self):
-        self.eat("FOR")
+        start_tok = self.eat("FOR")
         self.eat("LPAREN")
 
         # init can be assignment or empty
@@ -506,7 +512,7 @@ class Parser:
 
         body = self.parse_blockorstatement()
 
-        return For(init, condition, increment, body)
+        return self._mark(For(init, condition, increment, body), start_tok)
     
     def parse_simple_statement(self):
         """
@@ -533,7 +539,7 @@ class Parser:
                     if self.current().type == "ASSIGN":
                         self.eat("ASSIGN")
                         value = self.expr()
-                    return VarDecl(vartype, name, value, readonly)
+                    return self._mark(VarDecl(vartype, name, value, readonly), tok)
                 else:
                     self.pos = save_pos
                     readonly = False
@@ -548,7 +554,7 @@ class Parser:
                 self.eat(op_tok)
                 value = self.expr()
                 if op_tok == "ASSIGN":
-                    return Assign(target, value)
+                    return self._mark(Assign(target, value), tok)
                 op_map = {
                     "PLUS_ASSIGN": "PLUS",
                     "MINUS_ASSIGN": "MINUS",
@@ -556,7 +562,7 @@ class Parser:
                     "DIV_ASSIGN": "DIV",
                     "MOD_ASSIGN": "MOD",
                 }
-                return AugAssign(target, op_map[op_tok], value)
+                return self._mark(AugAssign(target, op_map[op_tok], value), tok)
             self.pos = save_pos
 
         # --- Otherwise treat as an expression statement ---
@@ -566,13 +572,13 @@ class Parser:
     
     def parse_block(self):
         stmts = []
-        self.eat("LBRACE")
+        start_tok = self.eat("LBRACE")
         while self.current().type != "RBRACE":
             stmts.append(self.parse_statement())
             if self.current().type == "EOF":
                 self._raise("Expected '}' before end of file.", self.current())
         self.eat("RBRACE")
-        return Block(stmts)
+        return self._mark(Block(stmts), start_tok)
     
     def parse_blockorstatement(self):
         if self.current().type == "LBRACE":
@@ -694,11 +700,11 @@ class Parser:
 
         if tok.type == "MINUS":       # unary negation
             self.eat("MINUS")
-            return UnaryOp("NEGATE", self.parse_prefix())
+            return self._mark(UnaryOp("NEGATE", self.parse_prefix()), tok)
 
         if tok.type == "BANG":        # logical not
             self.eat("BANG")
-            return UnaryOp("BANG", self.parse_prefix())
+            return self._mark(UnaryOp("BANG", self.parse_prefix()), tok)
 
         if tok.type == "PLUS":        # unary plus (does nothing, but valid)
             self.eat("PLUS")
@@ -719,7 +725,7 @@ class Parser:
                 if self.current().type != "RBRACKET":
                     self._raise("Expected ']'.", self.current())
                 self.eat("RBRACKET")
-                node = ArrayAccess(node, index)
+                node = self._mark(ArrayAccess(node, index), self.tokens[self.pos - 1])
                 continue
 
             # postfix ++ / --
@@ -727,14 +733,14 @@ class Parser:
                 if isinstance(node, UnitTag):
                     self._raise("Unit-tagged expressions cannot be incremented or decremented.", self.current())
                 op = self.eat(self.current().type).type
-                node = UnaryOp(op, node)
+                node = self._mark(UnaryOp(op, node), self.tokens[self.pos - 1])
                 continue
             
             # unit tag postfix
             if self.current().type == "DBLCOLON":
                 self.eat("DBLCOLON")
                 unit_expr = self.parse_unit_expr()
-                node = UnitTag(node, unit_expr)
+                node = self._mark(UnitTag(node, unit_expr), self.tokens[self.pos - 1])
                 continue
             break
         return node
@@ -790,7 +796,7 @@ class Parser:
                     break
             
             self.eat("RBRACE")
-            return DictLiteral(pairs)
+            return self._mark(DictLiteral(pairs), tok)
 
 
         # ARRAY LITERAL
@@ -807,7 +813,7 @@ class Parser:
                     break
 
             self.eat("RBRACKET")
-            return ArrayLiteral(elements)
+            return self._mark(ArrayLiteral(elements), tok)
 
         # GROUPED EXPRESSION (parentheses)
         if tok.type == "LPAREN":
@@ -823,23 +829,23 @@ class Parser:
         # LITERALS
         if tok.type == "INT":
             self.eat("INT")
-            return NumberLiteral(int(tok.value))
+            return self._mark(NumberLiteral(int(tok.value)), tok)
 
         if tok.type == "FLOAT":
             self.eat("FLOAT")
-            return NumberLiteral(float(tok.value))
+            return self._mark(NumberLiteral(float(tok.value)), tok)
 
         if tok.type == "STRING":
             self.eat("STRING")
-            return StringLiteral(tok.value.strip('"'))
+            return self._mark(StringLiteral(tok.value.strip('"')), tok)
 
         if tok.type == "TRUE":
             self.eat("TRUE")
-            return BooleanLiteral(True)
+            return self._mark(BooleanLiteral(True), tok)
 
         if tok.type == "FALSE":
             self.eat("FALSE")
-            return BooleanLiteral(False)
+            return self._mark(BooleanLiteral(False), tok)
 
         # VARIABLE / CALL / ACCESS
         if tok.type == "ID":
@@ -859,7 +865,7 @@ class Parser:
                         break
 
                 self.eat("RPAREN")
-                node = Call(node, args)
+                node = self._mark(Call(node, args), tok)
 
             return node
 
@@ -881,7 +887,9 @@ class Parser:
             right = output_stack.pop()
             left = output_stack.pop()
             # use op_key as operator name for BinaryOp (keep original token names like "PLUS")
-            output_stack.append(BinaryOp(op_key, left, right))
+            node = BinaryOp(op_key, left, right)
+            setattr(node, "source_position", getattr(left, "source_position", self.current().position))
+            output_stack.append(node)
             return
 
         if arity == 1:
@@ -890,16 +898,24 @@ class Parser:
             operand = output_stack.pop()
             # Handle postfix INC/DEC specially if needed (they act on variables)
             if op_key == "INC":
-                output_stack.append(UnaryOp("INC", operand))
+                node = UnaryOp("INC", operand)
+                setattr(node, "source_position", getattr(operand, "source_position", self.current().position))
+                output_stack.append(node)
                 return
             if op_key == "DEC":
-                output_stack.append(UnaryOp("DEC", operand))
+                node = UnaryOp("DEC", operand)
+                setattr(node, "source_position", getattr(operand, "source_position", self.current().position))
+                output_stack.append(node)
                 return
             if op_key == "NEGATE":
-                output_stack.append(UnaryOp("NEGATE", operand))
+                node = UnaryOp("NEGATE", operand)
+                setattr(node, "source_position", getattr(operand, "source_position", self.current().position))
+                output_stack.append(node)
                 return
             if op_key == "BANG":
-                output_stack.append(UnaryOp("BANG", operand))
+                node = UnaryOp("BANG", operand)
+                setattr(node, "source_position", getattr(operand, "source_position", self.current().position))
+                output_stack.append(node)
                 return
             self._raise(f"Unhandled unary op {op_key}.", self.current())
 
@@ -968,7 +984,7 @@ class Parser:
             print("\n")
     def parse_class(self):
         with self._context("parse_class"):
-            self.eat("CLASS")
+            start_tok = self.eat("CLASS")
             name = self.eat("ID").value
             self.eat("LBRACE")
 
@@ -991,7 +1007,7 @@ class Parser:
                 if self.current().type == "ID" and self.current().value == name and self.peek().type == "LPAREN":
                     self.eat("ID")
                     ctor = self.parse_function(name, name)
-                    constructor = MethodDecl(name, name, ctor.params, ctor.body, True)
+                    constructor = self._mark(MethodDecl(name, name, ctor.params, ctor.body, True), start_tok)
                     continue
 
                 # type
@@ -1002,14 +1018,14 @@ class Parser:
                 if member_name == name and self.current().type == "LPAREN":
                     # treat as constructor
                     ctor = self.parse_function(vartype, member_name)
-                    ctor = MethodDecl(vartype, member_name, ctor.params, ctor.body, True)
+                    ctor = self._mark(MethodDecl(vartype, member_name, ctor.params, ctor.body, True), start_tok)
                     constructor = ctor
                     continue
 
                 if self.current().type == "LPAREN":
                     # method
                     fn = self.parse_function(vartype, member_name)
-                    methods.append(MethodDecl(vartype, member_name, fn.params, fn.body, False))
+                    methods.append(self._mark(MethodDecl(vartype, member_name, fn.params, fn.body, False), start_tok))
                 else:
                     # field
                     value = None
@@ -1017,10 +1033,10 @@ class Parser:
                         self.eat("ASSIGN")
                         value = self.expr()
                     self.eat("SEMI")
-                    fields.append(FieldDecl(vartype, member_name, value, is_const))
+                    fields.append(self._mark(FieldDecl(vartype, member_name, value, is_const), start_tok))
 
             self.eat("RBRACE")
-            return ClassDecl(name, fields, methods, constructor, requirements)
+            return self._mark(ClassDecl(name, fields, methods, constructor, requirements), start_tok)
 
     def parse_requirements_block(self):
         self.eat("LBRACE")
@@ -1050,24 +1066,24 @@ class Parser:
     def parse_requirement_or(self):
         left = self.parse_requirement_and()
         while self.current().type == "OR":
-            self.eat("OR")
+            start_tok = self.eat("OR")
             right = self.parse_requirement_and()
-            left = RequirementExpr("OR", left, right)
+            left = self._mark(RequirementExpr("OR", left, right), start_tok)
         return left
 
     def parse_requirement_and(self):
         left = self.parse_requirement_not()
         while self.current().type == "AND":
-            self.eat("AND")
+            start_tok = self.eat("AND")
             right = self.parse_requirement_not()
-            left = RequirementExpr("AND", left, right)
+            left = self._mark(RequirementExpr("AND", left, right), start_tok)
         return left
 
     def parse_requirement_not(self):
         if self.current().type == "BANG":
-            self.eat("BANG")
+            start_tok = self.eat("BANG")
             operand = self.parse_requirement_not()
-            return RequirementExpr("NOT", operand)
+            return self._mark(RequirementExpr("NOT", operand), start_tok)
         return self.parse_requirement_atom()
 
     def parse_requirement_atom(self):
@@ -1085,7 +1101,7 @@ class Parser:
             optional = True
 
         type_name = self.eat("ID").value
-        spec = RequirementSpec(type_name, optional, [], [], [])
+        spec = self._mark(RequirementSpec(type_name, optional, [], [], []))
 
         if self.current().type == "LPAREN":
             self.eat("LPAREN")
@@ -1150,7 +1166,7 @@ class Parser:
             self.eat("OPTIONAL")
             optional = True
         expr = self.parse_expression(stop_tokens={"COMMA", "RPAREN", "RBRACKET"})
-        return RequirementParam(expr, optional)
+        return self._mark(RequirementParam(expr, optional))
 
     def parse_requirement_func_list(self):
         funcs = []
@@ -1176,4 +1192,4 @@ class Parser:
         name = self.eat("ID").value
         self.eat("LPAREN")
         self.eat("RPAREN")
-        return RequirementFunction(name, optional)
+        return self._mark(RequirementFunction(name, optional))

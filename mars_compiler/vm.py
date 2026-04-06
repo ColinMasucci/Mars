@@ -4,6 +4,8 @@ import os
 import types
 import time;
 
+from source_errors import format_source_error
+
 
 Instr = Tuple[str, ...]
 _UNDECLARED = object()
@@ -20,7 +22,7 @@ def _strip_unit_type(typ):
     return typ
 
 class VM:
-    def __init__(self, bytecode: List[Instr], class_field_info=None, component_tree=None, component_parents=None):
+    def __init__(self, bytecode: List[Instr], class_field_info=None, component_tree=None, component_parents=None, source_map=None, source_text=None, source_path=None):
         self.code = bytecode
         self.stack = []
         self.pc = 0
@@ -33,6 +35,9 @@ class VM:
         self.class_field_info = class_field_info or {}
         self.component_tree = component_tree or {"nodes": {}, "roots": []}
         self.component_parents = component_parents or {}
+        self.source_map = source_map or {}
+        self.source_text = source_text
+        self.source_path = source_path
 
         self.subscriptions = {}
         # var_name -> {"topic": topic_name, "field_path": [nested, keys]}
@@ -440,7 +445,15 @@ class VM:
             #sense, think, act
             self.sense()
             prev_pc = self.pc
-            self.execute_one(debug)#RUN ONE INSTRUCTION
+            try:
+                self.execute_one(debug)#RUN ONE INSTRUCTION
+            except VMError as exc:
+                if self.source_text is None:
+                    raise
+                position = self.source_map.get(self.pc)
+                if position is None:
+                    raise
+                raise VMError(format_source_error(str(exc), self.source_text, position, self.source_path, "runtime")) from None
             self.act()
             # Most instructions advance implicitly by falling through.
             # Control-flow ops may set self.pc directly; in that case do not auto-increment.
