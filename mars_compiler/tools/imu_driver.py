@@ -24,12 +24,6 @@ def _device_key(bus_number, address):
     return f"{bus_number}:{address}"
 
 
-def _normalize_address(address):
-    if isinstance(address, str):
-        return int(address, 0)
-    return int(address)
-
-
 def _open_device(bus_number, address):
     key = _device_key(bus_number, address)
     if key not in _devices:
@@ -107,7 +101,7 @@ def init_imu(
     standard_gravity,
 ):
     bus_number = int(bus_number)
-    address = _normalize_address(address)
+    address = int(address)
     device = _open_device(bus_number, address)
     device["reg_device_id"] = int(reg_device_id)
     device["reg_bandwidth_rate"] = int(reg_bandwidth_rate)
@@ -132,14 +126,14 @@ def init_imu(
 
 def read_raw(bus_number, address):
     bus_number = int(bus_number)
-    address = _normalize_address(address)
+    address = int(address)
     device = _require_device(bus_number, address)
     return _read_axes_raw(device)
 
 
 def read_acceleration_g(bus_number, address):
     bus_number = int(bus_number)
-    address = _normalize_address(address)
+    address = int(address)
     device = _require_device(bus_number, address)
     raw_x, raw_y, raw_z = _read_axes_raw(device)
     return [
@@ -151,7 +145,7 @@ def read_acceleration_g(bus_number, address):
 
 def read_acceleration_ms2(bus_number, address):
     bus_number = int(bus_number)
-    address = _normalize_address(address)
+    address = int(address)
     device = _require_device(bus_number, address)
     x_g, y_g, z_g = read_acceleration_g(bus_number, address)
     return [

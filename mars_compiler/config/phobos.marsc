@@ -8,7 +8,7 @@ component Phobos extends Robot {
         PhobosChassisA chassis;
         #PhobosChassisB chassis;
 
-        ADXL345 imu(bus = 1, address = 0x53);
+        ADXL345 imu(bus = 1, address = 83); # 83 = 0x53
     }
     parameters{}
     functions{}
@@ -22,7 +22,7 @@ component PhobosChassisA extends SkidChassis {
         N20 rearRightMotor(direction = 1, forward=26, backward=16, sleep=13);
     }
     parameters {
-        maxSpeed = 1;
+        float maxSpeed = 1;
     }
     functions {
         void init(){
@@ -84,15 +84,15 @@ component ADXL345 extends IMU {
         int bus;
         int address;
 
-        int regDeviceId = 0x00;
-        int regBandwidthRate = 0x2C;
-        int regPowerControl = 0x2D;
-        int regDataFormat = 0x31;
-        int regDataX0 = 0x32;
+        int regDeviceId = 0; # 0x00
+        int regBandwidthRate = 44; # 0x2C
+        int regPowerControl = 45; # 0x2D
+        int regDataFormat = 49; # 0x31
+        int regDataX0 = 50; # 0x32
 
-        int expectedDeviceId = 0xE5;
-        int measureBit = 0x08;
-        int fullResolutionBit = 0x08;
+        int expectedDeviceId = 229; # 0xE5
+        int measureBit = 8; # 0x08
+        int fullResolutionBit = 8; # 0x08
 
         int rangeG = 2;
         float rateHz = 100.0;
