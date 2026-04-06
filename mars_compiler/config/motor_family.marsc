@@ -8,16 +8,6 @@ component Motor {
 
 component BrushedMotor extends Motor {
     subcomponents{}
-    parameters{
-        int direction;
-        int port;
-    }
-    functions{
-        void spin(int speed){
-        }
-    }
+    parameters{}
+    functions{}
 }
-<<<<<<< HEAD
-
-=======
->>>>>>> ed9fdc4449ab4f20ea6081a87d942eab01a910f9

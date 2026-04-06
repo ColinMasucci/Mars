@@ -73,7 +73,10 @@ class ComponentValidator:
                 raise ComponentValidationError(
                     f"Subcomponent '{sub.name}' in '{comp.name}' cannot be a Robot-derived component ('{sub.type_name}')"
                 )
-            if sub.name in iface["subcomponents"] and iface["subcomponents"][sub.name] != sub.type_name:
+            if (
+                sub.name in iface["subcomponents"]
+                and not self._component_is_a(sub.type_name, iface["subcomponents"][sub.name])
+            ):
                 raise ComponentValidationError(
                     f"Subcomponent '{sub.name}' in '{comp.name}' must match inherited type '{iface['subcomponents'][sub.name]}'"
                 )
@@ -150,3 +153,14 @@ class ComponentValidator:
                 else:
                     req.pop(pname, None)
         return req
+
+    def _component_is_a(self, child_type: str, parent_type: str) -> bool:
+        if child_type == parent_type:
+            return True
+
+        cur = self.components.get(child_type)
+        while cur and cur.parent:
+            if cur.parent == parent_type:
+                return True
+            cur = self.components.get(cur.parent)
+        return False

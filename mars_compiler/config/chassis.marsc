@@ -1,8 +1,8 @@
 component Chassis {
-    subcomponents{
+    subcomponents{}
+    parameters{
         string controlMode; # "tank" (left, right) or "twist" (vx, vy, vw); impacts params of drive()
     }
-    parameters{}
     functions{
         void drive();
         void stop();
@@ -21,8 +21,6 @@ component DifferentialChassis extends WheeledChassis {
         Motor rightMotor;
     }
     parameters{
-        float trackWidth;
-        float scrubFactor;
     }
     functions{}
 }
@@ -35,8 +33,6 @@ component SkidChassis extends WheeledChassis {
         Motor rearRightMotor;
     }
     parameters{
-        float trackWidth;
-        float scrubFactor;
     }
     functions{
     }
