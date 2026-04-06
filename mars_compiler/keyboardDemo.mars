@@ -12,50 +12,46 @@ class KeyboardDemo {
     float speedStep = 0.1;
     float minSpeed = 0.2;
     float maxSpeed = 1.0;
-    float diagonalScale = 0.2;
+    float diagonalScale = 0.35;
     float::s pollPeriod = 0.1::s;
+    string lastMotionKey = "stop";
+
+    float roundToTenth(float value) {
+        if (value >= 0.0) {
+            return int(value * 10.0 + 0.5) / 10.0;
+        }
+        return int(value * 10.0 - 0.5) / 10.0;
+    }
 
     KeyboardDemo(Robot robot){
         chassis = robot.match(SkidChassis);
     }
 
     void printSpeed() {
-        print("speed", speed);
+        print("speed", roundToTenth(speed));
     }
 
     void increaseSpeed() {
-        speed = speed + speedStep;
+        speed = roundToTenth(speed + speedStep);
         if (speed > maxSpeed) {
             speed = maxSpeed;
         }
         printSpeed();
+        applyMotionKey(lastMotionKey);
     }
 
     void decreaseSpeed() {
-        speed = speed - speedStep;
+        speed = roundToTenth(speed - speedStep);
         if (speed < minSpeed) {
             speed = minSpeed;
         }
         printSpeed();
+        applyMotionKey(lastMotionKey);
     }
 
-    void applyKey(string key) {
-        if (key == "none") {
-            return;
-        }
-
-        if (key == "stop") {
+    void applyMotionKey(string key) {
+        if (key == "stop" || key == "none") {
             chassis.stop();
-            return;
-        }
-
-        if (key == "speed_up") {
-            increaseSpeed();
-            return;
-        }
-
-        if (key == "speed_down") {
-            decreaseSpeed();
             return;
         }
 
@@ -98,6 +94,25 @@ class KeyboardDemo {
             chassis.drive(-speed, -speed * diagonalScale);
             return;
         }
+    }
+
+    void applyKey(string key) {
+        if (key == "none") {
+            return;
+        }
+
+        if (key == "speed_up") {
+            increaseSpeed();
+            return;
+        }
+
+        if (key == "speed_down") {
+            decreaseSpeed();
+            return;
+        }
+
+        lastMotionKey = key;
+        applyMotionKey(key);
     }
 
     void run() {
