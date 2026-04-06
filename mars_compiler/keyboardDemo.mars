@@ -8,58 +8,94 @@ class KeyboardDemo {
 
     string controlMode = "tank";
     SkidChassis chassis;
-    float driveSpeed = 0.6;
-    float turnSpeed = 0.6;
-    float diagonalScale = 0.5;
+    float speed = 0.6;
+    float speedStep = 0.1;
+    float minSpeed = 0.2;
+    float maxSpeed = 1.0;
+    float diagonalScale = 0.2;
     float::s pollPeriod = 0.1::s;
 
     KeyboardDemo(Robot robot){
         chassis = robot.match(SkidChassis);
     }
 
+    void printSpeed() {
+        print("speed", speed);
+    }
+
+    void increaseSpeed() {
+        speed = speed + speedStep;
+        if (speed > maxSpeed) {
+            speed = maxSpeed;
+        }
+        printSpeed();
+    }
+
+    void decreaseSpeed() {
+        speed = speed - speedStep;
+        if (speed < minSpeed) {
+            speed = minSpeed;
+        }
+        printSpeed();
+    }
+
     void applyKey(string key) {
+        if (key == "none") {
+            return;
+        }
+
         if (key == "stop") {
             chassis.stop();
             return;
         }
 
+        if (key == "speed_up") {
+            increaseSpeed();
+            return;
+        }
+
+        if (key == "speed_down") {
+            decreaseSpeed();
+            return;
+        }
+
         if (key == "up") {
-            chassis.drive(driveSpeed, driveSpeed);
+            chassis.drive(speed, speed);
             return;
         }
 
         if (key == "down") {
-            chassis.drive(-driveSpeed, -driveSpeed);
+            chassis.drive(-speed, -speed);
             return;
         }
 
         if (key == "left") {
-            chassis.drive(-turnSpeed, turnSpeed);
+            chassis.drive(-speed, speed);
             return;
         }
 
         if (key == "right") {
-            chassis.drive(turnSpeed, -turnSpeed);
+            chassis.drive(speed, -speed);
             return;
         }
 
         if (key == "up_left") {
-            chassis.drive(driveSpeed * diagonalScale, driveSpeed);
+            chassis.drive(speed * diagonalScale, speed);
             return;
         }
 
         if (key == "up_right") {
-            chassis.drive(driveSpeed, driveSpeed * diagonalScale);
+            chassis.drive(speed, speed * diagonalScale);
             return;
         }
 
         if (key == "down_left") {
-            chassis.drive(-driveSpeed * diagonalScale, -driveSpeed);
+            chassis.drive(-speed * diagonalScale, -speed);
             return;
         }
 
         if (key == "down_right") {
-            chassis.drive(-driveSpeed, -driveSpeed * diagonalScale);
+            chassis.drive(-speed, -speed * diagonalScale);
             return;
         }
     }
@@ -68,6 +104,7 @@ class KeyboardDemo {
         print("KeyboardDemo");
         print("controlMode", controlMode);
         keyboard_input.print_instructions();
+        printSpeed();
 
         chassis.init();
         chassis.stop();

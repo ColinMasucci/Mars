@@ -450,7 +450,7 @@ class VM:
             except VMError as exc:
                 if self.source_text is None:
                     raise
-                position = self.source_map.get(self.pc)
+                position = self._source_position_for_pc(self.pc)
                 if position is None:
                     raise
                 raise VMError(format_source_error(str(exc), self.source_text, position, self.source_path, "runtime")) from None
@@ -462,6 +462,20 @@ class VM:
         
         if self.stack is not None and len(self.stack) > 0:
             raise VMError("VM halted prematurely. Final stack:", self.stack, "PC:", self.pc, " Code Length:", len(self.code))
+
+    def _source_position_for_pc(self, pc):
+        if pc in self.source_map:
+            return self.source_map[pc]
+
+        for idx in range(pc - 1, -1, -1):
+            if idx in self.source_map:
+                return self.source_map[idx]
+
+        for idx in range(pc + 1, len(self.code)):
+            if idx in self.source_map:
+                return self.source_map[idx]
+
+        return None
 
 
 

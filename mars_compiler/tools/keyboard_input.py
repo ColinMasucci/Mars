@@ -9,15 +9,17 @@ import tty
 _fd = None
 _settings = None
 _INSTRUCTIONS = """keyboard_input controls:
-w or up arrow: up
-a or left arrow: left
-s or down arrow: stop
-d or right arrow: right
+w: up
+a: left
+s: stop
+d: right
 q: up_left
 e: up_right
 x: down
 z: down_left
 c: down_right
+up arrow: increase speed
+down arrow: decrease speed
 ?: print instructions
 esc: quit
 """
@@ -85,13 +87,9 @@ def read_key(timeout=0.0):
 
             rest = os.read(_fd, 2).decode("utf-8", errors="ignore")
             if rest == "[A":
-                return "up"
-            if rest == "[D":
-                return "left"
+                return "speed_up"
             if rest == "[B":
-                return "stop"
-            if rest == "[C":
-                return "right"
+                return "speed_down"
 
 
 def read_command(timeout=0.0):

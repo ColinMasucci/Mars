@@ -259,12 +259,15 @@ def build_class_runtime(classes, class_interfaces):
 
     for cls in classes or []:
         field_names = {f.name for f in cls.fields}
+        method_names = {m.name for m in cls.methods}
+        if cls.constructor:
+            method_names.add(cls.constructor.name)
         defaults = []
         field_map = {}
         for f in cls.fields:
             field_map[f.name] = {"readonly": f.readonly, "default": f.value, "type": f.vartype}
             if f.value is not None:
-                default_value = _rewrite_class_expr(f.value, field_names, [{"this"}])
+                default_value = _rewrite_class_expr(f.value, field_names, method_names, [{"this"}])
                 defaults.append(Assign(MemberAccess(Var("this"), f.name), default_value))
         class_field_info[cls.name] = field_map
 
@@ -277,6 +280,7 @@ def build_class_runtime(classes, class_interfaces):
                 rewritten_ctor = _rewrite_class_body(
                     cls.constructor.body,
                     field_names,
+                    method_names,
                     {"this", *(pname for _, pname in cls.constructor.params)},
                 )
                 if isinstance(rewritten_ctor, Block):
@@ -296,6 +300,7 @@ def build_class_runtime(classes, class_interfaces):
             rewritten_body = _rewrite_class_body(
                 m.body,
                 field_names,
+                method_names,
                 {"this", *(pname for _, pname in m.params)},
             )
             class_funcs.append(FuncDecl(m.return_type, f"{cls.name}.{m.name}", params, rewritten_body))
@@ -303,89 +308,89 @@ def build_class_runtime(classes, class_interfaces):
     return class_funcs, class_field_info
 
 
-def _rewrite_class_body(node, field_names, initial_scope_names):
+def _rewrite_class_body(node, field_names, method_names, initial_scope_names):
     scopes = [set(initial_scope_names)]
-    return _rewrite_class_stmt(node, field_names, scopes)
+    return _rewrite_class_stmt(node, field_names, method_names, scopes)
 
 
-def _rewrite_class_stmt(node, field_names, scopes):
+def _rewrite_class_stmt(node, field_names, method_names, scopes):
     if node is None:
         return None
 
     if isinstance(node, Block):
         scopes.append(set())
         try:
-            node.statements = [_rewrite_class_stmt(stmt, field_names, scopes) for stmt in node.statements]
+            node.statements = [_rewrite_class_stmt(stmt, field_names, method_names, scopes) for stmt in node.statements]
         finally:
             scopes.pop()
         return node
 
     if isinstance(node, VarDecl):
         if node.value is not None:
-            node.value = _rewrite_class_expr(node.value, field_names, scopes)
+            node.value = _rewrite_class_expr(node.value, field_names, method_names, scopes)
         scopes[-1].add(node.name)
         return node
 
     if isinstance(node, Assign):
-        node.name = _rewrite_class_target(node.name, field_names, scopes)
-        node.value = _rewrite_class_expr(node.value, field_names, scopes)
+        node.name = _rewrite_class_target(node.name, field_names, method_names, scopes)
+        node.value = _rewrite_class_expr(node.value, field_names, method_names, scopes)
         return node
 
     if isinstance(node, AugAssign):
-        node.name = _rewrite_class_target(node.name, field_names, scopes)
-        node.value = _rewrite_class_expr(node.value, field_names, scopes)
+        node.name = _rewrite_class_target(node.name, field_names, method_names, scopes)
+        node.value = _rewrite_class_expr(node.value, field_names, method_names, scopes)
         return node
 
     if isinstance(node, If):
-        node.condition = _rewrite_class_expr(node.condition, field_names, scopes)
-        node.then_branch = _rewrite_class_stmt(node.then_branch, field_names, scopes)
-        node.else_branch = _rewrite_class_stmt(node.else_branch, field_names, scopes)
+        node.condition = _rewrite_class_expr(node.condition, field_names, method_names, scopes)
+        node.then_branch = _rewrite_class_stmt(node.then_branch, field_names, method_names, scopes)
+        node.else_branch = _rewrite_class_stmt(node.else_branch, field_names, method_names, scopes)
         return node
 
     if isinstance(node, While):
-        node.condition = _rewrite_class_expr(node.condition, field_names, scopes)
-        node.body = _rewrite_class_stmt(node.body, field_names, scopes)
+        node.condition = _rewrite_class_expr(node.condition, field_names, method_names, scopes)
+        node.body = _rewrite_class_stmt(node.body, field_names, method_names, scopes)
         return node
 
     if isinstance(node, Step):
-        node.body = _rewrite_class_stmt(node.body, field_names, scopes)
+        node.body = _rewrite_class_stmt(node.body, field_names, method_names, scopes)
         return node
 
     if isinstance(node, For):
         scopes.append(set())
         try:
-            node.init = _rewrite_class_stmt(node.init, field_names, scopes) if node.init is not None else None
-            node.condition = _rewrite_class_expr(node.condition, field_names, scopes) if node.condition is not None else None
-            node.increment = _rewrite_class_stmt(node.increment, field_names, scopes) if node.increment is not None else None
-            node.body = _rewrite_class_stmt(node.body, field_names, scopes)
+            node.init = _rewrite_class_stmt(node.init, field_names, method_names, scopes) if node.init is not None else None
+            node.condition = _rewrite_class_expr(node.condition, field_names, method_names, scopes) if node.condition is not None else None
+            node.increment = _rewrite_class_stmt(node.increment, field_names, method_names, scopes) if node.increment is not None else None
+            node.body = _rewrite_class_stmt(node.body, field_names, method_names, scopes)
         finally:
             scopes.pop()
         return node
 
     if isinstance(node, Return):
-        node.value = _rewrite_class_expr(node.value, field_names, scopes) if node.value is not None else None
+        node.value = _rewrite_class_expr(node.value, field_names, method_names, scopes) if node.value is not None else None
         return node
 
     if isinstance(node, (Break, Continue)):
         return node
 
-    return _rewrite_class_expr(node, field_names, scopes)
+    return _rewrite_class_expr(node, field_names, method_names, scopes)
 
 
-def _rewrite_class_target(node, field_names, scopes):
+def _rewrite_class_target(node, field_names, method_names, scopes):
     if isinstance(node, Var):
         return _resolve_class_var(node, field_names, scopes)
     if isinstance(node, ArrayAccess):
-        node.array = _rewrite_class_expr(node.array, field_names, scopes)
-        node.index = _rewrite_class_expr(node.index, field_names, scopes)
+        node.array = _rewrite_class_expr(node.array, field_names, method_names, scopes)
+        node.index = _rewrite_class_expr(node.index, field_names, method_names, scopes)
         return node
     if isinstance(node, MemberAccess):
-        node.obj = _rewrite_class_expr(node.obj, field_names, scopes)
+        node.obj = _rewrite_class_expr(node.obj, field_names, method_names, scopes)
         return node
     return node
 
 
-def _rewrite_class_expr(node, field_names, scopes):
+def _rewrite_class_expr(node, field_names, method_names, scopes):
     if node is None:
         return None
 
@@ -393,43 +398,46 @@ def _rewrite_class_expr(node, field_names, scopes):
         return _resolve_class_var(node, field_names, scopes)
 
     if isinstance(node, MemberAccess):
-        node.obj = _rewrite_class_expr(node.obj, field_names, scopes)
+        node.obj = _rewrite_class_expr(node.obj, field_names, method_names, scopes)
         return node
 
     if isinstance(node, ArrayAccess):
-        node.array = _rewrite_class_expr(node.array, field_names, scopes)
-        node.index = _rewrite_class_expr(node.index, field_names, scopes)
+        node.array = _rewrite_class_expr(node.array, field_names, method_names, scopes)
+        node.index = _rewrite_class_expr(node.index, field_names, method_names, scopes)
         return node
 
     if isinstance(node, Call):
-        node.func = _rewrite_class_expr(node.func, field_names, scopes)
-        node.args = [_rewrite_class_expr(arg, field_names, scopes) for arg in node.args]
+        node.func = _rewrite_class_callable(node.func, field_names, method_names, scopes)
+        node.args = [_rewrite_class_expr(arg, field_names, method_names, scopes) for arg in node.args]
         return node
 
     if isinstance(node, BinaryOp):
-        node.left = _rewrite_class_expr(node.left, field_names, scopes)
-        node.right = _rewrite_class_expr(node.right, field_names, scopes)
+        node.left = _rewrite_class_expr(node.left, field_names, method_names, scopes)
+        node.right = _rewrite_class_expr(node.right, field_names, method_names, scopes)
         return node
 
     if isinstance(node, UnaryOp):
-        node.operand = _rewrite_class_expr(node.operand, field_names, scopes)
+        node.operand = _rewrite_class_expr(node.operand, field_names, method_names, scopes)
         return node
 
     if isinstance(node, UnitTag):
-        node.expr = _rewrite_class_expr(node.expr, field_names, scopes)
+        node.expr = _rewrite_class_expr(node.expr, field_names, method_names, scopes)
         return node
 
     if isinstance(node, ArrayUnitConvert):
-        node.expr = _rewrite_class_expr(node.expr, field_names, scopes)
+        node.expr = _rewrite_class_expr(node.expr, field_names, method_names, scopes)
         return node
 
     if isinstance(node, ArrayLiteral):
-        node.elements = [_rewrite_class_expr(elem, field_names, scopes) for elem in node.elements]
+        node.elements = [_rewrite_class_expr(elem, field_names, method_names, scopes) for elem in node.elements]
         return node
 
     if isinstance(node, DictLiteral):
         node.pairs = [
-            (_rewrite_class_expr(key, field_names, scopes), _rewrite_class_expr(value, field_names, scopes))
+            (
+                _rewrite_class_expr(key, field_names, method_names, scopes),
+                _rewrite_class_expr(value, field_names, method_names, scopes),
+            )
             for key, value in node.pairs
         ]
         return node
@@ -438,6 +446,16 @@ def _rewrite_class_expr(node, field_names, scopes):
         return node
 
     return node
+
+
+def _rewrite_class_callable(node, field_names, method_names, scopes):
+    if isinstance(node, Var):
+        if any(node.name in scope for scope in reversed(scopes)):
+            return node
+        if node.name in method_names:
+            return MemberAccess(Var("this"), node.name)
+        return _resolve_class_var(node, field_names, scopes)
+    return _rewrite_class_expr(node, field_names, method_names, scopes)
 
 
 def _resolve_class_var(node, field_names, scopes):
