@@ -20,6 +20,8 @@ z: down_left
 c: down_right
 up arrow: increase speed
 down arrow: decrease speed
+left arrow: increase turn rate
+right arrow: decrease turn rate
 ?: print instructions
 esc: quit
 """
@@ -90,6 +92,10 @@ def read_key(timeout=0.0):
                 return "speed_up"
             if rest == "[B":
                 return "speed_down"
+            if rest == "[D":
+                return "turn_up"
+            if rest == "[C":
+                return "turn_down"
 
 
 def read_command(timeout=0.0):

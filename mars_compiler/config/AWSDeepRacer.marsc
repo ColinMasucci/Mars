@@ -1,0 +1,47 @@
+### AWS DeepRacer ###
+
+component AWSDeepRacer extends Robot {
+
+    subcomponents{
+        AWSDeepRacerChassis chassis;
+    }
+    parameters{}
+    functions{}
+}
+
+component AWSDeepRacerChassis extends AckermannChassis {
+    subcomponents{
+        @Override Motor driveMotor;
+        @Override Motor steerMotor;
+    }
+    parameters{
+        string controlMode = "twist";
+
+        #float vx = subscribe("/imu_pkg/data_raw", "sensor_msgs/msg/Imu/orientation/x");
+    }
+    functions{
+        void drive(float::m/s vx, float::m/s vy, float::rad/s vw){
+            publish("/cmd_vel", "geometry_msgs/msg/Twist", {
+            "linear": {"x": -vx, "y": 0.0, "z": 0.0},
+            "angular": {"x": 0.0, "y": 0.0, "z": vw} });
+        }
+
+        void stop(){
+            publish("/cmd_vel", "geometry_msgs/msg/Twist", {
+            "linear": {"x": 0.0, "y": 0.0, "z": 0.0},
+            "angular": {"x": 0.0, "y": 0.0, "z": 0.0} });
+        }
+    }
+}
+
+
+/*
+
+/cmd_vel (geometry_msgs/msg/Twist)
+  linear:
+    x: float
+    y: float
+    z: float
+  angular: geometry_msgs/Vector3
+
+*/

@@ -128,29 +128,58 @@ def _interpret(
     parser = Parser(tokens, source_text=code, source_path=source_path)
     parsed_ast = parser.parse(debug)
 
-    # Load classes from imported .mars files (single-class modules)
+    # Load classes and transitive imports from imported .mars files (single-class modules)
     base_dir = os.path.dirname(source_path) if source_path else "."
     imported_classes = []
+    imported_runtime_imports = []
     module_class_alias = {}
+    seen_modules = set()
+    runtime_import_names = {
+        stmt.module for stmt in parsed_ast.statements if isinstance(stmt, Import)
+    }
+
+    def _load_imported_module(module, search_dir):
+        if module in seen_modules:
+            return
+        seen_modules.add(module)
+
+        candidate = os.path.join(search_dir, f"{module}.mars")
+        if not os.path.exists(candidate):
+            return
+
+        with open(candidate, "r", encoding="utf-8") as f:
+            mod_code = f.read()
+        mod_tokens = tokenize(mod_code, printTokens=debug, source_path=candidate)
+        mod_parser = Parser(mod_tokens, source_text=mod_code, source_path=candidate)
+        mod_ast = mod_parser.parse(debug)
+
+        if not mod_ast.classes:
+            raise Exception(f"Imported module '{module}' contains no class definition")
+        if len(mod_ast.classes) > 1:
+            raise Exception(f"Imported module '{module}' must contain exactly one class")
+
+        imported_classes.extend(mod_ast.classes)
+        module_class_alias[module] = mod_ast.classes[0].name
+
+        nested_dir = os.path.dirname(candidate)
+        for nested_stmt in mod_ast.statements:
+            if not isinstance(nested_stmt, Import):
+                continue
+            if nested_stmt.module not in runtime_import_names:
+                imported_runtime_imports.append(Import(nested_stmt.module))
+                runtime_import_names.add(nested_stmt.module)
+            _load_imported_module(nested_stmt.module, nested_dir)
+
     for stmt in parsed_ast.statements:
         if isinstance(stmt, Import):
-            module = stmt.module
-            candidate = os.path.join(base_dir, f"{module}.mars")
-            if os.path.exists(candidate):
-                with open(candidate, "r", encoding="utf-8") as f:
-                    mod_code = f.read()
-                mod_tokens = tokenize(mod_code, printTokens=debug, source_path=candidate)
-                mod_parser = Parser(mod_tokens, source_text=mod_code, source_path=candidate)
-                mod_ast = mod_parser.parse(debug)
-                if not mod_ast.classes:
-                    raise Exception(f"Imported module '{module}' contains no class definition")
-                if len(mod_ast.classes) > 1:
-                    raise Exception(f"Imported module '{module}' must contain exactly one class")
-                imported_classes.extend(mod_ast.classes)
-                module_class_alias[module] = mod_ast.classes[0].name
+            _load_imported_module(stmt.module, base_dir)
 
     if imported_classes:
         parsed_ast.classes = (parsed_ast.classes or []) + imported_classes
+    if imported_runtime_imports:
+        leading_imports = [stmt for stmt in parsed_ast.statements if isinstance(stmt, Import)]
+        other_statements = [stmt for stmt in parsed_ast.statements if not isinstance(stmt, Import)]
+        parsed_ast.statements = leading_imports + imported_runtime_imports + other_statements
 
     # Validate classes
     class_interfaces = {}
@@ -197,6 +226,26 @@ def _interpret(
 
     # Build class runtime functions and field info
     class_funcs, class_field_info = build_class_runtime(parsed_ast.classes, class_interfaces)
+    if class_funcs:
+        class_runtime_checker = TypeChecker(
+            component_interfaces=interfaces,
+            class_interfaces=class_interfaces,
+            source_text=code,
+            source_path=source_path,
+        )
+        class_runtime_checker._push_scope()
+        try:
+            for cname in class_interfaces:
+                class_runtime_checker._declare_symbol(cname, f"class:{cname}", mutable=False)
+            for cname in interfaces:
+                class_runtime_checker._declare_symbol(cname, f"component:{cname}", mutable=False)
+            for stmt in parsed_ast.statements:
+                if isinstance(stmt, Import):
+                    class_runtime_checker.check(stmt)
+            for func in class_funcs:
+                class_runtime_checker.check(func)
+        finally:
+            class_runtime_checker._pop_scope()
 
     # Compile to bytecode and run on VM
     source_map = {}
@@ -234,13 +283,21 @@ def _interpret(
         _stop_ros_bridge_process(bridge_proc)
         bridge_proc = None
 
+    ros2_settle = str(ros_version) == "2" and connected
+    if ros2_settle:
+        time.sleep(5.0)
+
     try:
         if capture_output:
             with _capture_stdout() as buf:
                 vm.run(debug=debug)
+                if ros2_settle:
+                    time.sleep(5.0)
             return buf.getvalue()
 
         vm.run(debug=debug)
+        if ros2_settle:
+            time.sleep(5.0)
         return None
     finally:
         if bridge_proc:

@@ -1,5 +1,6 @@
-import keyboardDemo;
-import keyboard_input;
+import keyboardDemoTwist;
 
-KeyboardDemo demo = KeyboardDemo(Phobos);
+AWSDeepRacer.chassis.stop();
+
+KeyboardDemoTwist demo = KeyboardDemoTwist(AWSDeepRacer);
 demo.run();

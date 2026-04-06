@@ -1,0 +1,171 @@
+import keyboard_input;
+import math;
+
+class KeyboardDemoTwist {
+
+    requirements {
+        WheeledChassis(parameters=[controlMode == "twist"]);
+    }
+
+    string controlMode = "twist";
+    WheeledChassis chassis;
+
+    int speedSetting = 0;
+    float::mph forwardSlowSpeed = 3.3::mph;
+    float::mph forwardFastSpeed = 6.7::mph;
+    float::mph backwardSlowSpeed = -3.3::mph;
+    float::mph backwardFastSpeed = -6.7::mph;
+
+    float::deg/s steering = 0.0::deg/s;
+    float::deg/s steeringStep = 1.0::deg/s;
+    float::deg/s minSteering = -18.0::deg/s;
+    float::deg/s maxSteering = 18.0::deg/s;
+    float::s pollPeriod = 0.1::s;
+
+    void printInstructions() {
+        print("Controls:");
+        print("up arrow: increase linear speed");
+        print("down arrow: decrease linear speed");
+        print("left arrow: steer left");
+        print("right arrow: steer right");
+        print("s: stop");
+        print("?: print instructions");
+        print("esc: quit");
+    }
+
+    KeyboardDemoTwist(Robot robot){
+        chassis = robot.match(Chassis);
+    }
+
+    float::mph currentLinearSpeed() {
+        if (speedSetting >= 2) {
+            return forwardFastSpeed;
+        }
+        if (speedSetting == 1) {
+            return forwardSlowSpeed;
+        }
+        if (speedSetting == -1) {
+            return backwardSlowSpeed;
+        }
+        if (speedSetting <= -2) {
+            return backwardFastSpeed;
+        }
+        return 0.0::mph;
+    }
+
+    void printSpeed() {
+        float::mph linearSpeed = currentLinearSpeed();
+        float::m/s linearSpeedMs = linearSpeed;
+        print("linear speed:", math.round(linearSpeedMs, 1), "m/s");
+        print("linear speed source:", math.round(linearSpeed, 1), "mph");
+        print("steering:", math.round(steering, 1), "deg/s");
+    }
+
+    void increaseSpeed() {
+        if (speedSetting < 2) {
+            speedSetting = speedSetting + 1;
+        }
+        printSpeed();
+        applyCurrentMotion();
+    }
+
+    void decreaseSpeed() {
+        if (speedSetting > -2) {
+            speedSetting = speedSetting - 1;
+        }
+        printSpeed();
+        applyCurrentMotion();
+    }
+
+    void steerLeft() {
+        steering = math.round(steering - steeringStep, 1);
+        if (steering < minSteering) {
+            steering = minSteering;
+        }
+        printSpeed();
+        applyCurrentMotion();
+    }
+
+    void steerRight() {
+        steering = math.round(steering + steeringStep, 1);
+        if (steering > maxSteering) {
+            steering = maxSteering;
+        }
+        printSpeed();
+        applyCurrentMotion();
+    }
+
+    void applyTwist(float::m/s vx, float::rad/s vw) {
+        chassis.drive(vx, 0.0::m/s, vw);
+    }
+
+    void stopMotion() {
+        speedSetting = 0;
+        steering = 0.0::deg/s;
+        printSpeed();
+        chassis.stop();
+    }
+
+    void applyCurrentMotion() {
+        float::mph linearSpeed = currentLinearSpeed();
+        if (speedSetting == 0) {
+            chassis.stop();
+            return;
+        }
+        applyTwist(linearSpeed, steering);
+    }
+
+    void applyKey(string key) {
+        if (key == "none") {
+            return;
+        }
+
+        if (key == "speed_up") {
+            increaseSpeed();
+            return;
+        }
+
+        if (key == "speed_down") {
+            decreaseSpeed();
+            return;
+        }
+
+        if (key == "left" || key == "turn_up") {
+            steerLeft();
+            return;
+        }
+
+        if (key == "right" || key == "turn_down") {
+            steerRight();
+            return;
+        }
+
+        if (key == "stop") {
+            stopMotion();
+            return;
+        }
+    }
+
+    void run() {
+        print("KeyboardDemoTwist");
+        print("controlMode", controlMode);
+        printInstructions();
+        printSpeed();
+
+        chassis.stop();
+
+        while (true) {
+            string key = keyboard_input.read_command(pollPeriod);
+
+            if (key == "quit") {
+                break;
+            }
+
+            applyKey(key);
+        }
+
+        chassis.stop();
+        keyboard_input.cleanup();
+    }
+
+}

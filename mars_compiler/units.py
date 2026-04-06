@@ -77,6 +77,7 @@ UNIT_TABLE: Dict[str, Tuple[Dict[str, int], float, float, bool]] = {
 
     # Derived: kinematics
     "m/s":   ({"L": 1, "T": -1}, 1.0, 0.0, False),
+    "mph":   ({"L": 1, "T": -1}, 1609.344 / 3600.0, 0.0, False),
     "m/s^2": ({"L": 1, "T": -2}, 1.0, 0.0, False),
     "rad/s": ({"A": 1, "T": -1}, 1.0, 0.0, False),
     "rad/s^2": ({"A": 1, "T": -2}, 1.0, 0.0, False),

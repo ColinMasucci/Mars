@@ -1,14 +1,15 @@
 import keyboard_input;
+import math;
 
 class KeyboardDemo {
 
     requirements {
-        WheeledChassis;
+        WheeledChassis(parameters=[controlMode=="tank"]);
     }
 
     string controlMode = "tank";
     SkidChassis chassis;
-    float speed = 0.6;
+    float speed = 0.3;
     float speedStep = 0.1;
     float minSpeed = 0.2;
     float maxSpeed = 1.0;
@@ -16,23 +17,16 @@ class KeyboardDemo {
     float::s pollPeriod = 0.1::s;
     string lastMotionKey = "stop";
 
-    float roundToTenth(float value) {
-        if (value >= 0.0) {
-            return int(value * 10.0 + 0.5) / 10.0;
-        }
-        return int(value * 10.0 - 0.5) / 10.0;
-    }
-
     KeyboardDemo(Robot robot){
         chassis = robot.match(SkidChassis);
     }
 
     void printSpeed() {
-        print("speed", roundToTenth(speed));
+        print("speed", math.round(speed, 1));
     }
 
     void increaseSpeed() {
-        speed = roundToTenth(speed + speedStep);
+        speed = math.round(speed + speedStep, 1);
         if (speed > maxSpeed) {
             speed = maxSpeed;
         }
@@ -41,7 +35,7 @@ class KeyboardDemo {
     }
 
     void decreaseSpeed() {
-        speed = roundToTenth(speed - speedStep);
+        speed = math.round(speed - speedStep, 1);
         if (speed < minSpeed) {
             speed = minSpeed;
         }

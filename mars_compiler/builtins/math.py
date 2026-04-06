@@ -25,7 +25,7 @@ def ceil(x):
 def floor(x):
     return _math.floor(x)
 
-@_sig(params=["float", "int"], ret="int")
+@_sig(params=["float", "int"], ret="float")
 def round(x, ndigits=0):
     return builtins.round(x, ndigits)
 

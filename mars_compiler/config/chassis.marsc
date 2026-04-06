@@ -43,13 +43,7 @@ component AckermannChassis extends WheeledChassis {
         Motor driveMotor;
         Motor steerMotor;
     }
-    parameters{
-        float wheelbase;
-        float trackWidth;
-        float steeringRatio;
-        float steeringOffset;
-        float maxSteerAngle;
-    }
+    parameters{}
     functions{
     }
 }

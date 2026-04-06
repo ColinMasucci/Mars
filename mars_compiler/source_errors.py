@@ -50,10 +50,53 @@ def format_source_error(message: str, source: str, position: int, source_path: s
     return "\n".join([header, f"  {line_text}", f"  {caret}", message])
 
 
+def _find_node_position(node, seen: set[int] | None = None):
+    if node is None:
+        return None
+
+    position = getattr(node, "source_position", None)
+    if position is not None:
+        return position
+
+    if seen is None:
+        seen = set()
+    node_id = id(node)
+    if node_id in seen:
+        return None
+    seen.add(node_id)
+
+    if isinstance(node, (list, tuple)):
+        for item in node:
+            position = _find_node_position(item, seen)
+            if position is not None:
+                return position
+        return None
+
+    if isinstance(node, dict):
+        for key, value in node.items():
+            position = _find_node_position(key, seen)
+            if position is not None:
+                return position
+            position = _find_node_position(value, seen)
+            if position is not None:
+                return position
+        return None
+
+    data = getattr(node, "__dict__", None)
+    if not data:
+        return None
+
+    for value in data.values():
+        position = _find_node_position(value, seen)
+        if position is not None:
+            return position
+    return None
+
+
 def format_node_error(message: str, source: str | None, node, source_path: str | None, context: str | None = None) -> str:
     if source is None:
         return message
-    position = getattr(node, "source_position", None)
+    position = _find_node_position(node)
     if position is None:
         return message
     return format_source_error(message, source, position, source_path, context)

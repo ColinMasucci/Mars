@@ -199,7 +199,7 @@ def build_component_tree(registry, interfaces, ros_topics_map=None, ros_topics_f
             )
         return {"topic": resolved_topic, "msg_type": msg_type, "field_path": field_path}
 
-    def _build_node(type_name, instance_name, parent_path, bindings, type_stack):
+    def _build_node(type_name, instance_name, parent_path, bindings, type_stack, override_declared=False):
         comp_def = registry.get(type_name)
         if comp_def is None:
             return None
@@ -237,6 +237,7 @@ def build_component_tree(registry, interfaces, ros_topics_map=None, ros_topics_f
             "name": instance_name,
             "type": type_name,
             "path": path,
+            "override_declared": override_declared,
             "params": param_values,
             "param_ast": param_ast,
             "param_types": param_types,
@@ -251,7 +252,14 @@ def build_component_tree(registry, interfaces, ros_topics_map=None, ros_topics_f
             return node
 
         for sub in comp_def.subcomponents:
-            child = _build_node(sub.type_name, sub.name, path, sub.bindings, type_stack + [type_name])
+            child = _build_node(
+                sub.type_name,
+                sub.name,
+                path,
+                sub.bindings,
+                type_stack + [type_name],
+                override_declared=bool(getattr(sub, "is_override", False)),
+            )
             if child is None:
                 continue
             node["subcomponents"][sub.name] = child["path"]
@@ -1242,6 +1250,8 @@ def validate_instantiated_component_functions(component_tree, interfaces):
 
     for path, node in component_tree["nodes"].items():
         comp_type = node.get("type")
+        if node.get("override_declared"):
+            continue
         iface = interfaces.get(comp_type)
         if not iface:
             continue

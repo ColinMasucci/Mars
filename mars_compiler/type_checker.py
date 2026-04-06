@@ -115,6 +115,14 @@ class TypeChecker:
             return f"array<{elem_type}>"
         return typ
 
+    def _resolve_declared_type(self, typ: str):
+        typ = self._normalize_type(typ)
+        if typ in self.component_interfaces:
+            return f"component:{typ}"
+        if typ in self.class_interfaces:
+            return f"class:{typ}"
+        return typ
+
     def _split_unit_type(self, typ: str):
         if not isinstance(typ, str):
             return typ, None
@@ -441,6 +449,25 @@ class TypeChecker:
             return typ
         return typ
 
+    def _infer_collection_type(self, types):
+        if not types:
+            return "any"
+        if "dynamic" in types:
+            return "dynamic"
+
+        first = types[0]
+        if all(t == first for t in types[1:]):
+            return first
+
+        numeric_infos = [self._numeric_type_info(t) for t in types]
+        if all(info is not None for info in numeric_infos):
+            bases = [info["base"] for info in numeric_infos]
+            if "float" in bases:
+                return "float"
+            return "int"
+
+        return "any"
+
     def _binary_result_type(self, op, left_type, right_type):
         if left_type == "dynamic" or right_type == "dynamic":
             return "dynamic"
@@ -628,6 +655,18 @@ class TypeChecker:
             raise TypeError(f"Component '{comp_type}' has no subcomponent '{name}'")
         return self._resolve_component_member(sub_map[name], member_parts[1:])
 
+    def _component_descendants(self, comp_type):
+        descendants = []
+        stack = [comp_type]
+        while stack:
+            current = stack.pop()
+            for name, parent in self.component_parents.items():
+                if parent != current:
+                    continue
+                descendants.append(name)
+                stack.append(name)
+        return descendants
+
     def _check_component_call(self, dotted_name, args, arg_types):
         parts = dotted_name.split(".")
         base = parts[0]
@@ -650,14 +689,30 @@ class TypeChecker:
             finfo = iface.get("funcs", {}).get(name)
             if not finfo:
                 raise TypeError(f"Component '{comp_type}' has no function '{name}'")
-            param_types = finfo.get("params", [])
-            self._coerce_call_args(
-                param_types,
-                args,
-                arg_types,
-                f"Argument type mismatch in call to '{name}'"
-            )
-            return finfo.get("return") or "void"
+            candidate_infos = [(comp_type, finfo)]
+            for descendant in self._component_descendants(comp_type):
+                descendant_info = self.component_interfaces.get(descendant, {}).get("funcs", {}).get(name)
+                if descendant_info and descendant_info not in [info for _, info in candidate_infos]:
+                    candidate_infos.append((descendant, descendant_info))
+
+            direct_error = None
+            for candidate_type, candidate_info in candidate_infos:
+                param_types = candidate_info.get("params", [])
+                try:
+                    self._coerce_call_args(
+                        param_types,
+                        args,
+                        arg_types,
+                        f"Argument type mismatch in call to '{name}'"
+                    )
+                    return candidate_info.get("return") or "void"
+                except TypeError as exc:
+                    if candidate_type == comp_type:
+                        direct_error = exc
+                    continue
+            if direct_error is not None:
+                raise direct_error
+            raise TypeError(f"Argument type mismatch in call to '{name}'")
 
         # Nested: traverse subcomponents
         sub_map = iface.get("subcomponents", {})
@@ -1169,15 +1224,10 @@ class TypeChecker:
                     # empty array -> array<any>
                     if not elements:
                         return self._set_type(node, "array<any>")
-                    # check types of all elements (must match)
+
                     elem_types = [self.check(e) for e in elements]
-                    if "dynamic" in elem_types:
-                        return self._set_type(node, "array<dynamic>")
-                    first = elem_types[0]
-                    for t in elem_types[1:]:
-                        if t != first:
-                            raise TypeError(f"Array literal contains mixed element types: {first} and {t}")
-                    return self._set_type(node, f"array<{first}>")
+                    elem_type = self._infer_collection_type(elem_types)
+                    return self._set_type(node, f"array<{elem_type}>")
                 
                 case DictLiteral(pairs):
                     if not pairs:
@@ -1191,22 +1241,10 @@ class TypeChecker:
                         v_type = self.check(value)
                         key_types.append(k_type)
                         value_types.append(v_type)
-    
-                    # All keys must match
-                    first_key = key_types[0]
-                    if "dynamic" in key_types or "dynamic" in value_types:
-                        return self._set_type(node, "dict<dynamic, dynamic>")
-                    for k in key_types[1:]:
-                        if k != first_key:
-                            raise TypeError(f"Dictionary contains mixed key types: {first_key} and {k}")
-    
-                    # All values must match
-                    first_val = value_types[0]
-                    for v in value_types[1:]:
-                        if v != first_val:
-                            raise TypeError(f"Dictionary contains mixed value types: {first_val} and {v}")
-    
-                    return self._set_type(node, f"dict<{first_key}, {first_val}>")
+
+                    key_type = self._infer_collection_type(key_types)
+                    value_type = self._infer_collection_type(value_types)
+                    return self._set_type(node, f"dict<{key_type}, {value_type}>")
     
                 #Used for both Arrays and Dictionaries
                 case ArrayAccess(container_expr, index_expr):
@@ -1263,7 +1301,7 @@ class TypeChecker:
                             iface = self.class_interfaces[func.name]
                             ctor = iface.get("ctor")
                             if ctor:
-                                params = ctor.get("params", [])
+                                params = [self._resolve_declared_type(ptype) for ptype in ctor.get("params", [])]
                                 self._coerce_call_args(
                                     params,
                                     args,
@@ -1336,7 +1374,12 @@ class TypeChecker:
                             for ptype, pname in params:
                                 if pname in self._current_scope():
                                     raise TypeError(f"Parameter '{pname}' already declared in function '{name}'")
-                                self._declare_symbol(pname, ptype, mutable=True)
+                                stored_type = self._normalize_type(ptype)
+                                if stored_type in self.component_interfaces:
+                                    stored_type = f"component:{stored_type}"
+                                if stored_type in self.class_interfaces:
+                                    stored_type = f"class:{stored_type}"
+                                self._declare_symbol(pname, stored_type, mutable=True)
                             self.check(body)
                         finally:
                             self.function_return_stack.pop()
@@ -1459,14 +1502,14 @@ class TypeChecker:
         meth = iface.get("methods", {}).get(member_access.attr)
         if not meth:
             raise TypeError(f"Class '{class_name}' has no method '{member_access.attr}'")
-        params = meth.get("params", [])
+        params = [self._resolve_declared_type(ptype) for ptype in meth.get("params", [])]
         self._coerce_call_args(
             params,
             args,
             arg_types,
             f"Argument type mismatch for {class_name}.{member_access.attr}"
         )
-        return meth.get("return") or "void"
+        return self._resolve_declared_type(meth.get("return")) or "void"
 
     def _resolve_member_access(self, obj_type, attr):
         if obj_type == "dynamic":
@@ -1500,7 +1543,7 @@ class TypeChecker:
             if not iface:
                 raise TypeError(f"Unknown class '{cname}'")
             if attr in iface.get("fields", {}):
-                return iface["fields"][attr]
+                return self._resolve_declared_type(iface["fields"][attr])
             if attr in iface.get("methods", {}):
                 raise TypeError(f"'{attr}' is a method on class '{cname}' and must be called")
             raise TypeError(f"Class '{cname}' has no member '{attr}'")
