@@ -3,9 +3,11 @@ Phobos.imu.init();
 int i = 0;
 while (i < 5) {
     float::m/s^2[] accel = Phobos.imu.getAcceleration();
+    float::G accelG = accel[1];
 
     print("sample", i);
-    print("accel_ms2", accel[0], accel[1], accel[2]);
+    print("accel_ms2", accel[0], accel[1], accel[2], unit(accel[1]));
+    print("accel_G", accelG, accelG, accelG, unit(accelG));
 
     wait(0.5);
     i += 1;

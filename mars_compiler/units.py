@@ -85,6 +85,7 @@ UNIT_TABLE: Dict[str, Tuple[Dict[str, int], float, float, bool]] = {
     "rpm":   ({"A": 1, "T": -1}, 2.0 * math.pi / 60.0, 0.0, False),
     "g0":    ({"L": 1, "T": -2}, 9.80665, 0.0, False),
     "gn":    ({"L": 1, "T": -2}, 9.80665, 0.0, False),
+    "G":    ({"L": 1, "T": -2}, 9.80665, 0.0, False),
 
     # Derived: force & torque
     "N":     ({"M": 1, "L": 1, "T": -2}, 1.0, 0.0, False),
