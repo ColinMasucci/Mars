@@ -8,9 +8,7 @@ component Chassis {
     }
     functions{
         void drive(float vx, float vy, float omega);
-            #call(set_wheel_vel());
-            
-        #float[] getVelocities();
+        void stop();
     }
 }
 
