@@ -51,7 +51,7 @@ def read_key(timeout=0.0):
     while True:
         readable, _, _ = select.select([_fd], [], [], timeout)
         if not readable:
-            return None
+            return "none"
 
         key = os.read(_fd, 1).decode("utf-8", errors="ignore").lower()
 

@@ -6,7 +6,7 @@ component Motor {
     }
 }
 
-component BrushlessMotor extends Motor {
+component BrushedMotor extends Motor {
     subcomponents{}
     parameters{
         int direction;
@@ -17,4 +17,7 @@ component BrushlessMotor extends Motor {
         }
     }
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> ed9fdc4449ab4f20ea6081a87d942eab01a910f9
