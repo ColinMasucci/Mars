@@ -111,6 +111,7 @@ def compile_statement(node, code: List[Instr]):
         ast.StringLiteral,
         ast.BooleanLiteral,
         ast.UnitTag,
+        ast.ArrayUnitConvert,
         ast.ArrayLiteral,
         ast.DictLiteral,
         ast.ArrayAccess,
@@ -142,6 +143,10 @@ def compile_node(node, code: List[Instr]):
 
         case ast.UnitTag(expr, unit):
             compile_node(expr, code)
+
+        case ast.ArrayUnitConvert(expr, factor, offset):
+            compile_node(expr, code)
+            code.append(("CONVERT_ARRAY_UNITS", float(factor), float(offset)))
 
         case ast.ArrayLiteral(elements):
             # compile elements in-order (left-to-right)

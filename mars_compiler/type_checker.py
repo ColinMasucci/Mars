@@ -1,7 +1,7 @@
 import os
 import importlib.util
 
-from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, Return, Break, Continue, FuncDecl, MemberAccess, ClassDecl
+from ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, ArrayUnitConvert, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, Return, Break, Continue, FuncDecl, MemberAccess, ClassDecl
 from units import parse_unit_expr, canonical_name, UnitSpec
 
 
@@ -211,6 +211,31 @@ class TypeChecker:
     def _coerce_value_to_expected(self, expected_type, value_node, value_type, context):
         if expected_type is None or expected_type == "dynamic" or value_type is None or value_type == "dynamic":
             return value_node
+
+        if (
+            isinstance(expected_type, str) and isinstance(value_type, str) and
+            expected_type.startswith("array<") and expected_type.endswith(">") and
+            value_type.startswith("array<") and value_type.endswith(">")
+        ):
+            expected_inner = expected_type[len("array<"):-1]
+            value_inner = value_type[len("array<"):-1]
+
+            expected_inner_info = self._numeric_type_info(expected_inner)
+            value_inner_info = self._numeric_type_info(value_inner)
+            if expected_inner_info and value_inner_info:
+                expected_unit = expected_inner_info["unit_spec"]
+                value_unit = value_inner_info["unit_spec"]
+                if expected_unit and value_unit:
+                    if expected_unit.dims != value_unit.dims or expected_unit.affine != value_unit.affine:
+                        raise TypeError(f"{context}: unit mismatch '{expected_unit.expr}' vs '{value_unit.expr}'")
+                    factor = value_unit.scale / expected_unit.scale
+                    offset = 0.0
+                    if value_unit.affine:
+                        offset = (value_unit.offset - expected_unit.offset) / expected_unit.scale
+                    if abs(factor - 1.0) > 1e-12 or abs(offset) > 1e-12:
+                        value_node = ArrayUnitConvert(value_node, float(factor), float(offset))
+                    return value_node
+
         expected_info = self._numeric_type_info(expected_type)
         value_info = self._numeric_type_info(value_type)
 

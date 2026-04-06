@@ -1,13 +1,23 @@
 Phobos.imu.init();
 
+float::m[] lengths = [1::m, 2::cm, 3::m];
+float::cm[] lengthsCm = lengths;
+
+print("lengths_m", lengths[0], lengths[1], lengths[2], unit(lengths[1]));
+print("lengths_cm", lengthsCm[0], lengthsCm[1], lengthsCm[2], unit(lengthsCm[1]));
+
+# Uncomment to confirm incompatible unit arrays fail type checking.
+float[] bad = [1::m, 2::s];
+print(unit(bad))
+
 int i = 0;
 while (i < 5) {
     float::m/s^2[] accel = Phobos.imu.getAcceleration();
-    float::G accelG = accel[1];
+    float::G[] accelG = accel;
 
     print("sample", i);
     print("accel_ms2", accel[0], accel[1], accel[2], unit(accel[1]));
-    print("accel_G", accelG, accelG, accelG, unit(accelG));
+    print("accel_G", accelG[0], accelG[1], accelG[2], unit(accelG[2]));
 
     wait(0.5);
     i += 1;

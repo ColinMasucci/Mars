@@ -103,6 +103,13 @@ class VM:
             remaining = deadline - now
             time.sleep(min(tick, remaining))
 
+    def _convert_array_units(self, value, factor: float, offset: float):
+        if isinstance(value, list):
+            return [self._convert_array_units(elem, factor, offset) for elem in value]
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value) * factor + offset
+        raise VMError(f"Unit array conversion expected numeric array elements, got {type(value).__name__}")
+
     def _apply_subscriptions(self):
         for var, sub in self.subscriptions.items():
             topic = sub.get("topic")
@@ -792,6 +799,16 @@ class VM:
                 if seconds < 0:
                     raise VMError("wait seconds must be non-negative")
                 self._wait_cooperative(seconds)
+
+            case "CONVERT_ARRAY_UNITS":
+                if not self.stack:
+                    raise VMError("CONVERT_ARRAY_UNITS requires an array on the stack")
+                factor = float(args[0])
+                offset = float(args[1])
+                value = self.stack.pop()
+                if not isinstance(value, list):
+                    raise VMError("CONVERT_ARRAY_UNITS expected an array value")
+                self.stack.append(self._convert_array_units(value, factor, offset))
 
             case "JUMP":
                 self.pc = int(args[0]) #- 1

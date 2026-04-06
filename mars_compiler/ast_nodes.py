@@ -42,6 +42,12 @@ class UnitTag:
     expr: Any
     unit: str
 
+@dataclass
+class ArrayUnitConvert:
+    expr: Any
+    factor: float
+    offset: float
+
 #used for referencing variables (grabbing their value)
 @dataclass
 class Var:
