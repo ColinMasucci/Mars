@@ -488,6 +488,8 @@ class TypeChecker:
         """Load vars & functions from library module."""
         keyname = f"{module_name.upper()}_FUNCS"
         funcs_dict = getattr(mod, keyname, {})
+        const_type_key = f"{module_name.upper()}_CONST_TYPES"
+        const_types = getattr(mod, const_type_key, {})
 
         for name, obj in funcs_dict.items():
             if callable(obj) and hasattr(obj, "_mars_sig"):
@@ -496,7 +498,7 @@ class TypeChecker:
                 self._declare_symbol(f"{module_name}.{name}", "function", mutable=False, info=info)
             else:
                 # Not a function — treat as constant
-                typ = self._type_from_python_obj(obj)
+                typ = const_types.get(name, self._type_from_python_obj(obj))
                 self._declare_symbol(f"{module_name}.{name}", typ, mutable=False, info={})
 
 

@@ -86,6 +86,7 @@ class ComponentValidator:
                 "return": self._normalize_type(func.return_type),
                 "params": sig_params,
                 "has_body": func.body is not None,
+                "override_declared": bool(getattr(func, "is_override", False)),
             }
 
             if func.name in iface["funcs"]:
@@ -94,6 +95,10 @@ class ComponentValidator:
                     raise ComponentValidationError(
                         f"Function '{func.name}' in '{comp.name}' must match inherited return type"
                     )
+            elif getattr(func, "is_override", False):
+                raise ComponentValidationError(
+                    f"Function '{func.name}' in '{comp.name}' is marked @Override but no inherited function exists"
+                )
             iface["funcs"][func.name] = finfo
 
         self._building.remove(name)

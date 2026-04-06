@@ -3,21 +3,6 @@ from smbus2 import SMBus
 
 _devices = {}
 
-_DEFAULT_BUS = 1
-_DEFAULT_ADDRESS = 0x53
-
-_REG_DEVID = 0x00
-_REG_BW_RATE = 0x2C
-_REG_POWER_CTL = 0x2D
-_REG_DATA_FORMAT = 0x31
-_REG_DATAX0 = 0x32
-
-_EXPECTED_DEVICE_ID = 0xE5
-_MEASURE_BIT = 0x08
-_FULL_RES_BIT = 0x08
-_G_PER_LSB = 0.00390625
-_STANDARD_GRAVITY = 9.80665
-
 _RANGE_BITS = {
     2: 0x00,
     4: 0x01,
@@ -76,7 +61,7 @@ def _read_register(device, register):
 
 
 def _read_axes_raw(device):
-    data = device["bus"].read_i2c_block_data(device["address"], _REG_DATAX0, 6)
+    data = device["bus"].read_i2c_block_data(device["address"], device["reg_data_x0"], 6)
     axes = []
     for index in range(0, 6, 2):
         value = data[index] | (data[index + 1] << 8)
@@ -92,22 +77,51 @@ def _configure_device(device, range_g, rate_hz):
     if rate_hz not in _DATA_RATE_BITS:
         raise ValueError("rate_hz must be one of: 12.5, 25, 50, 100, 200, 400")
 
-    _write_register(device, _REG_POWER_CTL, 0x00)
-    _write_register(device, _REG_DATA_FORMAT, _FULL_RES_BIT | _RANGE_BITS[range_g])
-    _write_register(device, _REG_BW_RATE, _DATA_RATE_BITS[rate_hz])
-    _write_register(device, _REG_POWER_CTL, _MEASURE_BIT)
+    _write_register(device, device["reg_power_control"], 0x00)
+    _write_register(
+        device,
+        device["reg_data_format"],
+        device["full_resolution_bit"] | _RANGE_BITS[range_g],
+    )
+    _write_register(device, device["reg_bandwidth_rate"], _DATA_RATE_BITS[rate_hz])
+    _write_register(device, device["reg_power_control"], device["measure_bit"])
 
     device["range_g"] = range_g
     device["rate_hz"] = rate_hz
 
 
-def init_imu(bus_number=_DEFAULT_BUS, address=_DEFAULT_ADDRESS, range_g=2, rate_hz=100.0):
+def init_imu(
+    bus_number,
+    address,
+    reg_device_id,
+    reg_bandwidth_rate,
+    reg_power_control,
+    reg_data_format,
+    reg_data_x0,
+    expected_device_id,
+    measure_bit,
+    full_resolution_bit,
+    range_g,
+    rate_hz,
+    grams_per_lsb,
+    standard_gravity,
+):
     bus_number = int(bus_number)
     address = _normalize_address(address)
     device = _open_device(bus_number, address)
+    device["reg_device_id"] = int(reg_device_id)
+    device["reg_bandwidth_rate"] = int(reg_bandwidth_rate)
+    device["reg_power_control"] = int(reg_power_control)
+    device["reg_data_format"] = int(reg_data_format)
+    device["reg_data_x0"] = int(reg_data_x0)
+    device["expected_device_id"] = int(expected_device_id)
+    device["measure_bit"] = int(measure_bit)
+    device["full_resolution_bit"] = int(full_resolution_bit)
+    device["grams_per_lsb"] = float(grams_per_lsb)
+    device["standard_gravity"] = float(standard_gravity)
 
-    device_id = _read_register(device, _REG_DEVID)
-    if device_id != _EXPECTED_DEVICE_ID:
+    device_id = _read_register(device, device["reg_device_id"])
+    if device_id != device["expected_device_id"]:
         raise RuntimeError(
             f"Unexpected ADXL345 device id 0x{device_id:02x} at bus {bus_number}, "
             f"address {hex(address)}."
@@ -116,40 +130,46 @@ def init_imu(bus_number=_DEFAULT_BUS, address=_DEFAULT_ADDRESS, range_g=2, rate_
     _configure_device(device, int(range_g), float(rate_hz))
 
 
-def read_raw(bus_number=_DEFAULT_BUS, address=_DEFAULT_ADDRESS):
+def read_raw(bus_number, address):
     bus_number = int(bus_number)
     address = _normalize_address(address)
     device = _require_device(bus_number, address)
     return _read_axes_raw(device)
 
 
-def read_acceleration_g(bus_number=_DEFAULT_BUS, address=_DEFAULT_ADDRESS):
-    raw_x, raw_y, raw_z = read_raw(bus_number, address)
+def read_acceleration_g(bus_number, address):
+    bus_number = int(bus_number)
+    address = _normalize_address(address)
+    device = _require_device(bus_number, address)
+    raw_x, raw_y, raw_z = _read_axes_raw(device)
     return [
-        raw_x * _G_PER_LSB,
-        raw_y * _G_PER_LSB,
-        raw_z * _G_PER_LSB,
+        raw_x * device["grams_per_lsb"],
+        raw_y * device["grams_per_lsb"],
+        raw_z * device["grams_per_lsb"],
     ]
 
 
-def read_acceleration_ms2(bus_number=_DEFAULT_BUS, address=_DEFAULT_ADDRESS):
+def read_acceleration_ms2(bus_number, address):
+    bus_number = int(bus_number)
+    address = _normalize_address(address)
+    device = _require_device(bus_number, address)
     x_g, y_g, z_g = read_acceleration_g(bus_number, address)
     return [
-        x_g * _STANDARD_GRAVITY,
-        y_g * _STANDARD_GRAVITY,
-        z_g * _STANDARD_GRAVITY,
+        x_g * device["standard_gravity"],
+        y_g * device["standard_gravity"],
+        z_g * device["standard_gravity"],
     ]
 
 
-def read_x_g(bus_number=_DEFAULT_BUS, address=_DEFAULT_ADDRESS):
+def read_x_g(bus_number, address):
     return read_acceleration_g(bus_number, address)[0]
 
 
-def read_y_g(bus_number=_DEFAULT_BUS, address=_DEFAULT_ADDRESS):
+def read_y_g(bus_number, address):
     return read_acceleration_g(bus_number, address)[1]
 
 
-def read_z_g(bus_number=_DEFAULT_BUS, address=_DEFAULT_ADDRESS):
+def read_z_g(bus_number, address):
     return read_acceleration_g(bus_number, address)[2]
 
 

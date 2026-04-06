@@ -1222,7 +1222,11 @@ def validate_instantiated_component_functions(component_tree, interfaces):
         iface = interfaces.get(comp_type)
         if not iface:
             continue
-        missing = [fname for fname, finfo in iface.get("funcs", {}).items() if not finfo.get("has_body")]
+        missing = [
+            fname
+            for fname, finfo in iface.get("funcs", {}).items()
+            if not finfo.get("has_body") and not finfo.get("override_declared")
+        ]
         if missing:
             missing.sort()
             missing_list = ", ".join(missing)

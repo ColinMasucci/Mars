@@ -128,7 +128,8 @@ class FuncDecl:
     return_type: Any
     name: str
     params: List[Any]
-    body: Any     
+    body: Any
+    is_override: bool = False
 
 @dataclass
 class Return:

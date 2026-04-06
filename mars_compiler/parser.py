@@ -185,11 +185,15 @@ class Parser:
         functions = []
 
         while not self.current().type == "RBRACE":
+            is_override = False
+            if self.current().type == "OVERRIDE":
+                self.eat("OVERRIDE")
+                is_override = True
             # function return type and name
             rettype = self.parse_type()
             name = self.eat("ID").value
 
-            func = self.parse_function(rettype, name)
+            func = self.parse_function(rettype, name, is_override=is_override)
             functions.append(func)
 
         self.eat("RBRACE")
@@ -408,7 +412,7 @@ class Parser:
 
 
         
-    def parse_function(self, rettype, name):
+    def parse_function(self, rettype, name, is_override=False):
         # Parameter list
         self.eat("LPAREN")
         params = []
@@ -438,7 +442,7 @@ class Parser:
             # Body must be a block
             body = self.parse_block()
 
-        return FuncDecl(rettype, name, params, body)
+        return FuncDecl(rettype, name, params, body, is_override)
     
 
 

@@ -1,11 +1,9 @@
-import imu_driver;
-
-imu_driver.init_imu();
+Phobos.imu.init();
 
 int i = 0;
 while (i < 5) {
-    float[] accel_g = imu_driver.read_acceleration_g();
-    float[] accel_ms2 = imu_driver.read_acceleration_ms2();
+    float[] accel_g = Phobos.imu.readAccelerationG();
+    float[] accel_ms2 = Phobos.imu.readAccelerationMs2();
 
     print("sample", i);
     print("accel_g", accel_g[0], accel_g[1], accel_g[2]);
@@ -14,5 +12,3 @@ while (i < 5) {
     wait(0.5);
     i += 1;
 }
-
-imu_driver.cleanup();

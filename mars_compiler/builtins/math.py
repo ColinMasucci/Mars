@@ -41,6 +41,12 @@ def ln(x):
 def log10(x):
     return _math.log10(x)
 
+@_sig(params=["float"], ret="float")
+def sign(x):
+    if x < 0:
+        return -1.0
+    return 1.0
+
 # --- Trigonometry ---
 @_sig(params=["float"], ret="float")
 def sin(x):
@@ -94,6 +100,7 @@ def max(*args):
 # --- Constants ---
 PI = _math.pi
 E = _math.e
+g = 9.80665  # Standard gravity in m/s^2
 
 # expose mapping for the VM
 MATH_FUNCS = {
@@ -106,6 +113,7 @@ MATH_FUNCS = {
     'exp': exp,
     'ln': ln,
     'log10': log10,
+    'sign': sign,
 
     # Trig
     'sin': sin,
@@ -122,5 +130,12 @@ MATH_FUNCS = {
 
     # Constants
     'PI': PI,
-    'E': E
+    'E': E,
+    'g' : g
+}
+
+MATH_CONST_TYPES = {
+    'PI': 'float',
+    'E': 'float',
+    'g': 'float::m/s^2',
 }
