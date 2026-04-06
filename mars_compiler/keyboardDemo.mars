@@ -3,17 +3,18 @@ import keyboard_input;
 class KeyboardDemo {
 
     requirements {
-        WheeledChassis(parameters=[controlMode="tank"]);
+        WheeledChassis;
     }
 
-    WheeledChassis chassis;
+    string controlMode = "tank";
+    SkidChassis chassis;
     float driveSpeed = 0.6;
     float turnSpeed = 0.6;
     float diagonalScale = 0.5;
     float::s pollPeriod = 0.1::s;
 
     KeyboardDemo(Robot robot){
-        chassis = robot.match(Chassis);
+        chassis = robot.match(SkidChassis);
     }
 
     void applyKey(string key) {

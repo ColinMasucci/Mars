@@ -57,6 +57,10 @@ class ComponentValidator:
                 raise ComponentValidationError(
                     f"Parameter '{pname}' in '{comp.name}' must match inherited type '{iface['params'][pname]}'"
                 )
+            if pname not in iface["params"] and getattr(param, "is_override", False):
+                raise ComponentValidationError(
+                    f"Parameter '{pname}' in '{comp.name}' is marked @Override but no inherited parameter exists"
+                )
             iface["params"][pname] = ptype
 
         # Subcomponents: ensure referenced types exist
@@ -68,6 +72,14 @@ class ComponentValidator:
             if self._is_robot_family(sub.type_name):
                 raise ComponentValidationError(
                     f"Subcomponent '{sub.name}' in '{comp.name}' cannot be a Robot-derived component ('{sub.type_name}')"
+                )
+            if sub.name in iface["subcomponents"] and iface["subcomponents"][sub.name] != sub.type_name:
+                raise ComponentValidationError(
+                    f"Subcomponent '{sub.name}' in '{comp.name}' must match inherited type '{iface['subcomponents'][sub.name]}'"
+                )
+            if sub.name not in iface["subcomponents"] and getattr(sub, "is_override", False):
+                raise ComponentValidationError(
+                    f"Subcomponent '{sub.name}' in '{comp.name}' is marked @Override but no inherited subcomponent exists"
                 )
             iface["subcomponents"][sub.name] = sub.type_name
             # Enforce mandatory params on subcomponent are bound or have defaults

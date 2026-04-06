@@ -5,8 +5,8 @@ import math;
 component Phobos extends Robot {
     subcomponents{
         # Swap Chassis
-        #PhobosChassisA chassis;
-        PhobosChassisB chassis;
+        PhobosChassisA chassis;
+        #PhobosChassisB chassis;
 
         ADXL345 imu(bus = 1, address = 83); # 83 = 0x53
     }
@@ -33,8 +33,8 @@ component PhobosChassisA extends SkidChassis {
             rearRightMotor.init();
         }
         void drive(float leftSpeed, float rightSpeed){
-            leftSpeed = math.max(-maxSpeed, math.min(leftSpeed, maxSpeed));
-            rightSpeed = math.max(-maxSpeed, math.min(rightSpeed, maxSpeed));
+            leftSpeed = math.max(-maxLinearSpeed, math.min(leftSpeed, maxLinearSpeed));
+            rightSpeed = math.max(-maxLinearSpeed, math.min(rightSpeed, maxLinearSpeed));
             frontLeftMotor.spin(leftSpeed);
             rearLeftMotor.spin(leftSpeed);
             frontRightMotor.spin(rightSpeed);
@@ -55,7 +55,8 @@ component PhobosChassisB extends DifferentialChassis {
         N20 rightMotor(direction = 1, forward=26, backward=16, sleep=13);
     }
     parameters {
-        float maxSpeed = 1;
+        float maxLinearSpeed = 1;
+        string controlMode = "tank";
     }
     functions {
         void init(){
@@ -90,7 +91,7 @@ component N20 extends BrushedMotor {
             motor_driver.drive_motor(forward, backward, sleep, speed);
         }
         void stop() {
-            motor_driver.stop();
+            motor_driver.stop_motor(forward, backward, sleep);
         }
     }
 }

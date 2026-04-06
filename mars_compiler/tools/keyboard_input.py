@@ -11,13 +11,14 @@ _settings = None
 _INSTRUCTIONS = """keyboard_input controls:
 w or up arrow: up
 a or left arrow: left
-s or down arrow: down
+s or down arrow: stop
 d or right arrow: right
 q: up_left
 e: up_right
+x: down
 z: down_left
 c: down_right
-? or /: print instructions
+?: print instructions
 esc: quit
 """
 
@@ -60,9 +61,11 @@ def read_key(timeout=0.0):
         if key == "a":
             return "left"
         if key == "s":
-            return "down"
+            return "stop"
         if key == "d":
             return "right"
+        if key == "x":
+            return "down"
         if key == "q":
             return "up_left"
         if key == "e":
@@ -86,7 +89,7 @@ def read_key(timeout=0.0):
             if rest == "[D":
                 return "left"
             if rest == "[B":
-                return "down"
+                return "stop"
             if rest == "[C":
                 return "right"
 

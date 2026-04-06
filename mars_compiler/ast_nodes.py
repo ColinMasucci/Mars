@@ -59,6 +59,7 @@ class VarDecl:
     name: str
     value: Any
     readonly: bool = False
+    is_override: bool = False
 
 @dataclass
 class MemberAccess:
@@ -128,6 +129,7 @@ class SubcomponentDecl:
     type_name: str
     name: str
     bindings: list[tuple[str, Any]] = None
+    is_override: bool = False
 
 @dataclass
 class FuncDecl:

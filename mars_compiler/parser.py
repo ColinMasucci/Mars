@@ -149,6 +149,10 @@ class Parser:
         subcomponents = []
 
         while not self.current().type == "RBRACE":
+            is_override = False
+            if self.current().type == "OVERRIDE":
+                self.eat("OVERRIDE")
+                is_override = True
             comp_type = self.eat("ID").value
             name = self.eat("ID").value
 
@@ -168,7 +172,7 @@ class Parser:
                 self.eat("RPAREN")
 
             self.eat("SEMI")
-            subcomponents.append(SubcomponentDecl(comp_type, name, bindings))
+            subcomponents.append(SubcomponentDecl(comp_type, name, bindings, is_override))
 
         self.eat("RBRACE")
         return subcomponents
@@ -179,7 +183,11 @@ class Parser:
         self.eat("LBRACE")
 
         while not self.current().type == "RBRACE":
-            param = self.parse_var_decl()
+            is_override = False
+            if self.current().type == "OVERRIDE":
+                self.eat("OVERRIDE")
+                is_override = True
+            param = self.parse_var_decl(is_override=is_override)
             params.append(param)
 
         self.eat("RBRACE")
@@ -312,7 +320,7 @@ class Parser:
                     if self.current().type == "ASSIGN":
                         self.eat("ASSIGN")
                         value = self.expr()
-                    decl = self._mark(VarDecl(vartype, name, value, readonly), tok)
+                    decl = self._mark(VarDecl(vartype, name, value, readonly=readonly), tok)
                     self.eat("SEMI")
                     return decl
                 else:
@@ -352,7 +360,7 @@ class Parser:
         # --- Anything else is invalid ---
         self._raise(f"Unexpected token {tok.type}.", tok)
     
-    def parse_var_decl(self, require_semi=True, readonly=False):
+    def parse_var_decl(self, require_semi=True, readonly=False, is_override=False):
         vartype = self.parse_type()
         if self.current().type != "ID":
             self._raise("Expected `type name` in declaration (declarations must include a type).", self.current())
@@ -363,7 +371,7 @@ class Parser:
             self.eat("ASSIGN")
             value = self.expr()
 
-        decl = self._mark(VarDecl(vartype, name, value, readonly))
+        decl = self._mark(VarDecl(vartype, name, value, readonly, is_override))
 
         if require_semi:
             self.eat("SEMI")
@@ -539,7 +547,7 @@ class Parser:
                     if self.current().type == "ASSIGN":
                         self.eat("ASSIGN")
                         value = self.expr()
-                    return self._mark(VarDecl(vartype, name, value, readonly), tok)
+                    return self._mark(VarDecl(vartype, name, value, readonly=readonly), tok)
                 else:
                     self.pos = save_pos
                     readonly = False

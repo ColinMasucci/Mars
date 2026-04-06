@@ -35,7 +35,7 @@ TOKEN_SPEC = [
     ("SUBCOMPONENTS", r"\bsubcomponents\b"),
     ("PARAMETERS", r"\bparameters\b"),
     ("FUNCTIONS", r"\bfunctions\b"),
-    ("OVERRIDE", r"@Override\b"),
+    ("OVERRIDE", r"@(Override|override)\b"),
 
 
     # --- Other Keywords ---
