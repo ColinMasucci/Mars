@@ -103,13 +103,10 @@ component ADXL345 extends IMU {
             imu_driver.init_imu(bus, address, regDeviceId, regBandwidthRate, regPowerControl, regDataFormat, regDataX0,
                 expectedDeviceId, measureBit, fullResolutionBit, rangeG, rateHz, gramsPerLsb, math.g);
         }
-        float[] getAccelerationG() {
-            return imu_driver.read_acceleration_g(bus, address);
-        }
-        float[] getAccelerationMs2() {
+        float::m/s^2[] getAcceleration() {
             return imu_driver.read_acceleration_ms2(bus, address);
         }
-        @Override float[] getAngularVelocityRadS();
+        @Override float::rad/s[] getAngularVelocity();
         @Override float[] getMagneticField();
         @Override float[] getOrientation();
     }
@@ -129,9 +126,8 @@ component IMU {
     }
     functions{
         void init();
-        float[] getAccelerationG();
-        float[] getAccelerationMs2();
-        float[] getAngularVelocityRadS();
+        float::m/s^2[] getAcceleration();
+        float::rad/s[] getAngularVelocity();
         float[] getMagneticField();
         float[] getOrientation();
     }

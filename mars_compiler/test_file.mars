@@ -2,12 +2,10 @@ Phobos.imu.init();
 
 int i = 0;
 while (i < 5) {
-    float[] accel_g = Phobos.imu.readAccelerationG();
-    float[] accel_ms2 = Phobos.imu.readAccelerationMs2();
+    float::m/s^2[] accel = Phobos.imu.getAcceleration();
 
     print("sample", i);
-    print("accel_g", accel_g[0], accel_g[1], accel_g[2]);
-    print("accel_ms2", accel_ms2[0], accel_ms2[1], accel_ms2[2]);
+    print("accel_ms2", accel[0], accel[1], accel[2]);
 
     wait(0.5);
     i += 1;
