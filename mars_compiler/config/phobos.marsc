@@ -5,8 +5,8 @@ import math;
 component Phobos extends Robot {
     subcomponents{
         # Swap Chassis
-        PhobosChassisA chassis;
-        #PhobosChassisB chassis;
+        #PhobosChassisA chassis;
+        PhobosChassisB chassis;
 
         ADXL345 imu(bus = 1, address = 83); # 83 = 0x53
     }
@@ -48,7 +48,28 @@ component PhobosChassisA extends SkidChassis {
     }
 }
 
-component N20 extends BrushlessMotor {
+component PhobosChassisB extends DifferentialChassis {
+    subcomponents {
+        N20 leftMotor(direction = 1, forward=22, backward=23, sleep=12);
+        N20 rightMotor(direction = 1, forward=26, backward=16, sleep=13);
+    }
+    parameters {
+        float maxSpeed = 1;
+    }
+    functions {
+        void init(){
+
+        }
+        void drive(float leftSpeed, float rightSpeed){
+
+        }
+        void stop(){
+
+        }
+    }
+}
+
+component N20 extends BrushedMotor {
     subcomponents{
     }
     parameters{

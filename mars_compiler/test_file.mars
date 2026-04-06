@@ -1,13 +1,15 @@
 import keyboard_input;
 
 print("keyboard_input mars test");
-print("press ?, then use wasd, arrows, q/e/z/c, or esc to quit");
+print("press ? for instructions");
 
 keyboard_input.print_instructions();
 
 while (true) {
     string key = keyboard_input.read_key();
-    print("key", key);
+    if(key != "none") {
+    print("key:", key);
+    }
 
     if (key == "quit") {
         break;
