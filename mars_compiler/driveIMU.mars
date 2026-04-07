@@ -113,13 +113,14 @@ class DriveIMU {
     }
 
     void turn(float speed, float::deg angle){
-        float::rad targetAngle = angle;
+        float::rad targetAngle = 0.0::rad;
         float headingError = 0.0;
         float turnCommand = 0.0;
         float turnLimit = math.abs(speed);
         float normalizedError = 0.0;
 
         prepareManeuver();
+        targetAngle = normalizeAngle(currentHeading() + angle);
         headingError = normalizeAngle(targetAngle - currentHeading());
 
         while (math.abs(headingError) > turnTolerance) {
