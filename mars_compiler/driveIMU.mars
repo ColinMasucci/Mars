@@ -24,6 +24,8 @@ class DriveIMU {
     float::s controlPeriod = 0.02::s;
     float::s settleTime = 0.10::s;
     float::s biasCalibrationTime = 0.30::s;
+    float maxTurnCommand = 0.8;
+    bool calibrated = false;
 
     DriveIMU(Robot robot){
         chassis = robot.match(WheeledChassis);
@@ -47,12 +49,42 @@ class DriveIMU {
         return pose[2];
     }
 
-    void prepareManeuver() {
-        chassis.drive(0.0, 0.0, 0.0);
+    float clamp(float value, float minValue, float maxValue) {
+        if (value < minValue) {
+            return minValue;
+        }
+        if (value > maxValue) {
+            return maxValue;
+        }
+        return value;
+    }
+
+    void tankDrive(float linear, float turn) {
+        float limitedTurn = clamp(turn, -maxTurnCommand, maxTurnCommand);
+        float left = linear - limitedTurn;
+        float right = linear + limitedTurn;
+        chassis.drive(left, right);
+    }
+
+    void calibrate() {
+        chassis.stop();
         wait(settleTime);
         headingFilter.resetFilter(0.0::rad);
         headingFilter.calibrateStationary(biasCalibrationTime, controlPeriod);
         headingFilter.resetHeading(0.0::rad);
+        calibrated = true;
+    }
+
+    void requireCalibration() {
+        if (!calibrated) {
+            calibrate();
+        }
+    }
+
+    void prepareManeuver() {
+        requireCalibration();
+        chassis.stop();
+        wait(settleTime);
     }
 
     void driveStraight(float speed, float::s time){
@@ -63,32 +95,34 @@ class DriveIMU {
         while (elapsed < time) {
             if (elapsed + controlPeriod > time) {
                 headingFilter.updateFromImu(time - elapsed);
-                chassis.drive(speed, 0.0, headingGain * -currentHeading());
+                tankDrive(speed, headingGain * -currentHeading());
                 wait(time - elapsed);
                 elapsed = time;
             } else {
                 headingFilter.updateFromImu(controlPeriod);
-                chassis.drive(speed, 0.0, headingGain * -currentHeading());
+                tankDrive(speed, headingGain * -currentHeading());
                 wait(controlPeriod);
                 elapsed = elapsed + controlPeriod;
             }
         }
 
-        chassis.drive(0.0, 0.0, 0.0);
+        chassis.stop();
     }
 
     void turn(float speed, float::deg angle){
         float::rad targetAngle = angle;
+        float headingError = targetAngle;
 
         prepareManeuver();
 
-        while (math.abs(targetAngle - currentHeading()) > turnTolerance) {
-            chassis.drive(0.0, 0.0, turnGain * normalizeAngle(targetAngle - currentHeading()));
+        while (math.abs(headingError) > turnTolerance) {
+            headingError = normalizeAngle(targetAngle - currentHeading());
+            tankDrive(0.0, turnGain * headingError);
             wait(controlPeriod);
             headingFilter.updateFromImu(controlPeriod);
         }
 
-        chassis.drive(0.0, 0.0, 0.0);
+        chassis.stop();
     }
 
 }

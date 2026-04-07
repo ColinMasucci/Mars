@@ -105,57 +105,20 @@ class ComplementaryFilter{
 
     void calibrateStationary(float::s duration, float::s dt) {
         float::s elapsed = 0.0::s;
-        int samples = 0;
-        float::rad/s sumWx = 0.0::rad/s;
-        float::rad/s sumWy = 0.0::rad/s;
-        float::rad/s sumWz = 0.0::rad/s;
-        float::m/s^2 sumAx = 0.0::m/s^2;
-        float::m/s^2 sumAy = 0.0::m/s^2;
-        float::m/s^2 sumAz = 0.0::m/s^2;
 
         while (elapsed < duration) {
-            float::s step = dt;
             if (elapsed + dt > duration) {
-                step = duration - elapsed;
+                wait(duration - elapsed);
+                updateFromImu(duration - elapsed);
+                elapsed = duration;
+            } else {
+                wait(dt);
+                updateFromImu(dt);
+                elapsed = elapsed + dt;
             }
-
-            wait(step);
-
-            float::rad/s[] angularVelocity = imu.getAngularVelocity();
-            float::m/s^2[] acceleration = imu.getAcceleration();
-
-            sumWx = sumWx + angularVelocity[0];
-            sumWy = sumWy + angularVelocity[1];
-            sumWz = sumWz + angularVelocity[2];
-            sumAx = sumAx + acceleration[0];
-            sumAy = sumAy + acceleration[1];
-            sumAz = sumAz + acceleration[2];
-
-            samples = samples + 1;
-            elapsed = elapsed + step;
         }
 
-        if (samples <= 0) {
-            return;
-        }
-
-        float::rad/s avgWx = sumWx / samples;
-        float::rad/s avgWy = sumWy / samples;
-        float::rad/s avgWz = sumWz / samples;
-        float::m/s^2 avgAx = sumAx / samples;
-        float::m/s^2 avgAy = sumAy / samples;
-        float::m/s^2 avgAz = sumAz / samples;
-
-        gyroXBias = avgWx;
-        gyroYBias = avgWy;
-
-        gravityReference = math.sqrt(avgAx * avgAx + avgAy * avgAy + avgAz * avgAz);
-        rollEstimate = math.atan2(avgAy, avgAz);
-        pitchEstimate = math.atan2(-avgAx, math.sqrt(avgAy * avgAy + avgAz * avgAz));
-        gyroZBias = clampYawRateForTilt(avgWx, avgWy, avgWz);
-        accelMagnitude = gravityReference;
-        accelTrust = 1.0;
-        stationaryTrust = 1.0;
+        gravityReference = accelMagnitude;
     }
 
     void updateFromImu(float::s dt) {

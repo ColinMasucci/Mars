@@ -1,36 +1,31 @@
-import math;
-import complementaryFilter;
+import driveIMU;
 
-print("Phobos MPU6050 IMU smoke test");
-print("Run with config dir: mars_compiler/tools");
+print("Phobos DriveIMU motion test");
 
+Phobos.chassis.init();
 Phobos.imu.init();
 
-ComplementaryFilter filter = ComplementaryFilter(Phobos);
-filter.resetFilter(0.0::rad);
+DriveIMU driver = DriveIMU(Phobos);
 
-float::s samplePeriod = 0.02::s;
-float::s calibrationTime = 0.60::s;
+print("Hold robot still for calibration...");
+wait(1.0::s);
+driver.calibrate();
 
-print("Hold IMU still for calibration...");
-filter.calibrateStationary(calibrationTime, samplePeriod);
 print("Calibration complete.");
+print("Driving straight...");
+driver.driveStraight(0.35, 2.0::s);
 
-while (true) {
-    float::m/s^2[] accel = Phobos.imu.getAcceleration();
-    float::rad/s[] gyro = Phobos.imu.getAngularVelocity();
+wait(1.0::s);
+print("Turning +90 deg (CCW expected)...");
+driver.turn(0.0, 90.0::deg);
 
-    filter.updateWithSamples(samplePeriod, gyro, accel);
+wait(1.0::s);
+print("Turning -90 deg (CW expected)...");
+driver.turn(0.0, -90.0::deg);
 
-    float[] pose = filter.getPose();
-    float[] debug = filter.getDebugState();
+wait(1.0::s);
+print("Driving straight again...");
+driver.driveStraight(0.35, 2.0::s);
 
-    print("accel m/s^2:", accel[0], accel[1], accel[2]);
-    print("gyro rad/s:", gyro[0], gyro[1], gyro[2]);
-    print("pose theta rad:", pose[2]);
-    print("tilt roll/pitch rad:", debug[1], debug[2]);
-    print("accel/stationary trust:", debug[3], debug[4]);
-    print("---");
-
-    wait(samplePeriod);
-}
+Phobos.chassis.stop();
+print("Motion test complete.");
