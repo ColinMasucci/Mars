@@ -1,4 +1,5 @@
 import math
+import time
 
 from smbus2 import SMBus
 
@@ -74,8 +75,14 @@ def _configure_mpu6050(device, accel_range_g, gyro_range_dps, dlpf_config, sampl
     if not 0 <= int(sample_rate_div) <= 255:
         raise ValueError("sample_rate_div must be between 0 and 255")
 
+    # A device reset takes a short time; if we program registers immediately
+    # afterward the MPU6050 can remain asleep and return all-zero samples.
     _write_register(device, device["reg_power_mgmt_1"], 0x80)
+    time.sleep(0.1)
+    _write_register(device, device["reg_power_mgmt_1"], 0x00)
+    time.sleep(0.01)
     _write_register(device, device["reg_power_mgmt_1"], device["clock_source_bits"])
+    time.sleep(0.01)
     _write_register(device, device["reg_config"], int(dlpf_config))
     _write_register(device, device["reg_sample_rate_div"], int(sample_rate_div))
     _write_register(device, device["reg_gyro_config"], _MPU6050_GYRO_CONFIG_BITS[gyro_range_dps])
@@ -170,6 +177,26 @@ def read_angular_velocity_rads(bus_number, address):
         axis * degrees_to_radians
         for axis in read_angular_velocity_dps(bus_number, address)
     ]
+
+
+def read_device_id(bus_number, address):
+    device = _require_device(int(bus_number), int(address))
+    return _read_register(device, device["reg_device_id"])
+
+
+def read_power_mgmt_1(bus_number, address):
+    device = _require_device(int(bus_number), int(address))
+    return _read_register(device, device["reg_power_mgmt_1"])
+
+
+def read_acceleration_raw(bus_number, address):
+    device = _require_device(int(bus_number), int(address))
+    return _read_axes_raw(device, device["reg_accel_xout_h"])
+
+
+def read_angular_velocity_raw(bus_number, address):
+    device = _require_device(int(bus_number), int(address))
+    return _read_axes_raw(device, device["reg_gyro_xout_h"])
 
 
 def cleanup():

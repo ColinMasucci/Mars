@@ -137,6 +137,18 @@ component MPU6050 extends IMU {
         float::rad/s[] getAngularVelocity() {
             return imu_driver.read_angular_velocity_rads(bus, address);
         }
+        int getDeviceId() {
+            return imu_driver.read_device_id(bus, address);
+        }
+        int getPowerMgmt1() {
+            return imu_driver.read_power_mgmt_1(bus, address);
+        }
+        int[] getRawAcceleration() {
+            return imu_driver.read_acceleration_raw(bus, address);
+        }
+        int[] getRawAngularVelocity() {
+            return imu_driver.read_angular_velocity_raw(bus, address);
+        }
         @Override float[] getMagneticField();
         @Override float[] getOrientation();
     }
