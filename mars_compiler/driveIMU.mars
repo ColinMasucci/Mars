@@ -21,6 +21,7 @@ class DriveIMU {
     ComplementaryFilter headingFilter;
     float headingGain = 2.0;
     float turnGain = 0.9;
+    float turnDampingGain = 1.2;
     float::rad turnTolerance = 4.0::deg;
     float::s controlPeriod = 0.02::s;
     float::s settleTime = 0.10::s;
@@ -115,13 +116,17 @@ class DriveIMU {
         float headingError = 0.0;
         float turnCommand = 0.0;
         float turnLimit = math.abs(speed);
+        float::rad/s[] angularVelocity;
+        float::rad/s yawRate = 0.0::rad/s;
 
         prepareManeuver();
         targetAngle = normalizeAngle(currentHeading() + angle);
         headingError = normalizeAngle(targetAngle - currentHeading());
 
         while (math.abs(headingError) > turnTolerance) {
-            turnCommand = clamp(-turnGain * headingError, -turnLimit, turnLimit);
+            angularVelocity = imu.getAngularVelocity();
+            yawRate = angularVelocity[2];
+            turnCommand = clamp(-(turnGain * headingError + turnDampingGain * yawRate), -turnLimit, turnLimit);
             tankDrive(0.0, turnCommand);
             wait(controlPeriod);
             headingFilter.updateFromImu(controlPeriod);
