@@ -179,26 +179,6 @@ def read_angular_velocity_rads(bus_number, address):
     ]
 
 
-def read_device_id(bus_number, address):
-    device = _require_device(int(bus_number), int(address))
-    return _read_register(device, device["reg_device_id"])
-
-
-def read_power_mgmt_1(bus_number, address):
-    device = _require_device(int(bus_number), int(address))
-    return _read_register(device, device["reg_power_mgmt_1"])
-
-
-def read_acceleration_raw(bus_number, address):
-    device = _require_device(int(bus_number), int(address))
-    return _read_axes_raw(device, device["reg_accel_xout_h"])
-
-
-def read_angular_velocity_raw(bus_number, address):
-    device = _require_device(int(bus_number), int(address))
-    return _read_axes_raw(device, device["reg_gyro_xout_h"])
-
-
 def cleanup():
     for device in _devices.values():
         try:

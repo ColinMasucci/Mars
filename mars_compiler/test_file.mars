@@ -5,8 +5,6 @@ print("Phobos MPU6050 IMU smoke test");
 print("Run with config dir: mars_compiler/tools");
 
 Phobos.imu.init();
-print("WHO_AM_I:", Phobos.imu.getDeviceId());
-print("PWR_MGMT_1:", Phobos.imu.getPowerMgmt1());
 
 ComplementaryFilter filter = ComplementaryFilter(Phobos);
 filter.resetFilter(0.0::rad);
@@ -14,8 +12,6 @@ filter.resetFilter(0.0::rad);
 float::s samplePeriod = 0.02::s;
 
 while (true) {
-    int[] rawAccel = Phobos.imu.getRawAcceleration();
-    int[] rawGyro = Phobos.imu.getRawAngularVelocity();
     float::m/s^2[] accel = Phobos.imu.getAcceleration();
     float::rad/s[] gyro = Phobos.imu.getAngularVelocity();
 
@@ -24,8 +20,6 @@ while (true) {
     float[] pose = filter.getPose();
     float[] debug = filter.getDebugState();
 
-    print("raw accel:", rawAccel[0], rawAccel[1], rawAccel[2]);
-    print("raw gyro:", rawGyro[0], rawGyro[1], rawGyro[2]);
     print("accel m/s^2:", accel[0], accel[1], accel[2]);
     print("gyro rad/s:", gyro[0], gyro[1], gyro[2]);
     print("pose theta rad:", pose[2]);

@@ -23,8 +23,8 @@ class ComplementaryFilter{
     # while stationary and by compensating yaw-rate for current tilt.
     float minTiltBlend = 0.02;
     float maxTiltBlend = 0.20;
-    float biasLearningRate = 0.03;
-    float::m/s^2 accelMagnitudeWindow = 1.5::m/s^2;
+    float biasLearningRate = 0.05;
+    float::m/s^2 accelMagnitudeWindow = 2.5::m/s^2;
     float::rad/s stationaryOmegaThreshold = 0.12::rad/s;
 
     ComplementaryFilter(Robot robot){
