@@ -17,11 +17,11 @@ driver.driveStraight(0.35, 2.0::s);
 
 wait(1.0::s);
 print("Turning +90 deg (CCW expected)...");
-driver.turn(0.0, 90.0::deg);
+driver.turn(0.45, 90.0::deg);
 
 wait(1.0::s);
 print("Turning -90 deg (CW expected)...");
-driver.turn(0.0, -90.0::deg);
+driver.turn(0.45, -90.0::deg);
 
 wait(1.0::s);
 print("Driving straight again...");

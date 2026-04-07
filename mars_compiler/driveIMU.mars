@@ -11,10 +11,11 @@ import complementaryFilter;
 class DriveIMU {
 
     requirements {
-        WheeledChassis;
+        WheeledChassis(parameters=[controlMode=="tank"]);
         IMU(parameters=[accelerometer, gyro]);
     }
 
+    string controlMode = "tank";
     WheeledChassis chassis;
     IMU imu;
     ComplementaryFilter headingFilter;
@@ -112,12 +113,15 @@ class DriveIMU {
     void turn(float speed, float::deg angle){
         float::rad targetAngle = angle;
         float headingError = targetAngle;
+        float turnCommand = 0.0;
+        float turnLimit = math.abs(speed);
 
         prepareManeuver();
 
         while (math.abs(headingError) > turnTolerance) {
             headingError = normalizeAngle(targetAngle - currentHeading());
-            tankDrive(0.0, turnGain * headingError);
+            turnCommand = clamp(turnGain * headingError, -turnLimit, turnLimit);
+            tankDrive(0.0, turnCommand);
             wait(controlPeriod);
             headingFilter.updateFromImu(controlPeriod);
         }
