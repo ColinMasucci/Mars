@@ -116,7 +116,6 @@ class DriveIMU {
         float headingError = 0.0;
         float turnCommand = 0.0;
         float turnLimit = math.abs(speed);
-        float::rad/s[] angularVelocity;
         float::rad/s yawRate = 0.0::rad/s;
 
         prepareManeuver();
@@ -124,8 +123,7 @@ class DriveIMU {
         headingError = normalizeAngle(targetAngle - currentHeading());
 
         while (math.abs(headingError) > turnTolerance) {
-            angularVelocity = imu.getAngularVelocity();
-            yawRate = angularVelocity[2];
+            yawRate = imu.getAngularVelocity()[2];
             turnCommand = clamp(-(turnGain * headingError + turnDampingGain * yawRate), -turnLimit, turnLimit);
             tankDrive(0.0, turnCommand);
             wait(controlPeriod);
