@@ -26,8 +26,8 @@ class DriveIMU {
     float::s settleTime = 0.10::s;
     float::s biasCalibrationTime = 0.30::s;
     float maxTurnCommand = 0.8;
-    float minTurnCommand = 0.18;
-    float::rad turnSlowdownAngle = 30.0::deg;
+    float minTurnCommand = 0.22;
+    float::rad turnApproachAngle = 12.0::deg;
     bool calibrated = false;
 
     DriveIMU(Robot robot){
@@ -117,22 +117,33 @@ class DriveIMU {
         float headingError = 0.0;
         float turnCommand = 0.0;
         float turnLimit = math.abs(speed);
-        float normalizedError = 0.0;
 
         prepareManeuver();
         targetAngle = normalizeAngle(currentHeading() + angle);
         headingError = normalizeAngle(targetAngle - currentHeading());
 
         while (math.abs(headingError) > turnTolerance) {
-            normalizedError = clamp(math.abs(headingError) / turnSlowdownAngle, 0.0, 1.0);
-            turnCommand = turnLimit * normalizedError;
-            if (turnCommand < minTurnCommand) {
-                turnCommand = minTurnCommand;
+            if (math.abs(headingError) > turnApproachAngle) {
+                turnCommand = clamp(turnGain * headingError, -turnLimit, turnLimit);
+                if (math.abs(turnCommand) < minTurnCommand) {
+                    turnCommand = math.sign(headingError) * minTurnCommand;
+                }
+                tankDrive(0.0, turnCommand);
+                wait(controlPeriod);
+                headingFilter.updateFromImu(controlPeriod);
+            } else {
+                chassis.stop();
+                wait(controlPeriod);
+                headingFilter.updateFromImu(controlPeriod);
+                headingError = normalizeAngle(targetAngle - currentHeading());
+                if (math.abs(headingError) <= turnTolerance) {
+                    break;
+                }
+
+                tankDrive(0.0, math.sign(headingError) * minTurnCommand);
+                wait(controlPeriod);
+                headingFilter.updateFromImu(controlPeriod);
             }
-            turnCommand = math.sign(headingError) * turnCommand;
-            tankDrive(0.0, turnCommand);
-            wait(controlPeriod);
-            headingFilter.updateFromImu(controlPeriod);
             headingError = normalizeAngle(targetAngle - currentHeading());
         }
 
