@@ -10,6 +10,11 @@ ComplementaryFilter filter = ComplementaryFilter(Phobos);
 filter.resetFilter(0.0::rad);
 
 float::s samplePeriod = 0.02::s;
+float::s calibrationTime = 0.60::s;
+
+print("Hold IMU still for calibration...");
+filter.calibrateStationary(calibrationTime, samplePeriod);
+print("Calibration complete.");
 
 while (true) {
     float::m/s^2[] accel = Phobos.imu.getAcceleration();

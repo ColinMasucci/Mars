@@ -15,6 +15,9 @@ class ComplementaryFilter{
     float accelTrust = 0;
     float stationaryTrust = 0;
     float accelMagnitude = math.g;
+    float::m/s^2 gravityReference = math.g;
+    float::rad/s gyroXBias = 0.0::rad/s;
+    float::rad/s gyroYBias = 0.0::rad/s;
     float::rad/s gyroZBias = 0.0::rad/s;
 
     # Encoder-free complementary filter defaults.
@@ -93,23 +96,66 @@ class ComplementaryFilter{
         accelTrust = 0.0;
         stationaryTrust = 0.0;
         accelMagnitude = math.g;
+        gravityReference = math.g;
+        gyroXBias = 0.0::rad/s;
+        gyroYBias = 0.0::rad/s;
         gyroZBias = 0.0::rad/s;
         resetHeading(heading);
     }
 
     void calibrateStationary(float::s duration, float::s dt) {
         float::s elapsed = 0.0::s;
+        int samples = 0;
+        float::rad/s sumWx = 0.0::rad/s;
+        float::rad/s sumWy = 0.0::rad/s;
+        float::rad/s sumWz = 0.0::rad/s;
+        float::m/s^2 sumAx = 0.0::m/s^2;
+        float::m/s^2 sumAy = 0.0::m/s^2;
+        float::m/s^2 sumAz = 0.0::m/s^2;
+
         while (elapsed < duration) {
+            float::s step = dt;
             if (elapsed + dt > duration) {
-                wait(duration - elapsed);
-                updateFromImu(duration - elapsed);
-                elapsed = duration;
-            } else {
-                wait(dt);
-                updateFromImu(dt);
-                elapsed = elapsed + dt;
+                step = duration - elapsed;
             }
+
+            wait(step);
+
+            float::rad/s[] angularVelocity = imu.getAngularVelocity();
+            float::m/s^2[] acceleration = imu.getAcceleration();
+
+            sumWx = sumWx + angularVelocity[0];
+            sumWy = sumWy + angularVelocity[1];
+            sumWz = sumWz + angularVelocity[2];
+            sumAx = sumAx + acceleration[0];
+            sumAy = sumAy + acceleration[1];
+            sumAz = sumAz + acceleration[2];
+
+            samples = samples + 1;
+            elapsed = elapsed + step;
         }
+
+        if (samples <= 0) {
+            return;
+        }
+
+        float::rad/s avgWx = sumWx / samples;
+        float::rad/s avgWy = sumWy / samples;
+        float::rad/s avgWz = sumWz / samples;
+        float::m/s^2 avgAx = sumAx / samples;
+        float::m/s^2 avgAy = sumAy / samples;
+        float::m/s^2 avgAz = sumAz / samples;
+
+        gyroXBias = avgWx;
+        gyroYBias = avgWy;
+
+        gravityReference = math.sqrt(avgAx * avgAx + avgAy * avgAy + avgAz * avgAz);
+        rollEstimate = math.atan2(avgAy, avgAz);
+        pitchEstimate = math.atan2(-avgAx, math.sqrt(avgAy * avgAy + avgAz * avgAz));
+        gyroZBias = clampYawRateForTilt(avgWx, avgWy, avgWz);
+        accelMagnitude = gravityReference;
+        accelTrust = 1.0;
+        stationaryTrust = 1.0;
     }
 
     void updateFromImu(float::s dt) {
@@ -123,8 +169,8 @@ class ComplementaryFilter{
     }
 
     void updateWithSamples(float::s dt, float::rad/s[] angularVelocity, float::m/s^2[] acceleration) {
-        float::rad/s wx = angularVelocity[0];
-        float::rad/s wy = angularVelocity[1];
+        float::rad/s wx = angularVelocity[0] - gyroXBias;
+        float::rad/s wy = angularVelocity[1] - gyroYBias;
         float::rad/s wz = angularVelocity[2];
 
         float::m/s^2 ax = acceleration[0];
@@ -133,7 +179,7 @@ class ComplementaryFilter{
 
         accelMagnitude = math.sqrt(ax * ax + ay * ay + az * az);
 
-        float accelMagnitudeError = math.abs(accelMagnitude - math.g);
+        float accelMagnitudeError = math.abs(accelMagnitude - gravityReference);
         accelTrust = 1.0 - clamp(accelMagnitudeError / accelMagnitudeWindow, 0.0, 1.0);
 
         float gyroStillTrust = 1.0 - clamp(math.abs(wz) / stationaryOmegaThreshold, 0.0, 1.0);
