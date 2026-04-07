@@ -26,8 +26,6 @@ class DriveIMU {
     float::s settleTime = 0.10::s;
     float::s biasCalibrationTime = 0.30::s;
     float maxTurnCommand = 0.8;
-    float minTurnCommand = 0.22;
-    float::rad turnApproachAngle = 12.0::deg;
     bool calibrated = false;
 
     DriveIMU(Robot robot){
@@ -123,27 +121,11 @@ class DriveIMU {
         headingError = normalizeAngle(targetAngle - currentHeading());
 
         while (math.abs(headingError) > turnTolerance) {
-            if (math.abs(headingError) > turnApproachAngle) {
-                turnCommand = clamp(-turnGain * headingError, -turnLimit, turnLimit);
-                if (math.abs(turnCommand) < minTurnCommand) {
-                    turnCommand = -math.sign(headingError) * minTurnCommand;
-                }
-                tankDrive(0.0, turnCommand);
-                wait(controlPeriod);
-                headingFilter.updateFromImu(controlPeriod);
-            } else {
-                chassis.stop();
-                wait(controlPeriod);
-                headingFilter.updateFromImu(controlPeriod);
-                headingError = normalizeAngle(targetAngle - currentHeading());
-                if (math.abs(headingError) <= turnTolerance) {
-                    break;
-                }
-
-                tankDrive(0.0, -math.sign(headingError) * minTurnCommand);
-                wait(controlPeriod);
-                headingFilter.updateFromImu(controlPeriod);
-            }
+            turnCommand = clamp(-turnGain * headingError, -turnLimit, turnLimit);
+            print("heading:", currentHeading(), "target:", targetAngle, "error:", headingError, "cmd:", turnCommand);
+            tankDrive(0.0, turnCommand);
+            wait(controlPeriod);
+            headingFilter.updateFromImu(controlPeriod);
             headingError = normalizeAngle(targetAngle - currentHeading());
         }
 
