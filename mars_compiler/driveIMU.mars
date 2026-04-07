@@ -114,18 +114,29 @@ class DriveIMU {
         float headingError = 0.0;
         float turnCommand = 0.0;
         float turnLimit = math.abs(speed);
+        float turnDirection = 1.0;
+        float previousError = 0.0;
 
         prepareManeuver();
         targetAngle = normalizeAngle(currentHeading() + angle);
         headingError = normalizeAngle(targetAngle - currentHeading());
+        previousError = headingError;
+        turnDirection = -math.sign(angle);
+        if (turnDirection == 0.0) {
+            turnDirection = -math.sign(headingError);
+        }
+        turnCommand = turnDirection * turnLimit;
 
         while (math.abs(headingError) > turnTolerance) {
-            turnCommand = -math.sign(headingError) * turnLimit;
             print("heading:", currentHeading(), "target:", targetAngle, "error:", headingError, "cmd:", turnCommand);
             tankDrive(0.0, turnCommand);
             wait(controlPeriod);
             headingFilter.updateFromImu(controlPeriod);
             headingError = normalizeAngle(targetAngle - currentHeading());
+            if (previousError != 0.0 && math.sign(headingError) != math.sign(previousError)) {
+                break;
+            }
+            previousError = headingError;
         }
 
         chassis.stop();
