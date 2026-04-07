@@ -20,7 +20,6 @@ class DriveIMU {
     IMU imu;
     ComplementaryFilter headingFilter;
     float headingGain = 2.0;
-    float turnGain = 0.9;
     float::rad turnTolerance = 4.0::deg;
     float::s controlPeriod = 0.02::s;
     float::s settleTime = 0.10::s;
@@ -121,7 +120,7 @@ class DriveIMU {
         headingError = normalizeAngle(targetAngle - currentHeading());
 
         while (math.abs(headingError) > turnTolerance) {
-            turnCommand = clamp(-turnGain * headingError, -turnLimit, turnLimit);
+            turnCommand = -math.sign(headingError) * turnLimit;
             print("heading:", currentHeading(), "target:", targetAngle, "error:", headingError, "cmd:", turnCommand);
             tankDrive(0.0, turnCommand);
             wait(controlPeriod);
