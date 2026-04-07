@@ -3,30 +3,32 @@ import math;
 class ComplementaryFilter{
 
     requirements {
-        Chassis(functions=[getVelocities()]);
+        IMU(parameters=[accelerometer, gyro]);
     }
 
-    Chassis chassis;
+    IMU imu;
 
-    float[] pose = [0, 0, 0];
+    float[] pose = [0.0, 0.0, 0.0];
     float imuHeading = 0;
-    float motionHeading = 0;
-    float motionTrust = 0.35;
-    float slipMagnitude = 0;
-
-    # Filter defaults for v1.
-    # These are intentionally local code defaults for now rather than config-backed params.
-    float headingBlendBase = 0.35;
-    float minMotionTrust = 0.05;
-    float maxMotionTrust = 0.60;
-    float::rad/s slipOmegaThreshold = 0.35::rad/s;
-    float::s/rad slipTrustSlope = 1.50::s/rad;
+    float rollEstimate = 0;
+    float pitchEstimate = 0;
+    float accelTrust = 0;
+    float stationaryTrust = 0;
+    float accelMagnitude = math.g;
     float::rad/s gyroZBias = 0.0::rad/s;
 
-    # If you later add a shared IMU component contract, this class can match it in the
-    # constructor and read it internally. For now the caller supplies [wx, wy, wz] to update().
+    # Encoder-free complementary filter defaults.
+    # Accelerometer is used for roll/pitch correction and stationary detection.
+    # Yaw still comes from the gyro, but we reduce drift by learning gyro bias
+    # while stationary and by compensating yaw-rate for current tilt.
+    float minTiltBlend = 0.02;
+    float maxTiltBlend = 0.20;
+    float biasLearningRate = 0.03;
+    float::m/s^2 accelMagnitudeWindow = 1.5::m/s^2;
+    float::rad/s stationaryOmegaThreshold = 0.12::rad/s;
+
     ComplementaryFilter(Robot robot){
-        chassis = robot.match(Chassis);
+        imu = robot.match(IMU);
     }
 
     float normalizeAngle(float angle) {
@@ -50,13 +52,25 @@ class ComplementaryFilter{
         return value;
     }
 
+    float::rad/s clampYawRateForTilt(float::rad/s wx, float::rad/s wy, float::rad/s wz) {
+        float cosPitch = math.cos(pitchEstimate);
+        if (math.abs(cosPitch) < 0.10) {
+            if (cosPitch < 0.0) {
+                cosPitch = -0.10;
+            } else {
+                cosPitch = 0.10;
+            }
+        }
+        return (wy * math.sin(rollEstimate) + wz * math.cos(rollEstimate)) / cosPitch;
+    }
+
     # Pose uses [x, y, theta] = [cm, cm, rad].
+    # Without encoders or another translational reference, x and y are caller-owned.
     void setPose(float::cm x, float::cm y, float::rad theta) {
         pose[0] = x;
         pose[1] = y;
         pose[2] = normalizeAngle(theta);
         imuHeading = pose[2];
-        motionHeading = pose[2];
     }
 
     float[] getPose() {
@@ -64,33 +78,79 @@ class ComplementaryFilter{
     }
 
     float[] getDebugState() {
-        float[] debug = [imuHeading, motionHeading, motionTrust, slipMagnitude];
+        float[] debug = [imuHeading, rollEstimate, pitchEstimate, accelTrust, stationaryTrust];
         return debug;
     }
 
-    # Expects angularVelocity = [wx, wy, wz] in [rad/s, rad/s, rad/s].
-    # The chassis is expected to provide getVelocities() = [vx, 0, omega] in [cm/s, 0, rad/s].
-    void update(float::s dt, float::rad/s[] angularVelocity) {
-        float[] motion = chassis.getVelocities();
-        float::cm/s vx = motion[0];
-        float::rad/s omegaMotion = motion[2];
-        float::rad/s omegaImu = angularVelocity[2] - gyroZBias;
+    void resetHeading(float::rad heading) {
+        imuHeading = normalizeAngle(heading);
+        pose[2] = imuHeading;
+    }
 
-        imuHeading = normalizeAngle(imuHeading + omegaImu * dt);
-        motionHeading = normalizeAngle(pose[2] + omegaMotion * dt);
+    void resetFilter(float::rad heading) {
+        rollEstimate = 0.0;
+        pitchEstimate = 0.0;
+        accelTrust = 0.0;
+        stationaryTrust = 0.0;
+        accelMagnitude = math.g;
+        gyroZBias = 0.0::rad/s;
+        resetHeading(heading);
+    }
 
-        float::rad/s slipMagnitudeRate = math.abs(omegaImu - omegaMotion);
-        slipMagnitude = slipMagnitudeRate;
-        motionTrust = headingBlendBase;
-        if (slipMagnitudeRate > slipOmegaThreshold) {
-            motionTrust = headingBlendBase - slipTrustSlope * (slipMagnitudeRate - slipOmegaThreshold);
+    void calibrateStationary(float::s duration, float::s dt) {
+        float::s elapsed = 0.0::s;
+        while (elapsed < duration) {
+            if (elapsed + dt > duration) {
+                wait(duration - elapsed);
+                updateFromImu(duration - elapsed);
+                elapsed = duration;
+            } else {
+                wait(dt);
+                updateFromImu(dt);
+                elapsed = elapsed + dt;
+            }
         }
-        motionTrust = clamp(motionTrust, minMotionTrust, maxMotionTrust);
+    }
 
-        float headingError = normalizeAngle(motionHeading - imuHeading);
-        pose[2] = normalizeAngle(imuHeading + motionTrust * headingError);
+    void updateFromImu(float::s dt) {
+        updateWithSamples(dt, imu.getAngularVelocity(), imu.getAcceleration());
+    }
 
-        pose[0] = pose[0] + vx * math.cos(pose[2]) * dt;
-        pose[1] = pose[1] + vx * math.sin(pose[2]) * dt;
+    # Backward-compatible entry point if the caller already has gyro samples.
+    # Acceleration still comes from the matched IMU because that is now the primary correction signal.
+    void update(float::s dt, float::rad/s[] angularVelocity) {
+        updateWithSamples(dt, angularVelocity, imu.getAcceleration());
+    }
+
+    void updateWithSamples(float::s dt, float::rad/s[] angularVelocity, float::m/s^2[] acceleration) {
+        float::rad/s wx = angularVelocity[0];
+        float::rad/s wy = angularVelocity[1];
+        float::rad/s wz = angularVelocity[2];
+
+        float::m/s^2 ax = acceleration[0];
+        float::m/s^2 ay = acceleration[1];
+        float::m/s^2 az = acceleration[2];
+
+        accelMagnitude = math.sqrt(ax * ax + ay * ay + az * az);
+
+        float accelMagnitudeError = math.abs(accelMagnitude - math.g);
+        accelTrust = 1.0 - clamp(accelMagnitudeError / accelMagnitudeWindow, 0.0, 1.0);
+
+        float gyroStillTrust = 1.0 - clamp(math.abs(wz) / stationaryOmegaThreshold, 0.0, 1.0);
+        stationaryTrust = accelTrust * gyroStillTrust;
+
+        float accelRoll = math.atan2(ay, az);
+        float accelPitch = math.atan2(-ax, math.sqrt(ay * ay + az * az));
+
+        float tiltBlend = minTiltBlend + accelTrust * (maxTiltBlend - minTiltBlend);
+        rollEstimate = normalizeAngle((1.0 - tiltBlend) * normalizeAngle(rollEstimate + wx * dt) + tiltBlend * accelRoll);
+        pitchEstimate = normalizeAngle((1.0 - tiltBlend) * normalizeAngle(pitchEstimate + wy * dt) + tiltBlend * accelPitch);
+
+        float::rad/s yawRateRaw = clampYawRateForTilt(wx, wy, wz);
+        gyroZBias = gyroZBias + stationaryTrust * biasLearningRate * (yawRateRaw - gyroZBias);
+
+        float::rad/s yawRate = yawRateRaw - gyroZBias;
+        imuHeading = normalizeAngle(imuHeading + yawRate * dt);
+        pose[2] = imuHeading;
     }
 }

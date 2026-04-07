@@ -8,7 +8,7 @@ component Phobos extends Robot {
         PhobosChassisA chassis;
         #PhobosChassisB chassis;
 
-        ADXL345 imu(bus = 1, address = 83); # 83 = 0x53
+        MPU6050 imu(bus = 1, address = 104); # 104 = 0x68
     }
     parameters{}
     functions{}
@@ -96,40 +96,47 @@ component N20 extends BrushedMotor {
     }
 }
 
-component ADXL345 extends IMU {
+component MPU6050 extends IMU {
     subcomponents{}
     parameters{
         bool accelerometer = true;
-        bool gyro = false;
+        bool gyro = true;
         bool magnetometer = false;
         bool orientation = false;
         int axisCount = 3;
         int bus;
         int address;
 
-        int regDeviceId = 0; # 0x00
-        int regBandwidthRate = 44; # 0x2C
-        int regPowerControl = 45; # 0x2D
-        int regDataFormat = 49; # 0x31
-        int regDataX0 = 50; # 0x32
+        int regDeviceId = 117; # 0x75
+        int regPowerMgmt1 = 107; # 0x6B
+        int regSampleRateDiv = 25; # 0x19
+        int regConfig = 26; # 0x1A
+        int regGyroConfig = 27; # 0x1B
+        int regAccelConfig = 28; # 0x1C
+        int regAccelXoutH = 59; # 0x3B
+        int regGyroXoutH = 67; # 0x43
 
-        int expectedDeviceId = 229; # 0xE5
-        int measureBit = 8; # 0x08
-        int fullResolutionBit = 8; # 0x08
+        int expectedDeviceId = 104; # 0x68
+        int clockSourceBits = 1; # PLL with X gyro reference
 
-        int rangeG = 2;
+        int accelRangeG = 2;
+        int gyroRangeDps = 250;
+        int dlpfConfig = 3;
+        int sampleRateDiv = 9;
         float rateHz = 100.0;
-        float gramsPerLsb = 0.00390625;
     }
     functions{
         void init() {
-            imu_driver.init_imu(bus, address, regDeviceId, regBandwidthRate, regPowerControl, regDataFormat, regDataX0,
-                expectedDeviceId, measureBit, fullResolutionBit, rangeG, rateHz, gramsPerLsb, math.g);
+            imu_driver.init_mpu6050(bus, address, regDeviceId, regPowerMgmt1, regSampleRateDiv, regConfig,
+                regGyroConfig, regAccelConfig, regAccelXoutH, regGyroXoutH, expectedDeviceId, clockSourceBits,
+                accelRangeG, gyroRangeDps, dlpfConfig, sampleRateDiv, math.g);
         }
         float::m/s^2[] getAcceleration() {
             return imu_driver.read_acceleration_ms2(bus, address);
         }
-        @Override float::rad/s[] getAngularVelocity();
+        float::rad/s[] getAngularVelocity() {
+            return imu_driver.read_angular_velocity_rads(bus, address);
+        }
         @Override float[] getMagneticField();
         @Override float[] getOrientation();
     }

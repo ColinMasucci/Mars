@@ -1,4 +1,5 @@
 import math;
+import complementaryFilter;
 
 ## Drive with IMU ##
 /* 
@@ -11,18 +12,23 @@ class DriveIMU {
 
     requirements {
         WheeledChassis;
-        IMU(parameters=[gyro]);
+        IMU(parameters=[accelerometer, gyro]);
     }
 
     WheeledChassis chassis;
     IMU imu;
+    ComplementaryFilter headingFilter;
     float headingGain = 2.0;
     float turnGain = 2.5;
+    float::deg turnTolerance = 2.0::deg;
     float::s controlPeriod = 0.02::s;
+    float::s settleTime = 0.10::s;
+    float::s biasCalibrationTime = 0.30::s;
 
     DriveIMU(Robot robot){
         chassis = robot.match(WheeledChassis);
         imu = robot.match(IMU);
+        headingFilter = ComplementaryFilter(robot);
     }
 
     float normalizeAngle(float angle) {
@@ -36,25 +42,36 @@ class DriveIMU {
         return angle;
     }
 
+    float currentHeading() {
+        float[] pose = headingFilter.getPose();
+        return pose[2];
+    }
+
+    void prepareManeuver() {
+        chassis.drive(0.0, 0.0, 0.0);
+        wait(settleTime);
+        headingFilter.resetFilter(0.0::rad);
+        headingFilter.calibrateStationary(biasCalibrationTime, controlPeriod);
+        headingFilter.resetHeading(0.0::rad);
+    }
+
     void driveStraight(float speed, float::s time){
-        float::rad heading = 0.0::rad;
         float::s elapsed = 0.0::s;
 
+        prepareManeuver();
+
         while (elapsed < time) {
-            float::s step = controlPeriod;
-            if (elapsed + step > time) {
-                step = time - elapsed;
+            if (elapsed + controlPeriod > time) {
+                headingFilter.updateFromImu(time - elapsed);
+                chassis.drive(speed, 0.0, headingGain * -currentHeading());
+                wait(time - elapsed);
+                elapsed = time;
+            } else {
+                headingFilter.updateFromImu(controlPeriod);
+                chassis.drive(speed, 0.0, headingGain * -currentHeading());
+                wait(controlPeriod);
+                elapsed = elapsed + controlPeriod;
             }
-
-            float::rad headingError = -heading;
-            float omega = headingGain * headingError;
-
-            chassis.drive(speed, 0.0, omega);
-            wait(step);
-            elapsed = elapsed + step;
-
-            float::rad/s yawRate = imu.vz;
-            heading = normalizeAngle(heading + yawRate * step);
         }
 
         chassis.drive(0.0, 0.0, 0.0);
@@ -62,17 +79,13 @@ class DriveIMU {
 
     void turn(float speed, float::deg angle){
         float::rad targetAngle = angle;
-        float::rad turned = 0.0::rad;
 
-        while (math.abs(targetAngle - turned) > chassis.angleTolerance) {
-            float::rad remaining = normalizeAngle(targetAngle - turned);
-            float omega = turnGain * remaining;
+        prepareManeuver();
 
-            chassis.drive(0.0, 0.0, omega);
+        while (math.abs(targetAngle - currentHeading()) > turnTolerance) {
+            chassis.drive(0.0, 0.0, turnGain * normalizeAngle(targetAngle - currentHeading()));
             wait(controlPeriod);
-
-            float::rad/s yawRate = imu.vz;
-            turned = normalizeAngle(turned + yawRate * controlPeriod);
+            headingFilter.updateFromImu(controlPeriod);
         }
 
         chassis.drive(0.0, 0.0, 0.0);

@@ -1,6 +1,31 @@
-import keyboardDemoTwist;
+import math;
+import complementaryFilter;
 
-AWSDeepRacer.chassis.stop();
+print("Phobos MPU6050 IMU smoke test");
+print("Run with config dir: mars_compiler/tools");
 
-KeyboardDemoTwist demo = KeyboardDemoTwist(AWSDeepRacer);
-demo.run();
+Phobos.imu.init();
+
+ComplementaryFilter filter = ComplementaryFilter(Phobos);
+filter.resetFilter(0.0::rad);
+
+float::s samplePeriod = 0.02::s;
+
+while (true) {
+    float::m/s^2[] accel = Phobos.imu.getAcceleration();
+    float::rad/s[] gyro = Phobos.imu.getAngularVelocity();
+
+    filter.updateWithSamples(samplePeriod, gyro, accel);
+
+    float[] pose = filter.getPose();
+    float[] debug = filter.getDebugState();
+
+    print("accel m/s^2:", accel[0], accel[1], accel[2]);
+    print("gyro rad/s:", gyro[0], gyro[1], gyro[2]);
+    print("pose theta rad:", pose[2]);
+    print("tilt roll/pitch rad:", debug[1], debug[2]);
+    print("accel/stationary trust:", debug[3], debug[4]);
+    print("---");
+
+    wait(samplePeriod);
+}
