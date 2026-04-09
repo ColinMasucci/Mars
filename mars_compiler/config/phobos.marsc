@@ -5,8 +5,8 @@ import math;
 component Phobos extends Robot {
     subcomponents{
         # Swap Chassis
-        PhobosChassisA chassis;
-        #PhobosChassisB chassis;
+        #PhobosChassisA chassis;
+        PhobosChassisB chassis;
 
         MPU6050 imu(bus = 1, address = 104); # 104 = 0x68
     }

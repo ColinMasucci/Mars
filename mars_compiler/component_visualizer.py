@@ -55,6 +55,8 @@ def visualize_components(components):
         if comp is None:
             return
         for sub in comp.subcomponents:
+            if getattr(sub, "is_override", False):
+                continue
             node_id = f"{parent_id}.{sub.name}"
             label = _component_label(sub.name, _type_chain(sub.type_name, comp_map))
             color = _pattern_tint(sub.type_name)

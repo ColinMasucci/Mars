@@ -56,6 +56,10 @@ def _pattern_tint(name: str) -> str:
         return "#d0e0ff"  # blue tint
     elif "Stmt" in name or "Statement" in name:
         return "#ffe7b3"  # yellow tint
+    elif "MPU6050" in name:
+        return "#b3b8ff"  # yellow tint
+    elif "IMU" in name:
+        return "#f7c4f4"  # yellow tint
     return _class_color(name)  # fallback to generated color
 
 def _class_color(name: str) -> str:

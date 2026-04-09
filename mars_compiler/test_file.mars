@@ -15,7 +15,7 @@ driver.calibrate();
 
 wait(1.0::s);
 print("Turning +90 deg (CCW expected)...");
-driver.turn(0.25, 90.0::deg);
+driver.relative_turn(0.25, 360.0::deg);
 
 Phobos.chassis.stop();
 print("Motion test complete.");

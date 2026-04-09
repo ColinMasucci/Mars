@@ -1,9 +1,10 @@
 ### AWS DeepRacer ###
 
-component AWSDeepRacer extends Robot {
+component Deimos extends Robot {
 
     subcomponents{
         AWSDeepRacerChassis chassis;
+        AWSDeepRacerIMU imu;
     }
     parameters{}
     functions{}
@@ -45,3 +46,41 @@ component AWSDeepRacerChassis extends AckermannChassis {
   angular: geometry_msgs/Vector3
 
 */
+
+component AWSDeepRacerIMU extends IMU {
+       subcomponents{}
+    parameters{
+        bool accelerometer = true;
+        bool gyro = true;
+        bool magnetometer = false;
+        bool orientation = false;
+        int axisCount = 3;
+        int bus=1;
+        int address=1;
+
+        int regDeviceId = 117; # 0x75
+        int regPowerMgmt1 = 107; # 0x6B
+        int regSampleRateDiv = 25; # 0x19
+        int regConfig = 26; # 0x1A
+        int regGyroConfig = 27; # 0x1B
+        int regAccelConfig = 28; # 0x1C
+        int regAccelXoutH = 59; # 0x3B
+        int regGyroXoutH = 67; # 0x43
+
+        int expectedDeviceId = 104; # 0x68
+        int clockSourceBits = 1; # PLL with X gyro reference
+
+        int accelRangeG = 2;
+        int gyroRangeDps = 250;
+        int dlpfConfig = 3;
+        int sampleRateDiv = 9;
+        float rateHz = 100.0;
+    }
+    functions{
+        @Override void init() ;
+        @Override float::m/s^2[] getAcceleration() ;
+        @Override float::rad/s[] getAngularVelocity() ;
+        @Override float[] getMagneticField();
+        @Override float[] getOrientation();
+    }
+}

@@ -20,7 +20,7 @@ class DriveIMU {
     IMU imu;
     ComplementaryFilter headingFilter;
     float headingGain = 2.0;
-    float::rad turnTolerance = 4.0::deg;
+    float::rad turnTolerance = 2.0::deg;
     float::s controlPeriod = 0.02::s;
     float::s settleTime = 0.10::s;
     float::s biasCalibrationTime = 0.30::s;
@@ -33,7 +33,7 @@ class DriveIMU {
         headingFilter = ComplementaryFilter(robot);
     }
 
-    float normalizeAngle(float angle) {
+    float::rad normalizeAngle(float::rad angle) {
         float twoPi = math.PI * 2;
         while (angle > math.PI) {
             angle = angle - twoPi;
@@ -44,7 +44,7 @@ class DriveIMU {
         return angle;
     }
 
-    float currentHeading() {
+    float::rad currentHeading() {
         float[] pose = headingFilter.getPose();
         return pose[2];
     }
@@ -109,34 +109,96 @@ class DriveIMU {
         chassis.stop();
     }
 
-    void turn(float speed, float::deg angle){
-        float::rad targetAngle = 0.0::rad;
-        float headingError = 0.0;
-        float turnCommand = 0.0;
+    void abs_turn(float speed, float::deg angle){
+        float::rad targetAngle = normalizeAngle(angle);   # absolute target
+        float::rad current = currentHeading();
+        float::rad headingError = normalizeAngle(targetAngle - current);
+
         float turnLimit = math.abs(speed);
-        float turnDirection = 1.0;
-        float previousError = 0.0;
+
+        float turnDirection = math.sign(angle);
+        if (turnDirection == 0.0) {
+            turnDirection = 1.0; # default direction if angle == 0
+        }
+
+        float turnCommand = turnDirection * turnLimit;
 
         prepareManeuver();
-        targetAngle = normalizeAngle(currentHeading() + angle);
-        headingError = normalizeAngle(targetAngle - currentHeading());
-        previousError = headingError;
-        turnDirection = -math.sign(angle);
-        if (turnDirection == 0.0) {
-            turnDirection = -math.sign(headingError);
-        }
-        turnCommand = turnDirection * turnLimit;
 
         while (math.abs(headingError) > turnTolerance) {
-            print("heading:", currentHeading(), "target:", targetAngle, "error:", headingError, "cmd:", turnCommand);
+            print("heading:", current, "target:", targetAngle, "error:", headingError, "cmd:", turnCommand);
+
+            tankDrive(0.0, turnCommand);
+            wait(controlPeriod);
+
+            headingFilter.updateFromImu(controlPeriod);
+            current = currentHeading();
+
+            if (turnDirection > 0) {
+                headingError = normalizeAnglePositive(targetAngle - current);
+            } else {
+                headingError = -normalizeAnglePositive(current - targetAngle);
+            }
+
+            if (math.sign(headingError) != turnDirection) {
+                break;
+            }
+        }
+
+        chassis.stop();
+    }
+
+
+
+ 
+    void turn(float speed, float::deg angle){
+        float::rad requestedTurn = 0.0::rad;
+        float::rad requestedMagnitude = 0.0::rad;
+        float::rad accumulatedTurn = 0.0::rad;
+        float::rad previousHeading = 0.0::rad;
+        float::rad current = 0.0::rad;
+        float::rad delta = 0.0::rad;
+        float::rad progress = 0.0::rad;
+        float::rad remaining = 0.0::rad;
+        float turnSign = 0.0;
+        float turnCommand = 0.0;
+        float fastMag = 0.0;
+        float slowMag = 0.0;
+        float cmdMag = 0.0;
+        float::rad slowBand = 15.0::deg;
+
+        prepareManeuver();
+        requestedTurn = angle;
+        turnSign = math.sign(requestedTurn);
+        requestedMagnitude = math.abs(requestedTurn);
+        fastMag = math.abs(speed);
+        slowMag = math.max(0.20, fastMag * 0.5);
+
+        if (requestedMagnitude <= turnTolerance || turnSign == 0.0) {
+            chassis.stop();
+            return;
+        }
+
+        previousHeading = currentHeading();
+
+        while (accumulatedTurn < requestedMagnitude) {
+            remaining = requestedMagnitude - accumulatedTurn;
+            if (remaining <= slowBand) {
+                cmdMag = slowMag;
+            } else {
+                cmdMag = fastMag;
+            }
+            turnCommand = turnSign * cmdMag;
             tankDrive(0.0, turnCommand);
             wait(controlPeriod);
             headingFilter.updateFromImu(controlPeriod);
-            headingError = normalizeAngle(targetAngle - currentHeading());
-            if (previousError != 0.0 && math.sign(headingError) != math.sign(previousError)) {
-                break;
+            current = currentHeading();
+            delta = normalizeAngle(current - previousHeading);
+            progress = turnSign * delta;
+            if (progress > 0.0::rad) {
+                accumulatedTurn = accumulatedTurn + progress;
             }
-            previousError = headingError;
+            previousHeading = current;
         }
 
         chassis.stop();
