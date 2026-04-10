@@ -179,6 +179,79 @@ def read_angular_velocity_rads(bus_number, address):
     ]
 
 
+def read_pose_rpy_complementary(bus_number, address, alpha=0.98, dt_hint=0.0):
+    """
+    Return [roll, pitch, yaw] in radians using a simple complementary filter.
+    Roll/pitch blend gyro integration with accel tilt estimate.
+    Yaw integrates gyro z-rate (no magnetometer absolute reference).
+    """
+    bus_number = int(bus_number)
+    address = int(address)
+    device = _require_device(bus_number, address)
+
+    alpha = float(alpha)
+    if alpha < 0.0:
+        alpha = 0.0
+    if alpha > 1.0:
+        alpha = 1.0
+
+    dt_hint = float(dt_hint)
+    now = time.monotonic()
+    last_t = device.get("pose_last_time")
+    if last_t is None:
+        dt = dt_hint if dt_hint > 0.0 else 1.0 / 100.0
+    else:
+        dt = now - last_t
+        if dt <= 0.0:
+            dt = dt_hint if dt_hint > 0.0 else 1.0 / 100.0
+    device["pose_last_time"] = now
+
+    roll = float(device.get("pose_roll", 0.0))
+    pitch = float(device.get("pose_pitch", 0.0))
+    yaw = float(device.get("pose_yaw", 0.0))
+
+    ax, ay, az = read_acceleration_ms2(bus_number, address)
+    gx, gy, gz = read_angular_velocity_rads(bus_number, address)
+
+    accel_roll = math.atan2(ay, az)
+    accel_pitch = math.atan2(-ax, math.sqrt(ay * ay + az * az))
+
+    roll_gyro = roll + gx * dt
+    pitch_gyro = pitch + gy * dt
+    yaw_gyro = yaw + gz * dt
+
+    roll = alpha * roll_gyro + (1.0 - alpha) * accel_roll
+    pitch = alpha * pitch_gyro + (1.0 - alpha) * accel_pitch
+    yaw = math.atan2(math.sin(yaw_gyro), math.cos(yaw_gyro))
+
+    device["pose_roll"] = roll
+    device["pose_pitch"] = pitch
+    device["pose_yaw"] = yaw
+
+    return [roll, pitch, yaw]
+
+
+def read_orientation_quat_complementary(bus_number, address, alpha=0.98, dt_hint=0.0):
+    roll, pitch, yaw = read_pose_rpy_complementary(bus_number, address, alpha, dt_hint)
+
+    half_roll = roll * 0.5
+    half_pitch = pitch * 0.5
+    half_yaw = yaw * 0.5
+
+    cr = math.cos(half_roll)
+    sr = math.sin(half_roll)
+    cp = math.cos(half_pitch)
+    sp = math.sin(half_pitch)
+    cy = math.cos(half_yaw)
+    sy = math.sin(half_yaw)
+
+    x = sr * cp * cy - cr * sp * sy
+    y = cr * sp * cy + sr * cp * sy
+    z = cr * cp * sy - sr * sp * cy
+    w = cr * cp * cy + sr * sp * sy
+    return [x, y, z, w]
+
+
 def cleanup():
     for device in _devices.values():
         try:

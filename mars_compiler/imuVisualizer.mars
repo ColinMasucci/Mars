@@ -1,0 +1,104 @@
+import imu_visualizer;
+
+class IMUVisualizer {
+
+    requirements {
+        AWSDeepRacerChassis(parameters=[wheelbase > 0.0::m, trackWidth > 0.0::m, wheelWidth > 0.0::m, wheelDiameter > 0.0::m]);
+        IMU(parameters=[accelerometer, gyro, orientation]);
+    }
+
+    AWSDeepRacerChassis chassis;
+    IMU imu;
+
+    bool enabled = true;
+    bool configured = false;
+
+    string title = "IMU Visualizer";
+    float gyroAlpha = 0.22;
+    float accelAlpha = 0.18;
+    float vectorGain = 120.0;
+    float::rad initialYaw = 0.0::rad;
+    float::s dtHint = 0.0::s;
+
+    IMUVisualizer(Robot robot) {
+        chassis = robot.match(AWSDeepRacerChassis);
+        imu = robot.match(IMU);
+    }
+
+    void configure() {
+        if (!enabled || configured) {
+            return;
+        }
+
+        imu.init();
+        imu_visualizer.configure(
+            chassis.trackWidth,
+            chassis.wheelbase,
+            chassis.bodyWidth,
+            chassis.bodyLength,
+            chassis.wheelWidth,
+            chassis.wheelDiameter,
+            title,
+            gyroAlpha,
+            accelAlpha
+        );
+        imu_visualizer.set_vector_gain(vectorGain);
+        imu_visualizer.reset_pose(initialYaw);
+        configured = true;
+    }
+
+    void tick() {
+        if (!enabled) {
+            return;
+        }
+        if (!configured) {
+            configure();
+        }
+        imu_visualizer.render_pose(
+            imu.getAngularVelocity(),
+            imu.getAcceleration(),
+            imu.getOrientation(),
+            dtHint
+        );
+    }
+
+    void close() {
+        imu_visualizer.close();
+        configured = false;
+    }
+
+    void setEnabled(bool value) {
+        enabled = value;
+        if (!enabled && configured) {
+            close();
+        }
+    }
+
+    void setTitle(string value) {
+        title = value;
+    }
+
+    void setFilter(float gyroAlphaValue, float accelAlphaValue) {
+        gyroAlpha = gyroAlphaValue;
+        accelAlpha = accelAlphaValue;
+        if (configured) {
+            imu_visualizer.set_filter(gyroAlpha, accelAlpha);
+        }
+    }
+
+    void setVectorGain(float value) {
+        vectorGain = value;
+        if (configured) {
+            imu_visualizer.set_vector_gain(vectorGain);
+        }
+    }
+
+    void setInitialYaw(float::rad yaw) {
+        initialYaw = yaw;
+    }
+
+    void setDtHint(float::s dt) {
+        dtHint = dt;
+    }
+
+}

@@ -610,7 +610,7 @@ class TypeChecker:
 
     def _check_component_function_body(self, func_decl):
         self._push_scope()
-        self.function_return_stack.append(func_decl.return_type)
+        self.function_return_stack.append(self._normalize_type(func_decl.return_type))
         try:
             for ptype, pname in func_decl.params:
                 if pname in self._current_scope():
@@ -1364,12 +1364,13 @@ class TypeChecker:
     
                 case FuncDecl(return_type, name, params, body):
                     if name in self._current_scope(): raise TypeError(f"Function '{name}' already declared")
-                    param_types = [ptype for ptype,pname in params]
-                    sig_info = {"return": return_type, "params": param_types}
+                    normalized_return = self._normalize_type(return_type)
+                    param_types = [self._normalize_type(ptype) for ptype,pname in params]
+                    sig_info = {"return": normalized_return, "params": param_types}
                     self._declare_symbol(name, "function", mutable=False, info=sig_info)
                     if body is not None:
                         self._push_scope()
-                        self.function_return_stack.append(return_type)
+                        self.function_return_stack.append(normalized_return)
                         try:
                             for ptype, pname in params:
                                 if pname in self._current_scope():

@@ -17,14 +17,45 @@ component AWSDeepRacerChassis extends AckermannChassis {
     }
     parameters{
         string controlMode = "twist";
+        # Physical chassis geometry (fill with measured values).
+        float::m wheelbase = 165::mm;
+        float::m trackWidth = 160::mm;
+        float::m bodyWidth = 7.75::in;
+        float::m bodyLength = 10.5::in;
+        float::m wheelWidth = 40::mm;
+        float::m wheelDiameter = 70::mm;
 
-        #float vx = subscribe("/imu_pkg/data_raw", "sensor_msgs/msg/Imu/orientation/x");
+        # Twist safety/scaling for DeepRacer cmd_vel.
+        float::m/s maxLinearSpeed = 6.0::m/s;
+        float::rad/s maxYawRate = 2.5::rad/s;
+        bool invertLinearX = true;
+
     }
     functions{
         void drive(float::m/s vx, float::m/s vy, float::rad/s vw){
+            float::m/s cmdVx = vx;
+            float::rad/s cmdVw = vw;
+
+            if (cmdVx > maxLinearSpeed) {
+                cmdVx = maxLinearSpeed;
+            }
+            if (cmdVx < -maxLinearSpeed) {
+                cmdVx = -maxLinearSpeed;
+            }
+
+            if (cmdVw > maxYawRate) {
+                cmdVw = maxYawRate;
+            }
+            if (cmdVw < -maxYawRate) {
+                cmdVw = -maxYawRate;
+            }
+
+            if (invertLinearX) {
+                cmdVx = -cmdVx;
+            }
             publish("/cmd_vel", "geometry_msgs/msg/Twist", {
-            "linear": {"x": -vx, "y": 0.0, "z": 0.0},
-            "angular": {"x": 0.0, "y": 0.0, "z": vw} });
+            "linear": {"x": cmdVx, "y": 0.0, "z": 0.0},
+            "angular": {"x": 0.0, "y": 0.0, "z": cmdVw} });
         }
 
         void stop(){
@@ -48,39 +79,50 @@ component AWSDeepRacerChassis extends AckermannChassis {
 */
 
 component AWSDeepRacerIMU extends IMU {
-       subcomponents{}
+    subcomponents{}
     parameters{
         bool accelerometer = true;
         bool gyro = true;
         bool magnetometer = false;
-        bool orientation = false;
+        bool orientation = true;
         int axisCount = 3;
-        int bus=1;
-        int address=1;
-
-        int regDeviceId = 117; # 0x75
-        int regPowerMgmt1 = 107; # 0x6B
-        int regSampleRateDiv = 25; # 0x19
-        int regConfig = 26; # 0x1A
-        int regGyroConfig = 27; # 0x1B
-        int regAccelConfig = 28; # 0x1C
-        int regAccelXoutH = 59; # 0x3B
-        int regGyroXoutH = 67; # 0x43
-
-        int expectedDeviceId = 104; # 0x68
-        int clockSourceBits = 1; # PLL with X gyro reference
-
-        int accelRangeG = 2;
-        int gyroRangeDps = 250;
-        int dlpfConfig = 3;
-        int sampleRateDiv = 9;
+        int bus = -1;      # N/A for ROS topic source
+        int address = -1;  # N/A for ROS topic source
         float rateHz = 100.0;
+
+        float::m/s^2 linearAccelX = subscribe("/imu_pkg/data_raw/linear_acceleration/x", "sensor_msgs/msg/Imu");
+        float::m/s^2 linearAccelY = subscribe("/imu_pkg/data_raw/linear_acceleration/y", "sensor_msgs/msg/Imu");
+        float::m/s^2 linearAccelZ = subscribe("/imu_pkg/data_raw/linear_acceleration/z", "sensor_msgs/msg/Imu");
+
+        float::rad/s angularVelX = subscribe("/imu_pkg/data_raw/angular_velocity/x", "sensor_msgs/msg/Imu");
+        float::rad/s angularVelY = subscribe("/imu_pkg/data_raw/angular_velocity/y", "sensor_msgs/msg/Imu");
+        float::rad/s angularVelZ = subscribe("/imu_pkg/data_raw/angular_velocity/z", "sensor_msgs/msg/Imu");
+
+        float orientationX = subscribe("/imu_pkg/data_raw/orientation/x", "sensor_msgs/msg/Imu");
+        float orientationY = subscribe("/imu_pkg/data_raw/orientation/y", "sensor_msgs/msg/Imu");
+        float orientationZ = subscribe("/imu_pkg/data_raw/orientation/z", "sensor_msgs/msg/Imu");
+        float orientationW = subscribe("/imu_pkg/data_raw/orientation/w", "sensor_msgs/msg/Imu");
     }
     functions{
-        @Override void init() ;
-        @Override float::m/s^2[] getAcceleration() ;
-        @Override float::rad/s[] getAngularVelocity() ;
+        void init() {
+            update();
+        }
+
+        float::m/s^2[] getAcceleration() {
+            update();
+            return [linearAccelX, linearAccelY, linearAccelZ];
+        }
+
+        float::rad/s[] getAngularVelocity() {
+            update();
+            return [angularVelX, angularVelY, angularVelZ];
+        }
+
         @Override float[] getMagneticField();
-        @Override float[] getOrientation();
+
+        float[] getOrientation() {
+            update();
+            return [orientationX, orientationY, orientationZ, orientationW];
+        }
     }
 }

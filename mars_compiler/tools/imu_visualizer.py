@@ -15,7 +15,7 @@ class _RobotShape:
     body_width: float
     body_length: float
     wheel_width: float
-    wheel_length: float
+    wheel_diameter: float
 
 
 class _VisualizerState:
@@ -81,7 +81,7 @@ def configure(
     body_width=0.0,
     body_length=0.0,
     wheel_width=0.0,
-    wheel_length=0.0,
+    wheel_diameter=0.0,
     title="IMU Visualizer",
     gyro_alpha=0.22,
     accel_alpha=0.18,
@@ -93,7 +93,7 @@ def configure(
     body_width = float(body_width)
     body_length = float(body_length)
     wheel_width = float(wheel_width)
-    wheel_length = float(wheel_length)
+    wheel_diameter = float(wheel_diameter)
 
     _STATE.shape = _RobotShape(
         track_width=track_width,
@@ -101,7 +101,7 @@ def configure(
         body_width=_default_if_zero(body_width, track_width * 0.82),
         body_length=_default_if_zero(body_length, wheelbase * 1.18),
         wheel_width=_default_if_zero(wheel_width, track_width * 0.16),
-        wheel_length=_default_if_zero(wheel_length, wheelbase * 0.26),
+        wheel_diameter=_default_if_zero(wheel_diameter, wheelbase * 0.26),
     )
     _STATE.window_title = str(title)
     _STATE.gyro_alpha = _clamp(float(gyro_alpha), 0.01, 1.0)
@@ -129,7 +129,7 @@ def reset_pose(yaw=0.0):
     return _STATE.yaw
 
 
-def update(gyro, accel, dt=0.0):
+def update(gyro, accel, dt=0.0, yaw_override=None):
     _open_window()
 
     gyro_vals = _coerce_vec3(gyro)
@@ -140,15 +140,33 @@ def update(gyro, accel, dt=0.0):
         _STATE.filtered_gyro[i] = _low_pass(_STATE.filtered_gyro[i], gyro_vals[i], _STATE.gyro_alpha)
         _STATE.filtered_accel[i] = _low_pass(_STATE.filtered_accel[i], accel_vals[i], _STATE.accel_alpha)
 
-    _STATE.yaw += _STATE.filtered_gyro[2] * dt
-    _STATE.yaw = math.atan2(math.sin(_STATE.yaw), math.cos(_STATE.yaw))
+    if yaw_override is None:
+        _STATE.yaw += _STATE.filtered_gyro[2] * dt
+        _STATE.yaw = math.atan2(math.sin(_STATE.yaw), math.cos(_STATE.yaw))
+    else:
+        yaw_val = float(yaw_override)
+        _STATE.yaw = math.atan2(math.sin(yaw_val), math.cos(yaw_val))
 
     _redraw()
     return _STATE.yaw
 
 
-def update_samples(gx, gy, gz, ax, ay, az, dt=0.0):
-    return update([gx, gy, gz], [ax, ay, az], dt)
+def update_samples(gx, gy, gz, ax, ay, az, dt=0.0, yaw_override=None):
+    return update([gx, gy, gz], [ax, ay, az], dt, yaw_override)
+
+
+def render(gyro, accel, dt=0.0, yaw_override=None):
+    return update(gyro, accel, dt, yaw_override)
+
+
+def render_samples(gx, gy, gz, ax, ay, az, dt=0.0, yaw_override=None):
+    return update_samples(gx, gy, gz, ax, ay, az, dt, yaw_override)
+
+
+def render_pose(gyro, accel, orientation, dt=0.0):
+    qx, qy, qz, qw = _coerce_quat(orientation)
+    yaw = _quat_to_yaw(qx, qy, qz, qw)
+    return update(gyro, accel, dt, yaw)
 
 
 def get_state():
@@ -178,7 +196,39 @@ def cleanup():
 def _coerce_vec3(value):
     if not isinstance(value, (list, tuple)) or len(value) < 3:
         raise RuntimeError("Expected a 3-element list or tuple.")
-    return [float(value[0]), float(value[1]), float(value[2])]
+    return [_coerce_num(value[0]), _coerce_num(value[1]), _coerce_num(value[2])]
+
+
+def _coerce_quat(value):
+    if not isinstance(value, (list, tuple)) or len(value) < 4:
+        return 0.0, 0.0, 0.0, 1.0
+
+    qx = _coerce_num(value[0])
+    qy = _coerce_num(value[1])
+    qz = _coerce_num(value[2])
+    qw = _coerce_num(value[3], 1.0)
+
+    norm = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+    if norm <= 1e-9:
+        return 0.0, 0.0, 0.0, 1.0
+    return qx / norm, qy / norm, qz / norm, qw / norm
+
+
+def _quat_to_yaw(x, y, z, w):
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+    return math.atan2(siny_cosp, cosy_cosp)
+
+
+def _coerce_num(value, default=0.0):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _resolve_dt(dt):
@@ -248,7 +298,7 @@ def _draw_background(canvas):
         canvas.create_line(0, y, 840, y, fill="#171c24")
 
     canvas.create_oval(250, 110, 590, 450, outline="#1f2b3a", width=2)
-    canvas.create_text(420, 34, text=_STATE.window_title, fill="#f1f5f9", font=("Helvetica", 22, "bold"))
+    canvas.create_text(420, 34, text=_STATE.window_title, fill="#f1f5f9", font=("Helvetica", 20, "bold"))
 
 
 def _robot_scale(shape):
@@ -265,7 +315,7 @@ def _draw_robot(canvas):
         body_width=0.18,
         body_length=0.36,
         wheel_width=0.035,
-        wheel_length=0.08,
+        wheel_diameter=0.08,
     )
     scale = _robot_scale(shape)
 
@@ -287,7 +337,7 @@ def _draw_robot(canvas):
 
     wheel_x = shape.wheelbase / 2.0
     wheel_y = shape.track_width / 2.0
-    wheel_l = shape.wheel_length / 2.0
+    wheel_l = shape.wheel_diameter / 2.0
     wheel_w = shape.wheel_width / 2.0
     wheel_rects = [
         [(wheel_x - wheel_l, wheel_y - wheel_w), (wheel_x + wheel_l, wheel_y - wheel_w), (wheel_x + wheel_l, wheel_y + wheel_w), (wheel_x - wheel_l, wheel_y + wheel_w)],
@@ -306,8 +356,8 @@ def _draw_axes(canvas):
     center_x, center_y = _world_to_canvas(0.0, 0.0, 1.0)
     canvas.create_line(center_x - 150, center_y, center_x + 150, center_y, fill="#334155", width=2)
     canvas.create_line(center_x, center_y - 150, center_x, center_y + 150, fill="#334155", width=2)
-    canvas.create_text(center_x + 160, center_y, text="robot x", fill="#94a3b8", anchor="w", font=("Helvetica", 11))
-    canvas.create_text(center_x, center_y - 160, text="robot y", fill="#94a3b8", anchor="s", font=("Helvetica", 11))
+    canvas.create_text(center_x + 160, center_y, text="Body X", fill="#94a3b8", anchor="w", font=("Helvetica", 11, "bold"))
+    canvas.create_text(center_x, center_y - 160, text="Body Y", fill="#94a3b8", anchor="s", font=("Helvetica", 11, "bold"))
 
 
 def _draw_accel_vector(canvas):
@@ -323,7 +373,7 @@ def _draw_accel_vector(canvas):
     end_x = start_x + world_dx
     end_y = start_y - world_dy
     canvas.create_line(start_x, start_y, end_x, end_y, fill="#22c55e", width=5, arrow=tk.LAST)
-    canvas.create_text(end_x + 10, end_y - 10, text="filtered accel", fill="#86efac", anchor="w", font=("Helvetica", 11, "bold"))
+    canvas.create_text(end_x + 10, end_y - 10, text="Accel XY", fill="#86efac", anchor="w", font=("Helvetica", 11, "bold"))
 
     z_bar = _clamp(az / _STATE.gravity, -2.0, 2.0)
     canvas.create_rectangle(690, 140, 730, 420, outline="#475569", width=2)
@@ -336,7 +386,7 @@ def _draw_accel_vector(canvas):
         bottom = 280 - z_bar * 120
         fill = "#f87171"
     canvas.create_rectangle(692, top, 728, bottom, fill=fill, outline="")
-    canvas.create_text(710, 120, text="z accel", fill="#cbd5e1", font=("Helvetica", 11, "bold"))
+    canvas.create_text(710, 120, text="Accel Z", fill="#cbd5e1", font=("Helvetica", 11, "bold"))
 
 
 def _draw_status(canvas):
@@ -344,9 +394,9 @@ def _draw_status(canvas):
     ax, ay, az = _STATE.filtered_accel
     yaw_deg = math.degrees(_STATE.yaw)
     status = [
-        f"yaw: {yaw_deg:6.1f} deg",
-        f"gyro filt: [{gx:6.3f}, {gy:6.3f}, {gz:6.3f}] rad/s",
-        f"accel filt: [{ax:6.3f}, {ay:6.3f}, {az:6.3f}] m/s^2",
+        f"Yaw: {yaw_deg:6.1f} deg",
+        f"Gyro LPF: [{gx:6.3f}, {gy:6.3f}, {gz:6.3f}] rad/s",
+        f"Accel LPF: [{ax:6.3f}, {ay:6.3f}, {az:6.3f}] m/s^2",
     ]
     if _STATE.shape is not None:
         status.append(

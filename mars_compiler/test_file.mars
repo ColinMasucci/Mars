@@ -1,21 +1,33 @@
-import driveIMU;
+import keyboardDemoTwist;
+import imuVisualizer;
+import keyboard_input;
 
-print("Phobos DriveIMU motion test");
+print("DeepRacer KeyboardDemoTwist + IMU Visualizer demo");
 
-Phobos.chassis.init();
-Phobos.imu.init();
+KeyboardDemoTwist demo = KeyboardDemoTwist(Deimos);
+IMUVisualizer visualizer = IMUVisualizer(Deimos);
 
-DriveIMU driver = DriveIMU(Phobos);
+visualizer.setTitle("DeepRacer Twist + IMU Visualizer");
+visualizer.setDtHint(0.1::s);
+visualizer.setVectorGain(120.0);
+visualizer.configure();
 
-print("Hold robot still for calibration...");
-wait(1.0::s);
-driver.calibrate();
+print("KeyboardDemoTwist");
+print("controlMode", demo.controlMode);
+demo.printInstructions();
+demo.printSpeed();
+demo.stopMotion();
 
+while (true) {
+    string key = keyboard_input.read_command(0.1::s);
+    if (key == "quit") {
+        break;
+    }
 
+    demo.applyKey(key);
+    visualizer.tick();
+}
 
-wait(1.0::s);
-print("Turning +90 deg (CCW expected)...");
-driver.relative_turn(0.25, 360.0::deg);
-
-Phobos.chassis.stop();
-print("Motion test complete.");
+demo.stopMotion();
+visualizer.close();
+keyboard_input.cleanup();

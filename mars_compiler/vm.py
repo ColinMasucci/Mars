@@ -120,6 +120,14 @@ class VM:
             topic = sub.get("topic")
             if topic in self.sensor_cache:
                 val = self._extract_subscription_value(self.sensor_cache[topic], sub.get("field_path", []))
+                # Keep component-tree parameter cache in sync so future component
+                # calls bind the latest subscribed values into locals.
+                if "." in var:
+                    comp_path, pname = var.rsplit(".", 1)
+                    node = self.component_tree.get("nodes", {}).get(comp_path)
+                    if node is not None and pname in node.get("param_types", {}):
+                        node["params"][pname] = val
+
                 if var in self.locals:
                     old = self.locals[var]
                     self._runtime_type_check(val, old[1], f"variable '{var}'")
@@ -128,6 +136,17 @@ class VM:
                     old = self.globals[var]
                     self._runtime_type_check(val, old[1], f"variable '{var}'")
                     self.globals[var] = (val, old[1], old[2])
+
+                # Component function params are bound as readonly local aliases
+                # (leaf names), not fully-qualified paths. Update those aliases
+                # too so update() inside component methods sees fresh values.
+                if "." in var:
+                    alias = var.rsplit(".", 1)[1]
+                    if alias in self.locals:
+                        old = self.locals[alias]
+                        if old[2]:
+                            self._runtime_type_check(val, old[1], f"variable '{alias}'")
+                            self.locals[alias] = (val, old[1], old[2])
 
     def _extract_subscription_value(self, payload, field_path):
         cur = payload

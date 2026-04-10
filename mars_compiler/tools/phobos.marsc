@@ -102,7 +102,7 @@ component MPU6050 extends IMU {
         bool accelerometer = true;
         bool gyro = true;
         bool magnetometer = false;
-        bool orientation = false;
+        bool orientation = true;
         int axisCount = 3;
         int bus;
         int address;
@@ -124,6 +124,8 @@ component MPU6050 extends IMU {
         int dlpfConfig = 3;
         int sampleRateDiv = 9;
         float rateHz = 100.0;
+        float poseComplementaryAlpha = 0.98;
+        float::s poseDtHint = 0.0::s;
     }
     functions{
         void init() {
@@ -138,27 +140,8 @@ component MPU6050 extends IMU {
             return imu_driver.read_angular_velocity_rads(bus, address);
         }
         @Override float[] getMagneticField();
-        @Override float[] getOrientation();
-    }
-}
-
-component IMU {
-    subcomponents{}
-    parameters{
-        bool accelerometer;
-        bool gyro;
-        bool magnetometer;
-        bool orientation;
-        int axisCount;
-        int bus;
-        int address;
-        float rateHz;
-    }
-    functions{
-        void init();
-        float::m/s^2[] getAcceleration();
-        float::rad/s[] getAngularVelocity();
-        float[] getMagneticField();
-        float[] getOrientation();
+        float[] getOrientation() {
+            return imu_driver.read_orientation_quat_complementary(bus, address, poseComplementaryAlpha, poseDtHint);
+        }
     }
 }

@@ -5,21 +5,22 @@ class KeyboardDemoTwist {
 
     requirements {
         WheeledChassis(parameters=[controlMode == "twist"]);
+        AWSDeepRacerChassis(parameters=[wheelbase > 0.0::m, trackWidth > 0.0::m, wheelWidth > 0.0::m, wheelDiameter > 0.0::m]);
     }
 
     string controlMode = "twist";
     WheeledChassis chassis;
 
     int speedSetting = 0;
-    float::mph forwardSlowSpeed = 3.3::mph;
-    float::mph forwardFastSpeed = 6.7::mph;
-    float::mph backwardSlowSpeed = -3.3::mph;
-    float::mph backwardFastSpeed = -6.7::mph;
+    float::m/s forwardSlowSpeed = 3.0::m/s;
+    float::m/s forwardFastSpeed = 5.0::m/s;
+    float::m/s backwardSlowSpeed = -3.0::m/s;
+    float::m/s backwardFastSpeed = -5.0::m/s;
 
     float::deg/s steering = 0.0::deg/s;
-    float::deg/s steeringStep = 1.0::deg/s;
-    float::deg/s minSteering = -18.0::deg/s;
-    float::deg/s maxSteering = 18.0::deg/s;
+    float::deg/s steeringStep = 8.0::deg/s;
+    float::deg/s minSteering = -120.0::deg/s;
+    float::deg/s maxSteering = 120.0::deg/s;
     float::s pollPeriod = 0.1::s;
 
     void printInstructions() {
@@ -34,10 +35,10 @@ class KeyboardDemoTwist {
     }
 
     KeyboardDemoTwist(Robot robot){
-        chassis = robot.match(Chassis);
+        chassis = robot.match(WheeledChassis);
     }
 
-    float::mph currentLinearSpeed() {
+    float::m/s currentLinearSpeed() {
         if (speedSetting >= 2) {
             return forwardFastSpeed;
         }
@@ -50,14 +51,12 @@ class KeyboardDemoTwist {
         if (speedSetting <= -2) {
             return backwardFastSpeed;
         }
-        return 0.0::mph;
+        return 0.0::m/s;
     }
 
     void printSpeed() {
-        float::mph linearSpeed = currentLinearSpeed();
-        float::m/s linearSpeedMs = linearSpeed;
-        print("linear speed:", math.round(linearSpeedMs, 1), "m/s");
-        print("linear speed source:", math.round(linearSpeed, 1), "mph");
+        float::m/s linearSpeed = currentLinearSpeed();
+        print("linear speed:", math.round(linearSpeed, 2), "m/s");
         print("steering:", math.round(steering, 1), "deg/s");
     }
 
@@ -107,7 +106,7 @@ class KeyboardDemoTwist {
     }
 
     void applyCurrentMotion() {
-        float::mph linearSpeed = currentLinearSpeed();
+        float::m/s linearSpeed = currentLinearSpeed();
         if (speedSetting == 0) {
             chassis.stop();
             return;
