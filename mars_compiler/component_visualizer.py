@@ -1,6 +1,6 @@
 from graphviz import Digraph
 
-from ast_visualizer import _pattern_tint
+from .ast_visualizer import _pattern_tint
 
 
 def _parent_chain(comp, comp_map):

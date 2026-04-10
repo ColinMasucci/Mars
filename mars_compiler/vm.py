@@ -4,7 +4,7 @@ import os
 import types
 import time;
 
-from source_errors import format_source_error
+from .source_errors import format_source_error
 
 
 Instr = Tuple[str, ...]

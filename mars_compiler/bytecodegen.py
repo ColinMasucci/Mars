@@ -2,8 +2,7 @@ import os
 import importlib.util
 from typing import List, Tuple
 
-import ast_nodes as ast
-
+from . import ast_nodes as ast
 
 Instr = Tuple[str, ...] # instruction is a tuple of strings and then somtimes numbers. (Ex. ("PUSH_INT", 42) or ("ADD",) )
 function_table = {}  # name -> start index

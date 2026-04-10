@@ -18,6 +18,7 @@ mars_compiler/main.py
 mars_compiler/parser.py
 mars_compiler/ros_bridge.py
 mars_compiler/ros_bridge_client.py
+mars_compiler/ros_tools.py
 mars_compiler/source_errors.py
 mars_compiler/test_runner.py
 mars_compiler/type_checker.py

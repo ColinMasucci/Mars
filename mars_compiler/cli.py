@@ -15,7 +15,6 @@ def main():
     ros = sub.add_parser("ros")
     ros_sub = ros.add_subparsers(dest="ros_command", required=True)
     ros_sub.add_parser("bridge")
-    ros_sub.add_parser("topics")
 
     ros_topics = ros_sub.add_parser("topics")
     ros_topics.add_argument("--show")
