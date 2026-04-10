@@ -1425,9 +1425,9 @@ class TypeChecker:
                     if module_name in self._loaded_modules:
                         mod = self._loaded_modules[module_name]
                     else:
-                        module_path = os.path.join("builtins", f"{module_name}.py")
+                        module_path = os.path.join("mars_compiler/builtins", f"{module_name}.py")
                         if not os.path.exists(module_path):
-                            tool_path = os.path.join("tools", f"{module_name}.py")
+                            tool_path = os.path.join("mars_compiler/tools", f"{module_name}.py")
                             if os.path.exists(tool_path):
                                 self.dynamic_modules.add(module_name)
                                 if not self._lookup_symbol(module_name):

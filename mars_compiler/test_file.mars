@@ -1,6 +1,7 @@
 import keyboardDemoTwist;
 import imuVisualizer;
 import keyboard_input;
+import Deimos;
 
 print("DeepRacer KeyboardDemoTwist + IMU Visualizer demo");
 

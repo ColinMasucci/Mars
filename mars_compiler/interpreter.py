@@ -45,7 +45,7 @@ from .ast_visualizer import visualize  # for visualizing the AST
 
 def interpret_code_from_file(
     file_path: str,
-    config_dir: str = "config",
+    config_dir: str = "./mars_compiler/config",
     debug: bool = False,
     ros_bridge: str | None = None,
     ros_topics_file: str | None = None,
@@ -74,7 +74,7 @@ def interpret_code_from_file(
 
 def interpret_code_from_string(
     code: str,
-    config_dir: str = "config",
+    config_dir: str = "./mars_compiler/config",
     debug: bool = False,
     ros_bridge: str | None = None,
     ros_topics_file: str | None = None,
