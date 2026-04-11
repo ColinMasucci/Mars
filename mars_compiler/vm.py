@@ -877,8 +877,8 @@ class VM:
             case "IMPORT":
                 module_name = args[0]
 
-                module_path = f"builtins/{module_name}.py"
-                tool_path = f"tools/{module_name}.py"
+                module_path = f"mars_compiler/builtins/{module_name}.py"
+                tool_path = f"mars_compiler/tools/{module_name}.py"
                 if not os.path.exists(module_path) and not os.path.exists(tool_path):
                     # Component or unknown import: skip at runtime
                     self.globals[f"{module_name}"] = (None, "module", False)
