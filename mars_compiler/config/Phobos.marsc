@@ -1,4 +1,4 @@
-/*import motor_driver;
+import motor_driver;
 import imu_driver;
 import math;
 
@@ -141,25 +141,3 @@ component MPU6050 extends IMU {
         @Override float[] getOrientation();
     }
 }
-
-component IMU {
-    subcomponents{}
-    parameters{
-        bool accelerometer;
-        bool gyro;
-        bool magnetometer;
-        bool orientation;
-        int axisCount;
-        int bus;
-        int address;
-        float rateHz;
-    }
-    functions{
-        void init();
-        float::m/s^2[] getAcceleration();
-        float::rad/s[] getAngularVelocity();
-        float[] getMagneticField();
-        float[] getOrientation();
-    }
-}
-*/

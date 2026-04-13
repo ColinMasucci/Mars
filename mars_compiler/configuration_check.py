@@ -77,7 +77,7 @@ def load_marsc_files(directory, registry, debug: bool = False):
             tc.check(stmt)
         tc.check_components(components)
 
-        _render_graphviz(visualize_components(components), os.path.join(directory, "component_tree"))
+        _render_graphviz(visualize_components(components), os.path.join(directory, "componentTree"))
 
         for component in components:
             registry.register(component)

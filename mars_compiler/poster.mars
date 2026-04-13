@@ -1,0 +1,14 @@
+
+
+WheeledChassis; 
+  → robot tree must contain WheeledChassis
+
+WheeledChassis(parameters=[wheelRadius > 1::in 
+        && wheelRadius < 4::in]); 
+  → chassis must have wheels with a radius between 1 in and 4 in
+
+optional IMU(parameters=[magnetometer]); 
+  → recommends that the robot contains an IMU with a magnetometer
+
+
+
