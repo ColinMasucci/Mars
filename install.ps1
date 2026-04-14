@@ -20,7 +20,7 @@ Write-Host "To run MARS:"
 Write-Host "  mars run test_file.mars"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$vsixPath = Join-Path $scriptDir "mars-extension-1.0.3.vsix"
+$vsixPath = Join-Path $scriptDir "mars-extension-1.0.4.vsix"
 
 #Check for VSCode
 $codePath = "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd"
