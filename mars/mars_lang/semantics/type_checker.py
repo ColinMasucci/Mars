@@ -23,6 +23,7 @@ class TypeChecker:
         self.component_parents = {name: info.get("parent") for name, info in (self.component_interfaces or {}).items()}
         self.source_text = source_text
         self.source_path = source_path
+        self.workspace_root = workspace_root
 
         # pre-load built-in functions and constants (not from library)
         self._declare_symbol(
