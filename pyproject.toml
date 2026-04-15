@@ -21,7 +21,12 @@ include = ["mars*"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-"mars.mars_lang.templates" = ["**/*"]
+"mars.mars_lang.templates" = [
+    "**/*.mars",
+    "**/*.marsc",
+    "**/*.json",
+    "**/*.txt"
+]
 
 [project.scripts]
 mars = "mars.mars_lang.cli:main"
