@@ -8,6 +8,7 @@ Write-Host "======================================="
 $repoUrl = "https://github.com/ColinMasucci/Mars.git"
 $venvDir = ".venv"
 $repoClone = Join-Path $PWD "Mars"
+$workspaceDir = Join-Path $PWD "MarsWorkspace"
 
 # -----------------------------
 # STEP 1: Create virtual environment
@@ -33,7 +34,7 @@ if (-Not (Test-Path $venvPython)) {
 }
 
 # -----------------------------
-# STEP 2: Clone repository (for VSIX + source install)
+# STEP 2: Clone repository (staging only)
 # -----------------------------
 if (-Not (Test-Path $repoClone)) {
     Write-Host "Cloning MARS repository..."
@@ -59,7 +60,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # -----------------------------
-# STEP 4: Install MARS (from local clone)
+# STEP 4: Install MARS (compiler only)
 # -----------------------------
 Write-Host "Installing MARS from local repository..."
 & $venvPython -m pip install $repoClone
@@ -87,8 +88,45 @@ catch {
     Write-Warning "Could not verify MARS CLI installation."
 }
 
+
+# # -----------------------------
+# # STEP 6: CREATE USER WORKSPACE
+# # -----------------------------
+# Write-Host "Creating MARS workspace..."
+
+# if (-Not (Test-Path $workspaceDir)) {
+#     New-Item -ItemType Directory -Path $workspaceDir | Out-Null
+#     New-Item -ItemType Directory -Path "$workspaceDir\mars_tools" | Out-Null
+#     New-Item -ItemType Directory -Path "$workspaceDir\mars_examples" | Out-Null
+#     New-Item -ItemType Directory -Path "$workspaceDir\mars_configs" | Out-Null
+
+#     Write-Host "Workspace created at MarsWorkspace"
+# } else {
+#     Write-Host "Workspace already exists. Skipping..."
+# }
+
+# # -----------------------------
+# # STEP 7: COPY TEMPLATE FILES ONLY
+# # -----------------------------
+# Write-Host "Copying template files..."
+
+# if (Test-Path "$repoClone\mars_tools") {
+#     Copy-Item "$repoClone\mars_tools\*" "$workspaceDir\mars_tools" -Recurse -Force -ErrorAction SilentlyContinue
+# }
+
+# if (Test-Path "$repoClone\mars_examples") {
+#     Copy-Item "$repoClone\mars_examples\*" "$workspaceDir\mars_examples" -Recurse -Force -ErrorAction SilentlyContinue
+# }
+
+# if (Test-Path "$repoClone\mars_config") {
+#     Copy-Item "$repoClone\mars_config\*" "$workspaceDir\mars_configs" -Recurse -Force -ErrorAction SilentlyContinue
+# }
+
+# Write-Host "Templates copied successfully."
+
+
 # -----------------------------
-# STEP 6: Find VS Code extension
+# STEP 8: Find VS Code extension
 # -----------------------------
 Write-Host "Searching for VS Code extension..."
 
@@ -103,7 +141,7 @@ if ($vsixPath) {
 }
 
 # -----------------------------
-# STEP 7: Locate VS Code
+# STEP 9: Locate VS Code
 # -----------------------------
 $codePath = "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd"
 
@@ -117,7 +155,7 @@ if (-Not (Test-Path $codePath)) {
 }
 
 # -----------------------------
-# STEP 8: Install VS Code extension
+# STEP 10: Install VS Code extension
 # -----------------------------
 if ($codePath -and $vsixPath) {
     Write-Host "Installing VS Code extension..."
@@ -134,6 +172,15 @@ if ($codePath -and $vsixPath) {
 }
 
 # -----------------------------
+# STEP 11: CLEANUP
+# -----------------------------
+Write-Host "Cleaning up temporary repository..."
+
+if (Test-Path $repoClone) {
+    Remove-Item $repoClone -Recurse -Force
+}
+
+# -----------------------------
 # DONE
 # -----------------------------
 Write-Host ""
@@ -143,5 +190,6 @@ Write-Host "======================================="
 Write-Host ""
 Write-Host "Next steps:"
 Write-Host "  Activate manually (optional): .venv\Scripts\Activate.ps1"
-Write-Host "  Run MARS: mars run demo.mars"
+Write-Host "  Create Template Workspace: mars init MyWorkspace --seed"
+Write-Host "  Run MARS: mars run MyWorkspace/demo.mars"
 Write-Host ""
