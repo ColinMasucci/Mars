@@ -1,9 +1,9 @@
 import os
 import importlib.util
 
-from .ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, ArrayUnitConvert, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, Return, Break, Continue, FuncDecl, MemberAccess, ClassDecl
-from .source_errors import format_node_error
-from .units import parse_unit_expr, canonical_name, UnitSpec
+from ..ast.ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, ArrayUnitConvert, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, Return, Break, Continue, FuncDecl, MemberAccess, ClassDecl
+from ..core.source_errors import format_node_error
+from ..runtime.units import parse_unit_expr, canonical_name, UnitSpec
 
 
 
