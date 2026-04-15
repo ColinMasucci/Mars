@@ -1,7 +1,7 @@
 import json
 import os
 import sys
-from interpreter import interpret_code_from_string
+from mars.mars_lang.interpreter import interpret_code_from_string
 
 ###How to run tests:
 #For a specific test file:

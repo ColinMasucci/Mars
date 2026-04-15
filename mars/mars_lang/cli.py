@@ -1,7 +1,7 @@
 import argparse
-from mars_compiler.interpreter import interpret_code_from_file
-from mars_compiler import ros_tools
-from mars_compiler.ros_tools import list_topics
+from mars.mars_lang.interpreter import interpret_code_from_file
+from mars.mars_lang import ros_tools
+from mars.mars_lang.ros.ros_tools import list_topics
 
 def main():
     parser = argparse.ArgumentParser(prog="mars")
