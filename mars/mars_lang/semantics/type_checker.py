@@ -4,11 +4,12 @@ import importlib.util
 from ..ast.ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, ArrayUnitConvert, NumberLiteral, StringLiteral, BooleanLiteral, BinaryOp, Call, Program, Block, Var, Assign, AugAssign, If, While, For, VarDecl, UnaryOp, UnitTag, Import, Return, Break, Continue, FuncDecl, MemberAccess, ClassDecl
 from ..core.source_errors import format_node_error
 from ..runtime.units import parse_unit_expr, canonical_name, UnitSpec
+from pathlib import Path
 
 
 
 class TypeChecker:
-    def __init__(self, component_interfaces=None, class_interfaces=None, source_text=None, source_path=None):
+    def __init__(self, component_interfaces=None, class_interfaces=None, source_text=None, source_path=None, workspace_root=None):
         # Scopes: list of dicts, each dict: name -> { 'type': str or 'function', 'mutable': bool, 'info': dict }
         self.scopes = [{}]
         self._loaded_modules = {}  # cache loaded builtin modules
@@ -1425,16 +1426,16 @@ class TypeChecker:
                     if module_name in self._loaded_modules:
                         mod = self._loaded_modules[module_name]
                     else:
-                        module_path = os.path.join("mars_compiler/builtins", f"{module_name}.py")
-                        if not os.path.exists(module_path):
-                            tool_path = os.path.join("mars_compiler/tools", f"{module_name}.py")
+                        builtin_path = resources.files("mars.mars_lang.builtins") / f"{module_name}.py"
+                        if not os.path.exists(builtin_path):
+                            tool_path = Path(self.workspace_root) / "mars_tools" / f"{module_name}.py"
                             if os.path.exists(tool_path):
                                 self.dynamic_modules.add(module_name)
                                 if not self._lookup_symbol(module_name):
                                     self._declare_symbol(module_name, f"module_dynamic:{module_name}", mutable=False)
                                 return None
                             raise TypeError(f"Module '{module_name}' not found")
-                        spec = importlib.util.spec_from_file_location(module_name, module_path)
+                        spec = importlib.util.spec_from_file_location(module_name, builtin_path)
                         mod = importlib.util.module_from_spec(spec)
                         spec.loader.exec_module(mod)
                         self._loaded_modules[module_name] = mod

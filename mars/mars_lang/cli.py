@@ -40,16 +40,23 @@ def main():
     if args.command == "run":
         file_path = Path(args.file)
 
-        config_dir = find_workspace_config(file_path)
-
-        if not config_dir:
+        workspace_root = find_workspace_root(file_path)
+        if not workspace_root:
             raise FileNotFoundError(
                 "No MARS workspace found (missing mars_project.json)"
             )
 
+        config_dir = find_workspace_config(file_path)
+
+        if not config_dir:
+            raise FileNotFoundError(
+                "No MARS configs found ('mars_configs' was removed from workspace)"
+            )
+
         interpret_code_from_file(
             str(file_path),
-            config_dir=str(config_dir)
+            workspace_root=workspace_root,
+            config_dir=str(config_dir),
         )
 
     elif args.command == "ros":
@@ -75,4 +82,11 @@ def find_workspace_config(start_path: Path):
     for parent in [start_path] + list(start_path.parents):
         if (parent / "mars_project.json").exists():
             return parent / "mars_configs"
+    return None
+
+def find_workspace_root(start_path: Path):
+    # walk upward until mars_project.json is found
+    for parent in [start_path] + list(start_path.parents):
+        if (parent / "mars_project.json").exists():
+            return parent
     return None

@@ -45,6 +45,7 @@ from ..ast.ast_visualizer import visualize  # for visualizing the AST
 
 def interpret_code_from_file(
     file_path: str,
+    workspace_root: str,
     config_dir: str,
     debug: bool = False,
     ros_bridge: str | None = None,
@@ -59,6 +60,7 @@ def interpret_code_from_file(
         code = f.read()
     return _interpret(
         code,
+        workspace_root=workspace_root,
         config_dir=config_dir,
         debug=debug,
         capture_output=False,
@@ -74,6 +76,7 @@ def interpret_code_from_file(
 
 def interpret_code_from_string(
     code: str,
+    workspace_root: str,
     config_dir: str,
     debug: bool = False,
     ros_bridge: str | None = None,
@@ -89,6 +92,7 @@ def interpret_code_from_string(
     """
     return _interpret(
         code,
+        workspace_root=workspace_root,
         config_dir=config_dir,
         debug=debug,
         capture_output=True,
@@ -104,6 +108,7 @@ def interpret_code_from_string(
 
 def _interpret(
     code: str,
+    workspace_root: str,
     config_dir: str,
     debug: bool,
     capture_output: bool,
@@ -232,6 +237,7 @@ def _interpret(
             class_interfaces=class_interfaces,
             source_text=code,
             source_path=source_path,
+            workspace_root=workspace_root,
         )
         class_runtime_checker._push_scope()
         try:
