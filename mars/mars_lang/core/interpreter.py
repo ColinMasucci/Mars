@@ -269,6 +269,7 @@ def _interpret(
     )
     vm = VM(
         bytecode,
+        workspace_root=workspace_root,
         class_field_info=class_field_info,
         component_tree=component_tree,
         component_parents=component_parents,

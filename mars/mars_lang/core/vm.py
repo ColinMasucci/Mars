@@ -5,6 +5,8 @@ import types
 import time;
 
 from .source_errors import format_source_error
+from pathlib import Path
+from importlib import resources
 
 
 Instr = Tuple[str, ...]
@@ -22,8 +24,9 @@ def _strip_unit_type(typ):
     return typ
 
 class VM:
-    def __init__(self, bytecode: List[Instr], class_field_info=None, component_tree=None, component_parents=None, source_map=None, source_text=None, source_path=None):
+    def __init__(self, bytecode: List[Instr], workspace_root:str, class_field_info=None, component_tree=None, component_parents=None, source_map=None, source_text=None, source_path=None):
         self.code = bytecode
+        self.workspace_root = workspace_root
         self.stack = []
         self.pc = 0
         self.locals = {}  # current frame locals {name: (value, vartype, readonly)}
@@ -877,19 +880,19 @@ class VM:
             case "IMPORT":
                 module_name = args[0]
 
-                module_path = f"mars_compiler/builtins/{module_name}.py"
-                tool_path = f"mars_compiler/tools/{module_name}.py"
-                if not os.path.exists(module_path) and not os.path.exists(tool_path):
+                builtin_path = resources.files("mars.mars_lang.builtins") / f"{module_name}.py"
+                tool_path = Path(self.workspace_root) / "mars_tools" / f"{module_name}.py"
+                if not os.path.exists(builtin_path) and not os.path.exists(tool_path):
                     # Component or unknown import: skip at runtime
                     self.globals[f"{module_name}"] = (None, "module", False)
                     return
                 if module_name in self._modules:
                     return  # already imported
 
-                if not os.path.exists(module_path) and os.path.exists(tool_path):
-                    module_path = tool_path
+                if not os.path.exists(builtin_path) and os.path.exists(tool_path):
+                    builtin_path = tool_path
 
-                spec = importlib.util.spec_from_file_location(module_name, module_path)
+                spec = importlib.util.spec_from_file_location(module_name, builtin_path)
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
 
