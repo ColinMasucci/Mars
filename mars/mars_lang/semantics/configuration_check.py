@@ -31,20 +31,20 @@ def _load_ros_topics_map(path: str | None) -> dict[str, str]:
     return topics
 
 
-def precompile_config(config_dir: str, debug: bool = False, ros_topics_file: str | None = None):
+def precompile_config(workspace_root:str, config_dir: str, debug: bool = False, ros_topics_file: str | None = None):
     """
     Parse and validate component config and prepare runtime metadata.
     Returns (registry, interfaces, comp_funcs, comp_params, component_imports, component_tree, component_parents).
     """
     registry = ComponentRegistry()
-    interfaces, component_imports = load_marsc_files(config_dir, registry, debug=debug)
+    interfaces, component_imports = load_marsc_files(workspace_root, config_dir, registry, debug=debug)
     topics_map = _load_ros_topics_map(ros_topics_file)
     component_tree, component_parents = build_component_tree(registry, interfaces, ros_topics_map=topics_map, ros_topics_file=ros_topics_file)
     comp_funcs, comp_params = build_component_runtime(registry, interfaces, component_tree)
     return registry, interfaces, comp_funcs, comp_params, component_imports, component_tree, component_parents
 
 
-def load_marsc_files(directory, registry, debug: bool = False):
+def load_marsc_files(workspace_root:str, directory, registry, debug: bool = False):
     # built-in base Robot component (empty)
     components = [ComponentDef("Robot", None, [], [], [])]
     import_statements = []
@@ -72,7 +72,7 @@ def load_marsc_files(directory, registry, debug: bool = False):
             raise Exception(f"Component validation failed: {e}")
 
         # Type-check component functions with component-aware scope
-        tc = TypeChecker(component_interfaces=interfaces)
+        tc = TypeChecker(workspace_root=workspace_root, component_interfaces=interfaces)
         for stmt in import_statements:
             tc.check(stmt)
         tc.check_components(components)

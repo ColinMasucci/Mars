@@ -123,6 +123,7 @@ def _interpret(
     # Precompile component configurations
     topics_path = ros_topics_file or os.environ.get("MARS_ROS_TOPICS_FILE", "ros_topics.txt")
     _registry, interfaces, comp_funcs, comp_params, component_imports, component_tree, component_parents = precompile_config(
+        workspace_root,
         config_dir,
         debug=debug,
         ros_topics_file=topics_path,
