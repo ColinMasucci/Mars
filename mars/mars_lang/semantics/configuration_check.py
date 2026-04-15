@@ -1,13 +1,13 @@
 import os
 import re
 
-from .lexer import tokenize
-from .parser import Parser
+from ..core.lexer import tokenize
+from ..core.parser import Parser
 from .type_checker import TypeChecker
-from .component_registry import ComponentRegistry
+from ..runtime.component_registry import ComponentRegistry
 from .component_validator import ComponentValidator, ComponentValidationError
 from .component_visualizer import visualize_components
-from .ast_nodes import ArrayAccess, ArrayLiteral, Assign, AugAssign, BinaryOp, Block, BooleanLiteral, Call, ComponentDef, DictLiteral, FuncDecl, If, Import, MemberAccess, NumberLiteral, Program, RequirementExpr, RequirementFunction, RequirementParam, RequirementSpec, Return, StringLiteral, UnaryOp, UnitTag, Var, VarDecl, While, For
+from ..ast.ast_nodes import ArrayAccess, ArrayLiteral, Assign, AugAssign, BinaryOp, Block, BooleanLiteral, Call, ComponentDef, DictLiteral, FuncDecl, If, Import, MemberAccess, NumberLiteral, Program, RequirementExpr, RequirementFunction, RequirementParam, RequirementSpec, Return, StringLiteral, UnaryOp, UnitTag, Var, VarDecl, While, For
 
 _SUBSCRIBE_EXAMPLE = 'lidar = subscribe("/scan", "sensor_msgs/msg/LaserScan");'
 

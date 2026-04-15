@@ -7,12 +7,12 @@ import time
 
 from .lexer import tokenize  # tokenizer from lexer.py
 from .parser import Parser  # parser from parser.py
-from .type_checker import TypeChecker  # type checker from type_checker.py
+from ..semantics.type_checker import TypeChecker  # type checker from type_checker.py
 from .bytecodegen import compile_program  # bytecode generator from bytecodegen.py
 from .vm import VM  # the stack-based virtual machine from vm.py
-from .configuration_check import precompile_config, validate_instantiated_component_functions, validate_instantiated_requirements
-from .class_validator import ClassValidator
-from .ast_nodes import (
+from ..semantics.configuration_check import precompile_config, validate_instantiated_component_functions, validate_instantiated_requirements
+from ..semantics.class_validator import ClassValidator
+from ..ast.ast_nodes import (
     ArrayAccess,
     ArrayLiteral,
     ArrayUnitConvert,
@@ -40,7 +40,7 @@ from .ast_nodes import (
     VarDecl,
     While,
 )
-from .ast_visualizer import visualize  # for visualizing the AST
+from ..ast.ast_visualizer import visualize  # for visualizing the AST
 
 
 def interpret_code_from_file(
