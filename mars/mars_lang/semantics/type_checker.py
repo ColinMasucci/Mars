@@ -5,6 +5,7 @@ from ..ast.ast_nodes import DictLiteral, ArrayAccess, ArrayLiteral, ArrayUnitCon
 from ..core.source_errors import format_node_error
 from ..runtime.units import parse_unit_expr, canonical_name, UnitSpec
 from pathlib import Path
+from importlib import resources
 
 
 
