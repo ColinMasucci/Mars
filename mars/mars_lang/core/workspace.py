@@ -16,7 +16,7 @@ def create_workspace(name: str, seed: bool = False):
     if seed:
         print("Populating workspace with templates...")
 
-        with resources.path("mars.mars_lang.templates", "") as template_dir:
+        with resources.path("mars.mars_lang.mars_templates", "") as template_dir:
             shutil.copytree(template_dir / "mars_tools", base / "mars_tools", dirs_exist_ok=True)
             shutil.copytree(template_dir / "mars_examples", base / "mars_examples", dirs_exist_ok=True)
             shutil.copytree(template_dir / "mars_configs", base / "mars_configs", dirs_exist_ok=True)

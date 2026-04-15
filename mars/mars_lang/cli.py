@@ -8,7 +8,7 @@ VERSION = "0.1.0" #grab this version from the actual release once we have multip
 def main():
     parser = argparse.ArgumentParser(prog="mars")
 
-    parser.add_argument("--version", action="store_true")
+    parser.add_argument("--version", action="version", version=f"mars {VERSION}")
 
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -34,11 +34,6 @@ def main():
 
     # parse
     args = parser.parse_args()
-
-    # version override (before command execution)
-    if args.version:
-        print(f"mars {VERSION}")
-        return
 
     # dispatch
     if args.command == "run":
