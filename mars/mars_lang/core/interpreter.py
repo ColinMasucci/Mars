@@ -198,6 +198,7 @@ def _interpret(
 
     # Type check
     type_checker = TypeChecker(
+        workspace_root=workspace_root,
         component_interfaces=interfaces,
         class_interfaces=class_interfaces,
         source_text=code,
