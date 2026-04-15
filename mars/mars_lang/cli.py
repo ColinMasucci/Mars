@@ -29,6 +29,8 @@ def main():
     #init command
     init = sub.add_parser("init")
     init.add_argument("name")
+    init.add_argument("--seed", action="store_true", help="Populate workspace with default templates")
+    
 
     # parse
     args = parser.parse_args()
@@ -54,6 +56,6 @@ def main():
             else:
                 ros_tools.list_topics()
 
-    elif args.command == "init":
-        create_workspace(args.name)
+    if args.command == "init":
+        create_workspace(args.name, args.seed)
         return

@@ -1,21 +1,32 @@
 from pathlib import Path
+import shutil
+import importlib.resources as resources
 
-def create_workspace(name: str):
-    base_path = Path.cwd() / name
+def create_workspace(name: str, seed: bool = False):
+    base = Path.cwd() / name
 
-    print(f"Creating MARS workspace: {base_path}")
+    print(f"Creating MARS workspace: {base}")
 
-    # Create directories
-    (base_path / "mars_tools").mkdir(parents=True, exist_ok=True)
-    (base_path / "mars_examples").mkdir(parents=True, exist_ok=True)
-    (base_path / "mars_configs").mkdir(parents=True, exist_ok=True)
+    # Always create structure
+    (base / "mars_tools").mkdir(parents=True, exist_ok=True)
+    (base / "mars_examples").mkdir(parents=True, exist_ok=True)
+    (base / "mars_configs").mkdir(parents=True, exist_ok=True)
 
-    # Write project metadata
-    with open(base_path / "mars_project.json", "w") as f:
-        f.write("""{
-  "name": "%s",
-  "version": "0.1.0",
+    # Optional seeding
+    if seed:
+        print("Populating workspace with templates...")
+
+        with resources.path("mars.mars_lang.templates", "") as template_dir:
+            shutil.copytree(template_dir / "mars_tools", base / "mars_tools", dirs_exist_ok=True)
+            shutil.copytree(template_dir / "mars_examples", base / "mars_examples", dirs_exist_ok=True)
+            shutil.copytree(template_dir / "mars_configs", base / "mars_configs", dirs_exist_ok=True)
+
+    # Metadata file
+    with open(base / "mars_project.json", "w") as f:
+        f.write(f"""{{
+  "name": "{name}",
+  "seeded": {str(seed).lower()},
   "type": "mars-workspace"
-}""" % name)
+}}""")
 
     print("Workspace created successfully.")
