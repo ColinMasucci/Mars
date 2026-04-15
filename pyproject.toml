@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["mars_compiler"]
+packages = ["mars.mars_lang"]
 
 [project.scripts]
-mars = "mars_compiler.cli:main"
+mars = "mars.mars_lang.cli:main"
