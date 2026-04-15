@@ -9,8 +9,9 @@ dependencies = [
     "networkx==3.2.1",
 ]
 
-[tool.setuptools]
-packages = ["mars.mars_lang"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mars*"]
 
 [project.scripts]
 mars = "mars.mars_lang.cli:main"
