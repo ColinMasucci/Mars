@@ -1,5 +1,5 @@
 import argparse
-from mars.mars_lang.interpreter import interpret_code_from_file
+from mars.mars_lang.core.interpreter import interpret_code_from_file
 from mars.mars_lang import ros_tools
 
 VERSION = "0.1.0" #grab this version from the actual release once we have multiple on github
