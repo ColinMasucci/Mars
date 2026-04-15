@@ -233,11 +233,11 @@ def _interpret(
     class_funcs, class_field_info = build_class_runtime(parsed_ast.classes, class_interfaces)
     if class_funcs:
         class_runtime_checker = TypeChecker(
+            workspace_root=workspace_root,
             component_interfaces=interfaces,
             class_interfaces=class_interfaces,
             source_text=code,
             source_path=source_path,
-            workspace_root=workspace_root,
         )
         class_runtime_checker._push_scope()
         try:

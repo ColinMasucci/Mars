@@ -10,7 +10,7 @@ from importlib import resources
 
 
 class TypeChecker:
-    def __init__(self, component_interfaces=None, class_interfaces=None, source_text=None, source_path=None, workspace_root=None):
+    def __init__(self, workspace_root:str, component_interfaces=None, class_interfaces=None, source_text=None, source_path=None):
         # Scopes: list of dicts, each dict: name -> { 'type': str or 'function', 'mutable': bool, 'info': dict }
         self.scopes = [{}]
         self._loaded_modules = {}  # cache loaded builtin modules
