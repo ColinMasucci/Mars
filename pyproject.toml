@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "mars-lang"
 version = "0.1.0"
@@ -12,6 +16,12 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["mars*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"mars.mars_lang.templates" = ["**/*"]
 
 [project.scripts]
 mars = "mars.mars_lang.cli:main"
