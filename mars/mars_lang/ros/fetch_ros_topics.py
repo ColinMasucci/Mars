@@ -6,8 +6,7 @@ import subprocess
 import sys
 import time
 
-from ros_bridge_client import RosBridgeClient, write_topics_file
-
+from mars.mars_lang.ros.ros_bridge_client import RosBridgeClient, write_topics_file
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Autostart ROS bridge, fetch topics once, and exit")
