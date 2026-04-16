@@ -8,7 +8,7 @@ Write-Host "======================================="
 $repoUrl = "https://github.com/ColinMasucci/Mars.git"
 $venvDir = ".venv"
 $repoClone = Join-Path $PWD "Mars"
-$workspaceDir = Join-Path $PWD "MarsWorkspace"
+#$workspaceDir = Join-Path $PWD "MarsWorkspace"
 
 # -----------------------------
 # STEP 1: Create virtual environment
@@ -48,16 +48,16 @@ if (-Not (Test-Path $repoClone)) {
     Write-Host "Repository already cloned. Skipping..."
 }
 
-# -----------------------------
-# STEP 3: Upgrade pip (inside venv)
-# -----------------------------
-Write-Host "Upgrading pip..."
-& $venvPython -m pip install --upgrade pip
+# # -----------------------------
+# # STEP 3: Upgrade pip (inside venv)
+# # -----------------------------
+# Write-Host "Upgrading pip..."
+# & $venvPython -m pip install --upgrade pip
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to upgrade pip."
-    exit 1
-}
+# if ($LASTEXITCODE -ne 0) {
+#     Write-Error "Failed to upgrade pip."
+#     exit 1
+# }
 
 # -----------------------------
 # STEP 4: Install MARS (compiler only)
