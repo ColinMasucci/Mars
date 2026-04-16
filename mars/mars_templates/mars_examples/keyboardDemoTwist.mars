@@ -17,10 +17,10 @@ class KeyboardDemoTwist {
     float::m/s backwardSlowSpeed = -3.0::m/s;
     float::m/s backwardFastSpeed = -5.0::m/s;
 
-    float::deg/s steering = 0.0::deg/s;
-    float::deg/s steeringStep = 8.0::deg/s;
-    float::deg/s minSteering = -120.0::deg/s;
-    float::deg/s maxSteering = 120.0::deg/s;
+    float::deg/s steering = 0.0;
+    float::deg/s steeringStep = .2;
+    float::deg/s minSteering = -1;
+    float::deg/s maxSteering = 1;
     float::s pollPeriod = 0.1::s;
 
     void printInstructions() {

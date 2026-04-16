@@ -1,20 +1,20 @@
 import keyboardDemoTwist;
 import imuVisualizer;
 import keyboard_input;
-import Deimos;
 
-print("DeepRacer KeyboardDemoTwist + IMU Visualizer demo");
 
-KeyboardDemoTwist demo = KeyboardDemoTwist(Deimos);
-IMUVisualizer visualizer = IMUVisualizer(Deimos);
+myRobot = Phobos;
 
-visualizer.setTitle("DeepRacer Twist + IMU Visualizer");
+KeyboardDemo demo = KeyboardDemo(myRobot);
+#KeyboardDemoTwist demo = KeyboardDemoTwist(myRobot);
+IMUVisualizer visualizer = IMUVisualizer(myRobot);
+
+visualizer.setTitle("IMU Visualizer");
 visualizer.setDtHint(0.1::s);
 visualizer.setVectorGain(120.0);
 visualizer.configure();
 
-print("KeyboardDemoTwist");
-print("controlMode", demo.controlMode);
+print("Keyboard Control Demo");
 demo.printInstructions();
 demo.printSpeed();
 demo.stopMotion();
