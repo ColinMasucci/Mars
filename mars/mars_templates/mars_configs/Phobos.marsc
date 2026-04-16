@@ -24,6 +24,13 @@ component PhobosChassisA extends SkidChassis {
     parameters {
         float maxLinearSpeed = 1;
         string controlMode = "tank";
+
+        float::m wheelbase = 145::mm;
+        float::m trackWidth = 110::mm;
+        float::m bodyWidth = 83::mm;
+        float::m bodyLength = 122::mm;
+        float::m wheelWidth = 3.5::mm;
+        float::m wheelDiameter = 30::mm;
     }
     functions {
         void init(){
@@ -57,18 +64,31 @@ component PhobosChassisB extends DifferentialChassis {
     parameters {
         float maxLinearSpeed = 1;
         string controlMode = "tank";
+
+        float::m wheelbase = 78::mm;
+        float::m trackWidth = 148::mm;
+        float::m bodyWidth = 180::mm;
+        float::m bodyLength = 117::mm;
+        float::m wheelWidth = 4::mm;
+        float::m wheelDiameter = 35::mm;
     }
     functions {
         void init(){
-
+            leftMotor.init();
+            rightMotor.init();
         }
         void drive(float leftSpeed, float rightSpeed){
-
+            leftSpeed = math.max(-maxLinearSpeed, math.min(leftSpeed, maxLinearSpeed));
+            rightSpeed = math.max(-maxLinearSpeed, math.min(rightSpeed, maxLinearSpeed));
+            leftMotor.spin(leftSpeed);
+            rightMotor.spin(rightSpeed);
         }
         void stop(){
-
+            leftMotor.stop();
+            rightMotor.stop();
         }
     }
+    
 }
 
 component N20 extends BrushedMotor {

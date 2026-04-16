@@ -15,7 +15,7 @@ component AWSDeepRacerChassis extends AckermannChassis {
     }
     parameters{
         string controlMode = "twist";
-        # Physical chassis geometry (fill with measured values).
+
         float::m wheelbase = 165::mm;
         float::m trackWidth = 160::mm;
         float::m bodyWidth = 7.75::in;
