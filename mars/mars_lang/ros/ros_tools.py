@@ -1,15 +1,32 @@
+from asyncio import subprocess
+from pathlib import Path
+
 import os
+import subprocess
 
-TOPICS_FILE = "ros_topics.txt"
+#TOPICS_FILE = "ros_topics.txt"
 
 
-def _load_topics_file():
-    if not os.path.exists(TOPICS_FILE):
+def get_ros_dir(workspace_root: Path):
+    return workspace_root / "ros"
+
+def get_topics_file(workspace_root: Path):
+    return get_ros_dir(workspace_root) / "topics.txt"
+
+def ensure_ros_dir(workspace_root: Path):
+    ros_dir = get_ros_dir(workspace_root)
+    ros_dir.mkdir(exist_ok=True)
+    return ros_dir
+
+
+def _load_topics_file(workspace_root: Path):
+    topics_file = get_topics_file(workspace_root)
+    if not os.path.exists(topics_file):
         raise FileNotFoundError(
-            f"{TOPICS_FILE} not found. Run 'mars ros bridge' first."
+            f"{topics_file} not found. Run 'mars ros bridge' first."
         )
 
-    with open(TOPICS_FILE, "r") as f:
+    with open(topics_file, "r") as f:
         return f.read()
 
 
@@ -57,12 +74,14 @@ def _parse_topics(raw_text):
     return topics
 
 
+
+
 # ========================
 # CLI FUNCTIONS
 # ========================
 
-def list_topics():
-    raw = _load_topics_file()
+def list_topics(workspace_root: Path):
+    raw = _load_topics_file(workspace_root=workspace_root)
     topics = _parse_topics(raw)
 
     print("Available ROS Topics:\n")
@@ -70,8 +89,8 @@ def list_topics():
         print(f"{name}  [{data['type']}]")
 
 
-def show_topic(topic_name):
-    raw = _load_topics_file()
+def show_topic(topic_name: str, workspace_root: Path):
+    raw = _load_topics_file(workspace_root=workspace_root)
     topics = _parse_topics(raw)
 
     if topic_name not in topics:
@@ -82,8 +101,8 @@ def show_topic(topic_name):
     print(topics[topic_name]["details"])
 
 
-def search_topics(keyword):
-    raw = _load_topics_file()
+def search_topics(keyword: str, workspace_root: Path):
+    raw = _load_topics_file(workspace_root=workspace_root)
     topics = _parse_topics(raw)
 
     print(f"Searching for '{keyword}'...\n")
@@ -91,3 +110,21 @@ def search_topics(keyword):
     for name, data in topics.items():
         if keyword in name or keyword in data["type"]:
             print(f"{name}  [{data['type']}]")
+
+
+def fetch_topics_live(workspace_root: Path, duration=5):
+    ros_dir = ensure_ros_dir(workspace_root)
+    topics_file = get_topics_file(workspace_root)
+
+    cmd = [
+        "python3",
+        "-m",
+        "mars.mars_lang.ros.fetch_ros_topics",
+        "--ros-version", "2",
+        "--output", str(topics_file),
+        "--duration", str(duration),
+        "--ros-bridge-python", "/usr/bin/python3.8",
+        "--ros-bridge-pythonpath", "/opt/ros/foxy/lib/python3.8/site-packages"
+    ]
+
+    subprocess.run(cmd, check=True)

@@ -26,6 +26,8 @@ def main():
     ros_topics = ros_sub.add_parser("topics")
     ros_topics.add_argument("--show")
     ros_topics.add_argument("--search")
+    ros_topics.add_argument("--cached", action="store_true")
+    ros_topics.add_argument("--refresh", action="store_true")
 
     #init command
     init = sub.add_parser("init")
@@ -60,16 +62,25 @@ def main():
         )
 
     elif args.command == "ros":
+
+        workspace_root = find_workspace_root(Path.cwd())
+
+        if not workspace_root:
+            raise FileNotFoundError("No MARS workspace found")
+
         if args.ros_command == "bridge":
             interpret_code_from_file("ros_stub.mars", ros_autostart=True)
 
         elif args.ros_command == "topics":
+            if not args.cached or args.refresh:
+                ros_tools.fetch_topics_live(workspace_root=workspace_root)
+
             if args.show:
-                ros_tools.show_topic(args.show)
+                ros_tools.show_topic(workspace_root=workspace_root, topic_name=args.show)
             elif args.search:
-                ros_tools.search_topics(args.search)
+                ros_tools.search_topics(workspace_root=workspace_root, keyword=args.search)
             else:
-                ros_tools.list_topics()
+                ros_tools.list_topics(workspace_root=workspace_root)
 
     if args.command == "init":
         create_workspace(args.name, args.seed)
