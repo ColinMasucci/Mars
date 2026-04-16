@@ -881,7 +881,7 @@ class VM:
                 module_name = args[0]
 
                 builtin_path = resources.files("mars.mars_lang.builtins") / f"{module_name}.py"
-                tool_path = Path(self.workspace_root) / "mars_tools" / f"{module_name}.py"
+                tool_path = Path(self.workspace_root) / "tools" / f"{module_name}.py"
                 if not os.path.exists(builtin_path) and not os.path.exists(tool_path):
                     # Component or unknown import: skip at runtime
                     self.globals[f"{module_name}"] = (None, "module", False)

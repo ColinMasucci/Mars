@@ -52,7 +52,7 @@ def main():
 
         if not config_dir:
             raise FileNotFoundError(
-                "No MARS configs found ('mars_configs' was removed from workspace)"
+                "No MARS configs found ('config' directory was removed from workspace)"
             )
 
         interpret_code_from_file(
@@ -92,7 +92,7 @@ def find_workspace_config(start_path: Path):
     # walk upward until mars_project.json is found
     for parent in [start_path] + list(start_path.parents):
         if (parent / "mars_project.json").exists():
-            return parent / "mars_configs"
+            return parent / "config"
     return None
 
 def find_workspace_root(start_path: Path):
