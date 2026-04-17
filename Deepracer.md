@@ -11,6 +11,7 @@
 ```bash
 ssh deepracer@192.168.1.103
 ```
+Password:
 7fAn48jq
 
 ```bash
