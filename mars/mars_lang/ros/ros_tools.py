@@ -4,14 +4,16 @@ from pathlib import Path
 import os
 import subprocess
 
-#TOPICS_FILE = "ros_topics.txt"
+# TOPICS_FILE = "ros_topics.txt"
 
 
 def get_ros_dir(workspace_root: Path):
     return workspace_root / "ros"
 
+
 def get_topics_file(workspace_root: Path):
     return get_ros_dir(workspace_root) / "topics.txt"
+
 
 def ensure_ros_dir(workspace_root: Path):
     ros_dir = get_ros_dir(workspace_root)
@@ -22,9 +24,7 @@ def ensure_ros_dir(workspace_root: Path):
 def _load_topics_file(workspace_root: Path):
     topics_file = get_topics_file(workspace_root)
     if not os.path.exists(topics_file):
-        raise FileNotFoundError(
-            f"{topics_file} not found. Run 'mars ros bridge' first."
-        )
+        raise FileNotFoundError(f"{topics_file} not found. Run 'mars ros bridge' first.")
 
     with open(topics_file, "r") as f:
         return f.read()
@@ -56,10 +56,7 @@ def _parse_topics(raw_text):
             topic_name = parts[0]
             topic_type = parts[1].strip("()") if len(parts) > 1 else "unknown"
 
-            topics[topic_name] = {
-                "type": topic_type,
-                "details": ""
-            }
+            topics[topic_name] = {"type": topic_type, "details": ""}
 
             current_topic = topic_name
             current_block = []
@@ -74,11 +71,10 @@ def _parse_topics(raw_text):
     return topics
 
 
-
-
 # ========================
 # CLI FUNCTIONS
 # ========================
+
 
 def list_topics(workspace_root: Path):
     raw = _load_topics_file(workspace_root=workspace_root)
@@ -119,12 +115,17 @@ def fetch_topics_live(workspace_root: Path, duration=5):
     cmd = [
         "python3",
         "-m",
-        "mars.mars_lang.ros.fetch_ros_topics",
-        "--ros-version", "2",
-        "--output", str(topics_file),
-        "--duration", str(duration),
-        "--ros-bridge-python", "/usr/bin/python3.8",
-        "--ros-bridge-pythonpath", "/opt/ros/foxy/lib/python3.8/site-packages"
+        "mars_lang.ros.fetch_ros_topics",
+        "--ros-version",
+        "2",
+        "--output",
+        str(topics_file),
+        "--duration",
+        str(duration),
+        "--ros-bridge-python",
+        "/usr/bin/python3.8",
+        "--ros-bridge-pythonpath",
+        "/opt/ros/foxy/lib/python3.8/site-packages",
     ]
 
     subprocess.run(cmd, check=True)

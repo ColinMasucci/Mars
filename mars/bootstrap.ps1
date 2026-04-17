@@ -3,10 +3,26 @@
 # ─────────────────────────────────────────────
 #
 #  One-liner install (PowerShell):
-#    iwr -useb https://raw.githubusercontent.com/reillydesai/Mars-test/venv-fix/mars/bootstrap.ps1 | iex
+#
+#    powershell -c "iex (iwr -useb https://raw.githubusercontent.com/reillydesai/Mars-test/venv-fix/mars/bootstrap.ps1).Content"
+#
+#  NOTE: Do NOT use "iwr ... | iex" -- that breaks interactive prompts.
+#        The form above downloads the entire script first, then executes it.
 #
 
 $ErrorActionPreference = "Stop"
+
+# ── Guard: detect non-interactive session ────
+if (-not [Environment]::UserInteractive) {
+    Write-Host ""
+    Write-Host "  Error: This installer requires an interactive terminal."
+    Write-Host ""
+    Write-Host "  Please use this form:"
+    Write-Host ""
+    Write-Host '    powershell -c "iex (iwr -useb https://raw.githubusercontent.com/reillydesai/Mars-test/venv-fix/mars/bootstrap.ps1).Content"'
+    Write-Host ""
+    exit 1
+}
 
 $RepoUrl   = "https://github.com/reillydesai/Mars-test.git"
 $Branch    = "venv-fix"
