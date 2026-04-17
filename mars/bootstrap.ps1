@@ -19,12 +19,12 @@ if (-not [Environment]::UserInteractive) {
     Write-Host ""
     Write-Host "  Please use this form:"
     Write-Host ""
-    Write-Host '    powershell -c "iex (iwr -useb https://raw.githubusercontent.com/reillydesai/Mars-test/venv-fix/mars/bootstrap.ps1).Content"'
+    Write-Host '    powershell -c "iex (iwr -useb https://github.com/ColinMasucci/Mars/mars/bootstrap.ps1).Content"'
     Write-Host ""
     exit 1
 }
 
-$RepoUrl   = "https://github.com/reillydesai/Mars-test.git"
+$RepoUrl   = "https://github.com/ColinMasucci/Mars.git"
 $Branch    = "venv-fix"
 $MarsHome  = Join-Path $HOME ".mars"
 $RepoSubdir = "mars"

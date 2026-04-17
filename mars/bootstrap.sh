@@ -14,7 +14,7 @@ set -euo pipefail
 #        downloads the entire script first, then runs it with stdin free.
 #
 
-REPO_URL="https://github.com/reillydesai/Mars-test.git"
+REPO_URL="https://github.com/ColinMasucci/Mars.git"
 BRANCH="venv-fix"
 MARS_HOME="$HOME/.mars"
 REPO_SUBDIR="mars"   # the package lives inside the mars/ subdirectory of the repo
@@ -27,7 +27,7 @@ if [ ! -t 0 ]; then
     echo "  It looks like you ran:  curl ... | bash"
     echo "  Please use this form instead:"
     echo ""
-    echo "    bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/reillydesai/Mars-test/venv-fix/mars/bootstrap.sh)\""
+    echo "    bash -c \"\$(curl -fsSL https://github.com/ColinMasucci/Mars/mars/bootstrap.sh)\""
     echo ""
     exit 1
 fi
