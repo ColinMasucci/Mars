@@ -1,5 +1,9 @@
 # MARS
-This is a WPI MQP project related to Robotics and Computer Science. This is just placeholder text for now.
+This is a WPI MQP project related to Robotics and Computer Science. 
+
+You can find a deeper explanation of our full documentation here: https://marsdocs.vercel.app/
+
+
 
 
 
