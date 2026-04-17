@@ -1,46 +1,62 @@
 # ─────────────────────────────────────────────
 #  MARS Language Installer  (Windows / PowerShell)
 # ─────────────────────────────────────────────
+#
+#  Can be run interactively or driven by parameters:
+#    .\install.ps1                                (interactive)
+#    .\install.ps1 -Mode user                     (non-interactive)
+#    .\install.ps1 -Mode dev -VenvDir "$HOME\.mars"
+#
+
+param(
+    [string]$Mode = "",
+    [string]$VenvDir = ""
+)
 
 $ErrorActionPreference = "Stop"
 
-$VenvDir = ".venv"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
-Write-Host ""
-Write-Host "  MARS Language Installer"
-Write-Host "  -------------------------------------"
-Write-Host ""
-Write-Host "  Select installation mode:"
-Write-Host ""
-Write-Host "    1) User      - Install Mars as a standalone tool (stable, no link to source)"
-Write-Host "    2) Developer - Editable install linked to this source tree"
-Write-Host ""
+# ── Interactive prompt if no -Mode given ─────
+if ($Mode -eq "") {
+    Write-Host ""
+    Write-Host "  MARS Language Installer"
+    Write-Host "  -------------------------------------"
+    Write-Host ""
+    Write-Host "  Select installation mode:"
+    Write-Host ""
+    Write-Host "    1) User      - Install Mars as a standalone tool (stable, no link to source)"
+    Write-Host "    2) Developer - Editable install linked to this source tree"
+    Write-Host ""
 
-$choice = Read-Host "  Enter choice [1/2]"
-Write-Host ""
+    $choice = Read-Host "  Enter choice [1/2]"
+    Write-Host ""
 
-switch ($choice) {
-    "1" { $Mode = "user" }
-    "2" { $Mode = "dev"  }
-    default {
-        Write-Host "  Invalid choice. Exiting."
-        exit 1
+    switch ($choice) {
+        "1" { $Mode = "user" }
+        "2" { $Mode = "dev"  }
+        default {
+            Write-Host "  Invalid choice. Exiting."
+            exit 1
+        }
     }
 }
 
-# ── Create virtual environment ───────────────
-$VenvPath = Join-Path $ScriptDir $VenvDir
+# ── Resolve venv path ────────────────────────
+if ($VenvDir -eq "") {
+    $VenvDir = Join-Path $ScriptDir ".venv"
+}
 
-if (-not (Test-Path $VenvPath)) {
-    Write-Host "  Creating virtual environment in $VenvDir ..."
-    python -m venv $VenvPath
+# ── Create virtual environment ───────────────
+if (-not (Test-Path $VenvDir)) {
+    Write-Host "  Creating virtual environment at $VenvDir ..."
+    python -m venv $VenvDir
 } else {
     Write-Host "  Virtual environment already exists at $VenvDir"
 }
 
 # ── Activate and install ─────────────────────
-$ActivateScript = Join-Path $VenvPath "Scripts\Activate.ps1"
+$ActivateScript = Join-Path $VenvDir "Scripts\Activate.ps1"
 & $ActivateScript
 
 Write-Host "  Upgrading pip ..."
@@ -60,7 +76,7 @@ Write-Host "  Installation complete!"
 Write-Host ""
 
 # ── PATH instructions ────────────────────────
-$MarsBin = Join-Path $VenvPath "Scripts"
+$MarsBin = Join-Path $VenvDir "Scripts"
 
 Write-Host "  To use the 'mars' command, activate the virtual environment:"
 Write-Host ""
