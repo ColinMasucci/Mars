@@ -3,7 +3,7 @@ import subprocess
 import sys
 import time
 
-from mars.mars_lang.ros.ros_bridge_client import RosBridgeClient
+from mars_lang.ros.ros_bridge_client import RosBridgeClient
 
 
 def main():

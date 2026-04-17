@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mars-lang"
+version = "0.1.0"
+description = "MARS - a domain-specific language and compiler for robotics"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pyyaml",
+    "graphviz",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[project.scripts]
+mars = "mars_lang.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mars_lang*", "mars_templates*"]
+
+[tool.setuptools.package-data]
+mars_templates = ["**/*"]
+
+[tool.ruff]
+line-length = 120

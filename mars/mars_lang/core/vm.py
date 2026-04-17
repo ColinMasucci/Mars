@@ -2,8 +2,7 @@ from typing import List, Tuple, Any
 import importlib.util
 import os
 import types
-import time;
-
+import time
 from .source_errors import format_source_error
 from pathlib import Path
 from importlib import resources
@@ -12,7 +11,10 @@ from importlib import resources
 Instr = Tuple[str, ...]
 _UNDECLARED = object()
 
-class VMError(Exception): pass
+
+class VMError(Exception):
+    pass
+
 
 def _strip_unit_type(typ):
     if not isinstance(typ, str):
@@ -23,14 +25,25 @@ def _strip_unit_type(typ):
         return typ.split("::", 1)[0]
     return typ
 
+
 class VM:
-    def __init__(self, bytecode: List[Instr], workspace_root:str, class_field_info=None, component_tree=None, component_parents=None, source_map=None, source_text=None, source_path=None):
+    def __init__(
+        self,
+        bytecode: List[Instr],
+        workspace_root: str,
+        class_field_info=None,
+        component_tree=None,
+        component_parents=None,
+        source_map=None,
+        source_text=None,
+        source_path=None,
+    ):
         self.code = bytecode
         self.workspace_root = workspace_root
         self.stack = []
         self.pc = 0
         self.locals = {}  # current frame locals {name: (value, vartype, readonly)}
-        self.globals = {} # global frame
+        self.globals = {}  # global frame
         self._modules = {}  # module_name -> module object
         self.call_stack = []  # stack of (return_pc, locals_snapshot, local_scope_stack_snapshot)
         self.global_scope_stack = []
@@ -46,11 +59,11 @@ class VM:
         # var_name -> {"topic": topic_name, "field_path": [nested, keys]}
         # example: {"pose": {"topic": "/robot/pose", "field_path": ["position", "x"]}}
 
-        self.sensor_cache = {}   
+        self.sensor_cache = {}
         # topic_name -> last_value
         # example: {"/robot/pose": PoseMsg, "/lidar": LaserScanMsg}
 
-        self.step_stack = []     
+        self.step_stack = []
         # stores return PCs for STEP loops
         # acts like a loop stack (like call_stack, but for control flow)
 
@@ -344,7 +357,7 @@ class VM:
         if base_type.startswith("array<") and base_type.endswith(">"):
             if not isinstance(val, list):
                 raise VMError(f"Type mismatch for {context}: expected {base_type}, got {self._runtime_type_name(val)}")
-            inner = base_type[len("array<"):-1].strip()
+            inner = base_type[len("array<") : -1].strip()
             for i, elem in enumerate(val):
                 self._runtime_type_check(elem, inner, f"{context}[{i}]")
             return
@@ -352,7 +365,7 @@ class VM:
         if base_type.startswith("dict<") and base_type.endswith(">"):
             if not isinstance(val, dict):
                 raise VMError(f"Type mismatch for {context}: expected {base_type}, got {self._runtime_type_name(val)}")
-            inside = base_type[len("dict<"):-1].strip()
+            inside = base_type[len("dict<") : -1].strip()
             parts = self._split_top_level_types(inside)
             if len(parts) != 2:
                 raise VMError(f"Invalid dict type '{base_type}' in runtime check")
@@ -377,7 +390,9 @@ class VM:
         if base_type.startswith("class:") or base_type in self.class_field_info:
             expected_class = base_type.split(":", 1)[1] if base_type.startswith("class:") else base_type
             if not isinstance(val, dict) or val.get("__class__") != expected_class:
-                raise VMError(f"Type mismatch for {context}: expected class:{expected_class}, got {self._runtime_type_name(val)}")
+                raise VMError(
+                    f"Type mismatch for {context}: expected class:{expected_class}, got {self._runtime_type_name(val)}"
+                )
             return
 
         # Unknown type: skip runtime check to avoid breaking existing behavior
@@ -406,7 +421,9 @@ class VM:
                 raise VMError(f"Malformed function '{func_name}': missing parameter DECLAREs")
             decl_instr = self.code[decl_idx]
             if decl_instr[0] != "DECLARE":
-                raise VMError(f"Malformed function '{func_name}': expected DECLARE for parameter at bytecode index {decl_idx}, found {decl_instr[0]}")
+                raise VMError(
+                    f"Malformed function '{func_name}': expected DECLARE for parameter at bytecode index {decl_idx}, found {decl_instr[0]}"
+                )
             param_info.append((decl_instr[1], decl_instr[2] if len(decl_instr) > 2 else None))
 
         self.call_stack.append((self.pc + 1, self.locals.copy(), self._copy_scope_stack(self.local_scope_stack)))
@@ -423,8 +440,7 @@ class VM:
             self._runtime_type_check(val, ptype, f"parameter '{name}'")
             self.locals[name] = (val, ptype or "unknown", False)
 
-        self.pc = func_pc + param_count #- 1
-
+        self.pc = func_pc + param_count  # - 1
 
     def sense(self):
         if not self.ros_bridge:
@@ -454,36 +470,38 @@ class VM:
             except Exception as e:
                 print(f"[ros] publish failed for {topic}: {e}")
 
-
-
-    #This runs the bytecode from .mars file
+    # This runs the bytecode from .mars file
     def run(self, max_steps=None, debug=False):
-        steps = 0 #just used for counting steps (self.pc is the pointer to the instruction being run)
+        steps = 0  # just used for counting steps (self.pc is the pointer to the instruction being run)
         while self.pc < len(self.code):
             steps += 1
             if max_steps is not None and steps > max_steps:
                 raise VMError("Exceeded maximum VM steps; possible infinite loop")
 
-            #sense, think, act
+            # sense, think, act
             self.sense()
             prev_pc = self.pc
             try:
-                self.execute_one(debug)#RUN ONE INSTRUCTION
+                self.execute_one(debug)  # RUN ONE INSTRUCTION
             except VMError as exc:
                 if self.source_text is None:
                     raise
                 position = self._source_position_for_pc(self.pc)
                 if position is None:
                     raise
-                raise VMError(format_source_error(str(exc), self.source_text, position, self.source_path, "runtime")) from None
+                raise VMError(
+                    format_source_error(str(exc), self.source_text, position, self.source_path, "runtime")
+                ) from None
             self.act()
             # Most instructions advance implicitly by falling through.
             # Control-flow ops may set self.pc directly; in that case do not auto-increment.
             if self.pc == prev_pc:
                 self.pc += 1
-        
+
         if self.stack is not None and len(self.stack) > 0:
-            raise VMError("VM halted prematurely. Final stack:", self.stack, "PC:", self.pc, " Code Length:", len(self.code))
+            raise VMError(
+                "VM halted prematurely. Final stack:", self.stack, "PC:", self.pc, " Code Length:", len(self.code)
+            )
 
     def _source_position_for_pc(self, pc):
         if pc in self.source_map:
@@ -499,9 +517,7 @@ class VM:
 
         return None
 
-
-
-    #This runs exactly one bytecode instruction
+    # This runs exactly one bytecode instruction
     def execute_one(self, debug=False):
         instr = self.code[self.pc]
         op, *args = instr  # unpack opcode and any arguments
@@ -563,7 +579,8 @@ class VM:
                 self.stack.append(val)
 
             case "ADD":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 # String concatenation if either is str
                 if isinstance(a, str) or isinstance(b, str):
                     self.stack.append(str(a) + str(b))
@@ -571,55 +588,68 @@ class VM:
                     self.stack.append(a + b)
 
             case "SUB":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 self.stack.append(a - b)
 
             case "MUL":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 self.stack.append(a * b)
 
             case "DIV":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 self.stack.append(a / b)
 
             case "MOD":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 self.stack.append(a % b)
 
             case "POW":
-                b = self.stack.pop(); a = self.stack.pop()
-                self.stack.append(a ** b)
-            
+                b = self.stack.pop()
+                a = self.stack.pop()
+                self.stack.append(a**b)
+
             case "AND":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 self.stack.append(a and b)
-            
+
             case "OR":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 self.stack.append(a or b)
 
             case "LT":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 self.stack.append(a < b)
 
             case "GT":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 self.stack.append(a > b)
 
             case "LEQ":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 self.stack.append(a <= b)
 
             case "GEQ":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 self.stack.append(a >= b)
 
             case "EQ":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 self.stack.append(a == b)
 
             case "NEQ":
-                b = self.stack.pop(); a = self.stack.pop()
+                b = self.stack.pop()
+                a = self.stack.pop()
                 self.stack.append(a != b)
 
             case "NEGATE":
@@ -665,7 +695,9 @@ class VM:
                     param_info.append((decl_instr[1], decl_instr[2] if len(decl_instr) > 2 else None))
 
                 # Save current frame
-                self.call_stack.append((self.pc + 1, self.locals.copy(), self._copy_scope_stack(self.local_scope_stack)))
+                self.call_stack.append(
+                    (self.pc + 1, self.locals.copy(), self._copy_scope_stack(self.local_scope_stack))
+                )
                 self.locals = {}
                 self.local_scope_stack = []
                 self.locals["this"] = (obj, f"class:{class_ref}", False)
@@ -677,7 +709,7 @@ class VM:
                         val = int(val)
                     self._runtime_type_check(val, ptype, f"parameter '{name}'")
                     self.locals[name] = (val, ptype or "unknown", False)
-                self.pc = func_pc + param_count #- 1
+                self.pc = func_pc + param_count  # - 1
                 return
 
             case "GET_FIELD":
@@ -736,7 +768,7 @@ class VM:
                 if readonly:
                     raise VMError(f"Cannot increment readonly variable '{name}'")
                 target[name] = (val + 1, vartype, readonly)
-                self.stack.append(val) 
+                self.stack.append(val)
 
             case "DEC":
                 name = args[0]
@@ -749,7 +781,7 @@ class VM:
                 if readonly:
                     raise VMError(f"Cannot decrement readonly variable '{name}'")
                 target[name] = (val - 1, vartype, readonly)
-                self.stack.append(val) 
+                self.stack.append(val)
 
             case "DECLARE":
                 name, vartype = args[0], args[1]
@@ -814,7 +846,6 @@ class VM:
                 val, _type, _ro = self.locals[name]
                 self.stack.append(val)
 
-
             case "PRINT":
                 n = int(args[0])  # number of arguments to print
                 if n > len(self.stack):
@@ -860,27 +891,27 @@ class VM:
                 self.stack.append(self._convert_array_units(value, factor, offset))
 
             case "JUMP":
-                self.pc = int(args[0]) #- 1
+                self.pc = int(args[0])  # - 1
                 return
 
             case "JUMP_IF_FALSE":
                 target = int(args[0])
                 cond = self.stack.pop()
-                if isinstance(cond, (int, float)):# Numbers collapse to bools
+                if isinstance(cond, (int, float)):  # Numbers collapse to bools
                     cond = cond != 0
                 if not cond:
-                    self.pc = target #- 1
+                    self.pc = target  # - 1
                     return
 
             case "HALT":
-                if (self.pc < len(self.code)-1):
+                if self.pc < len(self.code) - 1:
                     raise VMError("HALT opperand unexpectedly found. Program Early Termination Issue.")
                 return
 
             case "IMPORT":
                 module_name = args[0]
 
-                builtin_path = resources.files("mars.mars_lang.builtins") / f"{module_name}.py"
+                builtin_path = resources.files("mars_lang.builtins") / f"{module_name}.py"
                 tool_path = Path(self.workspace_root) / "tools" / f"{module_name}.py"
                 if not os.path.exists(builtin_path) and not os.path.exists(tool_path):
                     # Component or unknown import: skip at runtime
@@ -903,8 +934,11 @@ class VM:
                 # populate locals with dotted names
                 funcs_dict = getattr(module, f"{module_name.upper()}_FUNCS", {})
                 for name, val in funcs_dict.items():
-                    self.locals[f"{module_name}.{name}"] = (val, "function" if callable(val) else type(val).__name__, False)
-
+                    self.locals[f"{module_name}.{name}"] = (
+                        val,
+                        "function" if callable(val) else type(val).__name__,
+                        False,
+                    )
 
             case "FUNC_BEGIN":
                 # Skip function body if running normally
@@ -966,7 +1000,9 @@ class VM:
                 if not isinstance(obj, dict) or "__class__" not in obj:
                     raise VMError("Method call on non-object")
                 class_name = obj["__class__"]
-                func_name = f"{class_name}.{method_name}" if not method_name.startswith("__") else f"{class_name}{method_name}"
+                func_name = (
+                    f"{class_name}.{method_name}" if not method_name.startswith("__") else f"{class_name}{method_name}"
+                )
 
                 # Find function body
                 func_pc = None
@@ -989,7 +1025,9 @@ class VM:
                     param_info.append((decl_instr[1], decl_instr[2] if len(decl_instr) > 2 else None))
 
                 # Save current frame
-                self.call_stack.append((self.pc + 1, self.locals.copy(), self._copy_scope_stack(self.local_scope_stack)))
+                self.call_stack.append(
+                    (self.pc + 1, self.locals.copy(), self._copy_scope_stack(self.local_scope_stack))
+                )
                 self.locals = {}
                 self.local_scope_stack = []
                 # Bind this
@@ -1002,9 +1040,8 @@ class VM:
                         val = int(val)
                     self._runtime_type_check(val, ptype, f"parameter '{name}'")
                     self.locals[name] = (val, ptype or "unknown", False)
-                self.pc = func_pc + param_count #- 1
+                self.pc = func_pc + param_count  # - 1
                 return
-
 
             case "MATCH_COMPONENT":
                 target_type = self.stack.pop()
@@ -1013,7 +1050,6 @@ class VM:
                     raise VMError("match expects a component reference and type name")
                 match_path = self._match_component(start_path, target_type)
                 self.stack.append(match_path)
-
 
             case "RETURN":
                 # Optional: push return value
@@ -1037,16 +1073,14 @@ class VM:
 
             case "PUSH_EMPTY_ARRAY":
                 self.stack.append([])
-            
+
             case "BUILD_DICT":
                 # args[0] = number of key/value pairs
                 n = int(args[0])
 
                 # We need 2*n items (key1, val1, key2, val2, ...)
                 if len(self.stack) < 2 * n:
-                    raise VMError(
-                        f"BUILD_DICT expected {2*n} stack values but only {len(self.stack)} present"
-                    )
+                    raise VMError(f"BUILD_DICT expected {2 * n} stack values but only {len(self.stack)} present")
 
                 # Pop key/value pairs in reverse (stack is LIFO)
                 # Example: stack [..., key1, val1, key2, val2]
@@ -1110,7 +1144,7 @@ class VM:
 
                 # ---- dictionary assignment ----
                 if isinstance(container, dict):
-                    container[idx] = val   # keys can be anything hashable
+                    container[idx] = val  # keys can be anything hashable
 
                 # ---- array assignment ----
                 elif isinstance(container, list):
@@ -1123,15 +1157,12 @@ class VM:
                 # ---- unsupported type ----
                 else:
                     raise VMError(f"Trying to index-assign into unsupported type {type(container).__name__}")
-            
+
             case "UPDATE":
                 self._apply_subscriptions()
 
-
             case _:
                 raise VMError(f"Unknown opcode {op}")
-
-
 
     def _new_object(self, class_name):
         info = self.class_field_info.get(class_name, {})

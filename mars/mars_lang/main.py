@@ -1,6 +1,6 @@
 import argparse
 
-from mars.mars_lang.core.interpreter import interpret_code_from_file
+from mars_lang.core.interpreter import interpret_code_from_file
 
 
 def main():
@@ -12,11 +12,17 @@ def main():
     parser.add_argument("--ros-bridge", default=None, help="host:port or 'auto'")
     parser.add_argument("--ros-topics-file", default=None)
     parser.add_argument("--ros-version", default=None, help="1 or 2")
-    parser.add_argument("--ros-bridge-python", default=None, help="python executable used for autostarted ros_bridge.py")
-    parser.add_argument("--ros-bridge-pythonpath", default=None, help="extra PYTHONPATH prepended for autostarted bridge")
+    parser.add_argument(
+        "--ros-bridge-python", default=None, help="python executable used for autostarted ros_bridge.py"
+    )
+    parser.add_argument(
+        "--ros-bridge-pythonpath", default=None, help="extra PYTHONPATH prepended for autostarted bridge"
+    )
     args = parser.parse_args()
 
-    print("===EXAMPLE 001=================================================================================================================")
+    print(
+        "===EXAMPLE 001================================================================================================================="
+    )
     interpret_code_from_file(
         args.file,
         config_dir=args.config_dir,
@@ -28,7 +34,9 @@ def main():
         ros_bridge_python=args.ros_bridge_python,
         ros_bridge_pythonpath=args.ros_bridge_pythonpath,
     )
-    print("==============================================================================================================================\n")
+    print(
+        "==============================================================================================================================\n"
+    )
 
 
 if __name__ == "__main__":
