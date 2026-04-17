@@ -1430,7 +1430,7 @@ class TypeChecker:
                     else:
                         builtin_path = resources.files("mars.mars_lang.builtins") / f"{module_name}.py"
                         if not os.path.exists(builtin_path):
-                            tool_path = Path(self.workspace_root) / "mars_tools" / f"{module_name}.py"
+                            tool_path = Path(self.workspace_root) / "tools" / f"{module_name}.py"
                             if os.path.exists(tool_path):
                                 self.dynamic_modules.add(module_name)
                                 if not self._lookup_symbol(module_name):
