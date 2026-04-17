@@ -77,9 +77,9 @@ if [ "$MODE" = "user" ]; then
     TMPDIR="$(mktemp -d)"
     trap 'rm -rf "$TMPDIR"' EXIT
 
-    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TMPDIR/Mars-test" --quiet
+    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TMPDIR/Mars" --quiet
 
-    SOURCE_DIR="$TMPDIR/Mars-test/$REPO_SUBDIR"
+    SOURCE_DIR="$TMPDIR/Mars/$REPO_SUBDIR"
 
     # Run install.sh in non-interactive mode, venv at ~/.mars
     bash "$SOURCE_DIR/install.sh" --mode user --venv-dir "$MARS_HOME"
@@ -94,10 +94,10 @@ if [ "$MODE" = "user" ]; then
 # ══════════════════════════════════════════════
 else
 
-    CLONE_DIR="$(pwd)/Mars-test"
+    CLONE_DIR="$(pwd)/Mars"
 
     if [ -d "$CLONE_DIR" ]; then
-        echo "  Directory ./Mars-test already exists."
+        echo "  Directory ./Mars already exists."
         read -rp "  Use existing checkout? [y/N]: " use_existing
         if [[ ! "$use_existing" =~ ^[Yy]$ ]]; then
             echo "  Exiting. Remove or rename the directory and try again."
