@@ -15,7 +15,7 @@ set -euo pipefail
 #
 
 REPO_URL="https://github.com/ColinMasucci/Mars.git"
-BRANCH="venv-fix"
+BRANCH="main"
 MARS_HOME="$HOME/.mars"
 REPO_SUBDIR="mars"   # the package lives inside the mars/ subdirectory of the repo
 

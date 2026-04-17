@@ -11,13 +11,13 @@ One line install scripts have been provided for common operating systems, howeve
 ### Linux & Mac
 
 ```bash
-bash -c "$(curl -fsSL https://github.com/ColinMasucci/Mars/mars/bootstrap.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/ColinMasucci/Mars/refs/heads/main/mars/bootstrap.sh)"
 ```
 
 ### Windows
 
 ```powershell
-powershell -c "iex (iwr -useb https://github.com/ColinMasucci/Mars/mars/bootstrap.ps1).Content""
+powershell -c "iex (iwr -useb https://raw.githubusercontent.com/ColinMasucci/Mars/refs/heads/main/mars/bootstrap.ps1).Content""
 ```
 
 ### Requirements

@@ -25,7 +25,7 @@ if (-not [Environment]::UserInteractive) {
 }
 
 $RepoUrl   = "https://github.com/ColinMasucci/Mars.git"
-$Branch    = "venv-fix"
+$Branch    = "main"
 $MarsHome  = Join-Path $HOME ".mars"
 $RepoSubdir = "mars"
 
