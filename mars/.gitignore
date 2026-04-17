@@ -1,0 +1,25 @@
+# Virtual environments
+.venv/
+
+# Python packaging artifacts
+*.egg-info/
+dist/
+build/
+
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (mars-docs)
+mars-docs/node_modules/
+mars-docs/build/
+mars-docs/.docusaurus/

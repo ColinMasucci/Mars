@@ -2,6 +2,7 @@ from pathlib import Path
 import shutil
 import importlib.resources as resources
 
+
 def create_workspace(name: str, seed: bool = False):
     base = Path.cwd() / name
 
@@ -16,7 +17,7 @@ def create_workspace(name: str, seed: bool = False):
     if seed:
         print("Populating workspace with templates...")
 
-        with resources.path("mars.mars_templates", "") as template_dir:
+        with resources.path("mars_templates", "") as template_dir:
             shutil.copytree(template_dir / "tools", base / "tools", dirs_exist_ok=True)
             shutil.copytree(template_dir / "mars_examples", base / "mars_examples", dirs_exist_ok=True)
             shutil.copytree(template_dir / "config", base / "config", dirs_exist_ok=True)

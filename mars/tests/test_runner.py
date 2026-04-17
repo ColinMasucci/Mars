@@ -1,16 +1,17 @@
 import json
 import os
 import sys
-from mars.mars_lang.interpreter import interpret_code_from_string
+from mars_lang.interpreter import interpret_code_from_string
 
 ###How to run tests:
-#For a specific test file:
+# For a specific test file:
 #     python test_runner.py <test_filename.json>
-#To run all test files:
+# To run all test files:
 #     python test_runner.py
 
 
 TEST_DIR = "tests"
+
 
 def run_test_case(case):
     print("────────────────────────────────────────────")
@@ -19,7 +20,7 @@ def run_test_case(case):
     if "code" not in case and "code_disabled" in case:
         print(f"⏭ Skipping disabled test: {case['name']}")
         return True, True  # (passed, disabled)
-    
+
     name = case["name"]
     code = case["code"]
     expected_output = case.get("expect")
@@ -33,7 +34,7 @@ def run_test_case(case):
         if expected_error:
             print(f"❌ Expected error '{expected_error}' but code ran successfully")
             return False, False
-        
+
         if expected_output is not None:
             if output.strip() == expected_output.strip():
                 print("✔ Passed")
@@ -57,13 +58,14 @@ def run_test_case(case):
             print(f"❌ Unexpected error: {e}")
             return False, False
 
+
 def run_test_file(filepath):
     print("\n============================================================")
     print(f"Running test file: {os.path.basename(filepath)}")
-    
+
     with open(filepath) as f:
         data = json.load(f)
-    
+
     passed_count = 0
     disabled_count = 0
 
@@ -83,8 +85,6 @@ def run_test_file(filepath):
     return passed_count, total, disabled_count
 
 
-
-
 def main():
     # Run a specific file
     if len(sys.argv) == 2:
@@ -92,14 +92,14 @@ def main():
         path = os.path.join(TEST_DIR, filename)
         passed, total, disabled = run_test_file(path)
 
-        print(f"GLOBAL SUCCESS RATE: {passed}/{total} = {passed/total*100:.2f}%")
+        print(f"GLOBAL SUCCESS RATE: {passed}/{total} = {passed / total * 100:.2f}%")
         print(f"TOTAL DISABLED TESTS: {disabled}")
         return
-    
+
     # Run all files
     files = [f for f in os.listdir(TEST_DIR) if f.endswith(".json")]
     print("Running all test suites...\n")
-    
+
     total_passed = 0
     total_tests = 0
     total_disabled = 0
@@ -111,7 +111,7 @@ def main():
         total_disabled += disabled
 
     print("============================================================")
-    print(f"GLOBAL SUCCESS RATE: {total_passed}/{total_tests} = {total_passed/total_tests*100:.2f}%")
+    print(f"GLOBAL SUCCESS RATE: {total_passed}/{total_tests} = {total_passed / total_tests * 100:.2f}%")
     print(f"TOTAL DISABLED TESTS ACROSS ALL FILES: {total_disabled}")
     print("============================================================")
 
@@ -119,7 +119,6 @@ def main():
         print("✔✔✔ All tests passed ✔✔✔")
     else:
         print("❌ Some tests failed")
-
 
 
 if __name__ == "__main__":

@@ -1,10 +1,11 @@
 import argparse
-from mars.mars_lang.core.interpreter import interpret_code_from_file
-from mars.mars_lang.ros import ros_tools
-from mars.mars_lang.core.workspace import create_workspace
+from mars_lang.core.interpreter import interpret_code_from_file
+from mars_lang.ros import ros_tools
+from mars_lang.core.workspace import create_workspace
 from pathlib import Path
 
-VERSION = "0.1.0" #grab this version from the actual release once we have multiple on github
+VERSION = "0.1.0"  # grab this version from the actual release once we have multiple on github
+
 
 def main():
     parser = argparse.ArgumentParser(prog="mars")
@@ -29,11 +30,10 @@ def main():
     ros_topics.add_argument("--cached", action="store_true")
     ros_topics.add_argument("--refresh", action="store_true")
 
-    #init command
+    # init command
     init = sub.add_parser("init")
     init.add_argument("name")
     init.add_argument("--seed", action="store_true", help="Populate workspace with default templates")
-    
 
     # parse
     args = parser.parse_args()
@@ -44,16 +44,12 @@ def main():
 
         workspace_root = find_workspace_root(file_path)
         if not workspace_root:
-            raise FileNotFoundError(
-                "No MARS workspace found (missing mars_project.json)"
-            )
+            raise FileNotFoundError("No MARS workspace found (missing mars_project.json)")
 
         config_dir = find_workspace_config(file_path)
 
         if not config_dir:
-            raise FileNotFoundError(
-                "No MARS configs found ('config' directory was removed from workspace)"
-            )
+            raise FileNotFoundError("No MARS configs found ('config' directory was removed from workspace)")
 
         interpret_code_from_file(
             str(file_path),
@@ -62,7 +58,6 @@ def main():
         )
 
     elif args.command == "ros":
-
         workspace_root = find_workspace_root(Path.cwd())
 
         if not workspace_root:
@@ -87,13 +82,13 @@ def main():
         return
 
 
-
 def find_workspace_config(start_path: Path):
     # walk upward until mars_project.json is found
     for parent in [start_path] + list(start_path.parents):
         if (parent / "mars_project.json").exists():
             return parent / "config"
     return None
+
 
 def find_workspace_root(start_path: Path):
     # walk upward until mars_project.json is found

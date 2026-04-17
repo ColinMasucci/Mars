@@ -6,7 +6,8 @@ import subprocess
 import sys
 import time
 
-from mars.mars_lang.ros.ros_bridge_client import RosBridgeClient, write_topics_file
+from mars_lang.ros.ros_bridge_client import RosBridgeClient, write_topics_file
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Autostart ROS bridge, fetch topics once, and exit")
@@ -15,8 +16,12 @@ def main() -> int:
     parser.add_argument("--ros-version", default=None, help="1 or 2")
     parser.add_argument("--output", default="ros_topics.txt")
     parser.add_argument("--duration", type=float, default=5.0, help="poll duration in seconds")
-    parser.add_argument("--ros-bridge-python", default=None, help="python executable used for autostarted ros_bridge.py")
-    parser.add_argument("--ros-bridge-pythonpath", default=None, help="extra PYTHONPATH prepended for autostarted bridge")
+    parser.add_argument(
+        "--ros-bridge-python", default=None, help="python executable used for autostarted ros_bridge.py"
+    )
+    parser.add_argument(
+        "--ros-bridge-pythonpath", default=None, help="extra PYTHONPATH prepended for autostarted bridge"
+    )
     args = parser.parse_args()
 
     bridge_proc = _start_bridge(args)
