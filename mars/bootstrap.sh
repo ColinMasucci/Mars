@@ -15,9 +15,9 @@ MARS_HOME="$HOME/.mars"
 REPO_SUBDIR="mars"   # the package lives inside the mars/ subdirectory of the repo
 
 echo ""
-echo "  ╔═══════════════════════════════════════╗"
-echo "  ║     MARS Language Bootstrap Installer  ║"
-echo "  ╚═══════════════════════════════════════╝"
+echo "  ========================================="
+echo "    MARS Language Bootstrap Installer"
+echo "  ========================================="
 echo ""
 
 # ── Check prerequisites ──────────────────────
@@ -31,14 +31,14 @@ done
 # ── Select mode ──────────────────────────────
 echo "  Select installation mode:"
 echo ""
-echo "    1) User      – Install Mars as a standalone tool"
+echo "    1) User      - Install Mars as a standalone tool"
 echo "                   Installs to ~/.mars, no source code kept"
 echo ""
-echo "    2) Developer – Clone the repo and create an editable install"
+echo "    2) Developer - Clone the repo and create an editable install"
 echo "                   Source stays in ./Mars-test, edits take effect immediately"
 echo ""
 
-read -rp "  Enter choice [1/2]: " choice
+read -rp "  Enter choice [1/2]: " choice </dev/tty
 echo ""
 
 case "$choice" in
@@ -80,7 +80,7 @@ else
 
     if [ -d "$CLONE_DIR" ]; then
         echo "  Directory ./Mars-test already exists."
-        read -rp "  Use existing checkout? [y/N]: " use_existing
+        read -rp "  Use existing checkout? [y/N]: " use_existing </dev/tty
         if [[ ! "$use_existing" =~ ^[Yy]$ ]]; then
             echo "  Exiting. Remove or rename the directory and try again."
             exit 1
