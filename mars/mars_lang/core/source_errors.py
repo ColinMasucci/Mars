@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 def _repo_root() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

@@ -7,7 +7,7 @@ name = "mars-lang"
 version = "0.1.0"
 description = "MARS - a domain-specific language and compiler for robotics"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "pyyaml",
