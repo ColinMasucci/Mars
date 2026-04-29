@@ -4,32 +4,29 @@ import styles from './styles.module.css';
 
 const FeatureList = [
   {
-    title: 'Easy to Use',
-    Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
+    title: 'Early Validation',
+    image: require('@site/static/img/compileCheck.png'),
     description: (
       <>
-        Docusaurus was designed from the ground up to be easily installed and
-        used to get your website up and running quickly.
+        MARS detects hardware–software mismatches at compile time instead of runtime, preventing costly and hard-to-debug execution errors.
       </>
     ),
   },
   {
-    title: 'Focus on What Matters',
-    Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
+    title: 'Hardware Abstraction',
+    image: require('@site/static/img/robotSwap.png'),
     description: (
       <>
-        Docusaurus lets you focus on your docs, and we&apos;ll do the chores. Go
-        ahead and move your docs into the <code>docs</code> directory.
+        MARS separates logic from physical components, allowing hardware (motors, sensors, etc.) to be swapped with minimal code changes.
       </>
     ),
   },
   {
-    title: 'Powered by React',
-    Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
+    title: 'Practical Integration',
+    image: require('@site/static/img/ros-python.png'),
     description: (
       <>
-        Extend or customize your website layout by reusing React. Docusaurus can
-        be extended while reusing the same header and footer.
+        Works alongside existing tools like ROS 2 and Python, making it usable in real-world robotics systems rather than purely theoretical.
       </>
     ),
   },

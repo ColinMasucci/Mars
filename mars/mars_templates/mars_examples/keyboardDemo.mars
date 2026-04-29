@@ -5,6 +5,7 @@ class KeyboardDemo {
 
     requirements {
         WheeledChassis(parameters=[controlMode=="tank"]);
+        IMU(parameters=[accelerometer, gyro, orientation]);
     }
 
     string controlMode = "tank";
